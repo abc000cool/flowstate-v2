@@ -19,6 +19,7 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 from typing import Any
 
+import numpy as np
 import pandas as pd
 import pyarrow as pa
 import pytest
@@ -230,11 +231,21 @@ class TestWriterFirstLast:
         present = {0: ["a", "b"], 1: ["a", "b", "c"], 2: ["b", "c"], 3: ["c", "d"], 4: ["d"]}
         for k, ids in present.items():
             t = 0.5 * (k + 1)
-            for n, vid in enumerate(ids):
-                row = {name: False for name, _ in _TRAJ_SCHEMA_BASE}
-                row.update(t=t, veh_id=vid, x=10.0 * k + n, lane=n, v=1.0, a=0.0)
-                for name, value in row.items():
-                    writer.cols[name].append(value)
+            n_ids = len(ids)
+            flags = {
+                name: np.zeros(n_ids, dtype=np.bool_)
+                for name, dtype in _TRAJ_SCHEMA_BASE
+                if dtype == pa.bool_()
+            }
+            writer.append_step(
+                t,
+                ids,
+                x=np.array([10.0 * k + n for n in range(n_ids)]),
+                lane=np.arange(n_ids, dtype=np.int32),
+                v=np.ones(n_ids),
+                a=np.zeros(n_ids),
+                **flags,
+            )
             writer.maybe_flush()
         writer.close()
         with open(path, "rb") as f:
@@ -365,8 +376,10 @@ def test_a_given_up_exiter_through_the_runner(
     real_step = runner._weave_step
     forced: dict[str, float] = {}
 
-    def step(mod: Any, tc: Any, ws: dict[str, Any], results: Any, t: float) -> None:
-        real_step(mod, tc, ws, results, t)
+    def step(
+        mod: Any, tc: Any, ws: dict[str, Any], results: Any, t: float, index: Any = None
+    ) -> None:
+        real_step(mod, tc, ws, results, t, index)
         if forced or t < 10.0:
             return
         for vid in sorted(ws["exiting_ids"]):

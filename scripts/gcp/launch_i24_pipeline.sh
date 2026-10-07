@@ -21,7 +21,7 @@
 # killed by a 300-min cap during its last stage. Size it at about twice the estimate;
 # the EXIT trap, not the cap, is the normal stop.
 # Usage (repo root, pushed commit):
-#   scripts/gcp/launch_i24_pipeline.sh [--vm NAME] [--zone Z] [--machine TYPE] [--cap-min 480]
+#   scripts/gcp/launch_i24_pipeline.sh [--vm NAME] [--zone Z[,Z2,...]] [--machine TYPE] [--cap-min 480]
 #       [--bucket gs://bucket/prefix] [--self-delete] [--quick] [--pipeline-args '--stages "..."'] [--allow-dirty] [--via-bucket]
 set -euo pipefail
 VM=flowstate-pipeline; ZONE=us-west1-b; MACHINE=n2-standard-32; CAP_MIN=480; QUICK=""; BUCKET=""; SELF_DELETE=0; PIPELINE_ARGS=""; ALLOW_DIRTY=0; DATA_SET=i24; VIA_BUCKET=0
@@ -29,7 +29,7 @@ PROJECT=$(gcloud config get-value project 2>/dev/null)
 while [ $# -gt 0 ]; do
   case "$1" in
     --vm) VM="$2"; shift 2 ;;
-    --zone) ZONE="$2"; shift 2 ;;
+    --zone) ZONE="$2"; shift 2 ;;   # one zone, or a comma-separated list tried in order when a zone has no capacity (2026-10-07: ZONE_RESOURCE_POOL_EXHAUSTED for n2-standard-32 in us-west1-c)
     --machine) MACHINE="$2"; shift 2 ;;
     --cap-min) CAP_MIN="$2"; shift 2 ;;
     --quick) QUICK="--quick"; shift ;;
@@ -137,13 +137,28 @@ if [ ! -f /var/lib/flowstate-setup.started ]; then
 fi
 EOF
 fi
-echo "== creating $VM ($MACHINE, $ZONE, project $PROJECT), deleted by Compute Engine $CAP_MIN min after it starts running"
-# shellcheck disable=SC2086
-gcloud compute instances create "$VM" --project "$PROJECT" --zone "$ZONE" --machine-type "$MACHINE" \
-  --max-run-duration="${CAP_MIN}m" --instance-termination-action=DELETE \
-  --image-family debian-12 --image-project debian-cloud --boot-disk-size 120GB --boot-disk-type pd-balanced \
-  --metadata-from-file startup-script="$STARTUP",idle-guard="$ROOT/scripts/gcp/idle_guard.sh" --labels purpose=flowstate-pipeline,autostop=yes $SCOPES >/dev/null
-rm -f "$STARTUP"
+# Zones are tried in order; only a capacity refusal moves on to the next one (the inputs, uploaded
+# once above in --via-bucket mode, serve every zone). Any other error stops the launch.
+CREATED=0; CREATE_ERR=$(mktemp)
+IFS=',' read -r -a ZONES <<< "$ZONE"
+for Z in "${ZONES[@]}"; do
+  echo "== creating $VM ($MACHINE, $Z, project $PROJECT), deleted by Compute Engine $CAP_MIN min after it starts running"
+  # shellcheck disable=SC2086
+  if gcloud compute instances create "$VM" --project "$PROJECT" --zone "$Z" --machine-type "$MACHINE" \
+    --max-run-duration="${CAP_MIN}m" --instance-termination-action=DELETE \
+    --image-family debian-12 --image-project debian-cloud --boot-disk-size 120GB --boot-disk-type pd-balanced \
+    --metadata-from-file startup-script="$STARTUP",idle-guard="$ROOT/scripts/gcp/idle_guard.sh" --labels purpose=flowstate-pipeline,autostop=yes $SCOPES >/dev/null 2>"$CREATE_ERR"; then
+    ZONE="$Z"; CREATED=1; break
+  fi
+  cat "$CREATE_ERR" >&2
+  if grep -qE "ZONE_RESOURCE_POOL_EXHAUSTED|does not have enough resources|resource_availability" "$CREATE_ERR"; then
+    echo "== no capacity for $MACHINE in $Z; trying the next zone" >&2
+    continue
+  fi
+  break
+done
+rm -f "$STARTUP" "$CREATE_ERR"
+[ "$CREATED" -eq 1 ] || { echo "== could not create $VM in any of: $ZONE" >&2; exit 1; }
 mkdir -p "$ROOT/logs"; echo "$(date -u +%FT%TZ) $VM $ZONE $PROJECT $REF" > "$ROOT/logs/pipeline_launch.txt"
 # From here on the instance bills. If anything below fails (an scp cut by the network, a setup
 # error), delete it: a created-but-idle VM cost about fifteen dollars on 2026-09-18 while it

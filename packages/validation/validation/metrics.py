@@ -352,7 +352,7 @@ class _ByVehicle:
         hit = self.same & (x[:-1] < x_ref) & (x[1:] >= x_ref)
         return np.asarray(self.t[1:][hit], dtype=np.float64)
 
-    def crossing_points(self, x_ref: float, v_sorted: FloatArray) -> tuple[FloatArray, FloatArray]:
+    def crossing_points(self, x_ref: float, v_frame: FloatArray) -> tuple[FloatArray, FloatArray]:
         """Interpolated time and speed of every upward crossing of ``x_ref``.
 
         The pairs are those of :meth:`crossing_times` (``x_prev < x_ref <=
@@ -361,7 +361,10 @@ class _ByVehicle:
 
         Args:
             x_ref: Cross-section [m].
-            v_sorted: Speeds [m/s] in this object's sorted row order.
+            v_frame: Speeds [m/s] in frame order; only the crossing pairs'
+                are gathered (through :attr:`order`), so no sorted copy of the
+                column is made (2026-10-07: 8 B per row off the scoring peak,
+                same values).
 
         Returns:
             ``(times, speeds)`` of the crossings, in sorted-row order.
@@ -374,7 +377,8 @@ class _ByVehicle:
         x0, x1 = x[hit], x[hit + 1]
         frac = (x_ref - x0) / (x1 - x0)  # x0 < x_ref <= x1, so x1 > x0 and frac in (0, 1]
         times = t[hit] + frac * (t[hit + 1] - t[hit])
-        speeds = v_sorted[hit] + frac * (v_sorted[hit + 1] - v_sorted[hit])
+        v0, v1 = v_frame[self.order[hit]], v_frame[self.order[hit + 1]]
+        speeds = v0 + frac * (v1 - v0)
         return np.asarray(times, dtype=np.float64), np.asarray(speeds, dtype=np.float64)
 
 
@@ -507,8 +511,8 @@ def crossing_speeds(
         if col not in trajectories.columns:
             raise ValueError(f"trajectories missing column {col!r}")
     by = _ByVehicle.from_frame(trajectories)
-    v_sorted = np.asarray(trajectories["v"].to_numpy(dtype=np.float64)[by.order])
-    return [by.crossing_points(float(x), v_sorted) for x in x_refs]
+    v_frame = np.asarray(trajectories["v"].to_numpy(dtype=np.float64))
+    return [by.crossing_points(float(x), v_frame) for x in x_refs]
 
 
 def count_crossings(

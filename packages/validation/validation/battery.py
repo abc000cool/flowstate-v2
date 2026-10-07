@@ -1372,6 +1372,27 @@ def score_pool_size(
 _AnalysePayload = tuple[str, ObservedCorridor, CriteriaProfile, float, tuple[float, float], float]
 
 
+def _score_worker_init() -> None:
+    """Spawn-pool initializer: Arrow allocates from the system allocator in a scoring worker.
+
+    :func:`read_scoring_frame` decodes the trajectory one row batch at a
+    time; under pyarrow's default pool (mimalloc on macOS, jemalloc on
+    Linux) the freed batch buffers stay in that pool, where numpy cannot
+    reuse them, for the rest of the worker's life. From the system allocator
+    they go back to the ``malloc`` numpy allocates from. An allocator never
+    changes a decoded value, so the outputs are the same bytes. Measured
+    2026-10-07 on macOS (docs/PERFORMANCE_2026-10-07.md): peak RSS of
+    :func:`analyse_replicate` on a 4.2 M-row synthetic replicate 402 → 353 MB
+    above the import floor; not yet measured on Linux, so
+    :data:`SCORE_WORKER_BYTES_PER_ROW` is unchanged. Only the dedicated
+    spawn workers are switched — never the calling process (the API's report
+    job runs :func:`analyse_replicate` in-process).
+    """
+    import pyarrow as pa
+
+    pa.set_memory_pool(pa.system_memory_pool())
+
+
 def _analyse_worker(payload: _AnalysePayload) -> ReplicateAnalysis:
     """Spawn-pool worker: :func:`analyse_replicate` on one payload."""
     run_dir, observed, profile, x_ref, span, x_offset_m = payload
@@ -1438,7 +1459,9 @@ def analyse_replicates(
 
     results: dict[int, ReplicateAnalysis] = {}
     ctx = multiprocessing.get_context("spawn")
-    with ProcessPoolExecutor(max_workers=min(n_procs, len(dirs)), mp_context=ctx) as ex:
+    with ProcessPoolExecutor(
+        max_workers=min(n_procs, len(dirs)), mp_context=ctx, initializer=_score_worker_init
+    ) as ex:
         futures = {ex.submit(_analyse_worker, p): i for i, p in enumerate(payloads)}
         for fut in as_completed(futures):
             index = futures[fut]

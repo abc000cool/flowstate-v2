@@ -878,7 +878,75 @@ def _scripted_force_gap_ok(
     return g_foll - closing_foll * step_s > closing_foll**2 / (2.0 * b_foll)
 
 
-def _scripted_merge_step(mod: Any, tc: Any, ss: dict[str, Any], results: Any, t: float) -> None:
+class _RoadIndex:
+    """One step's subscription results bucketed by road, for the runner's section rules.
+
+    The scripted merges, weaving sections, measured zones and the lane-end
+    give-up each read only the vehicles on their own few edges, but each
+    used to find them by a pass over every vehicle in the network — one
+    pass per section and rule per step, the largest Python cost of a
+    multi-section corridor after SUMO itself (docs/PERFORMANCE_2026-10-07.md).
+    The index makes one pass, on the first query of the step, and
+    :meth:`on` returns the ``(veh_id, result)`` pairs of the vehicles on
+    the given roads **in the order of** ``results`` — the order of the pass
+    it replaces, so every dict, list and counter those rules build is
+    filled exactly as before.
+    """
+
+    __slots__ = ("_by_road", "_items", "_results", "_var_road")
+
+    def __init__(self, results: Mapping[str, Any], var_road: int) -> None:
+        self._results = results
+        self._var_road = var_road
+        self._items: list[tuple[str, Any]] | None = None
+        self._by_road: dict[str, list[int]] = {}
+
+    def on(self, roads: Iterable[str]) -> list[tuple[str, Any]]:
+        """``(veh_id, result)`` of every vehicle on one of ``roads``, in ``results`` order."""
+        items = self._items
+        if items is None:
+            items = self._items = list(self._results.items())
+            by_road = self._by_road
+            var_road = self._var_road
+            for i, (_, res) in enumerate(items):
+                road = res[var_road]
+                at = by_road.get(road)
+                if at is None:
+                    by_road[road] = [i]
+                else:
+                    at.append(i)
+        pos: list[int] = []
+        n_roads = 0
+        for road in dict.fromkeys(roads):  # each road once, whatever the caller passes
+            at = self._by_road.get(road)
+            if at:
+                pos.extend(at)
+                n_roads += 1
+        if n_roads > 1:
+            pos.sort()
+        return [items[i] for i in pos]
+
+
+def _zone_scan_roads(ws: Mapping[str, Any]) -> frozenset[str]:
+    """The roads a weaving section's or measured zone's per-step pass acts on.
+
+    Its exit edges, the roads of its target-lane listing (``lane_map``) and
+    its own edges: a vehicle on any other road changes nothing in
+    :func:`_weave_step` / :func:`_measured_step` except, when the section
+    drives it and it is on an internal junction lane, its ``in_transit``
+    flag — which those steps set from the section's own ``veh`` instead.
+    """
+    return frozenset(ws["exit_edges"]) | {road for road, _ in ws["lane_map"]} | set(ws["edges"])
+
+
+def _scripted_merge_step(
+    mod: Any,
+    tc: Any,
+    ss: dict[str, Any],
+    results: Any,
+    t: float,
+    index: _RoadIndex | None = None,
+) -> None:
     """One step of the scripted merge for one ramp (``RampSpec.merge = "scripted"``).
 
     Drives every vehicle on lane 0 of the attach edge: desired speed matched
@@ -901,7 +969,7 @@ def _scripted_merge_step(mod: Any, tc: Any, ss: dict[str, Any], results: Any, t:
     edge = ss["edge"]
     on_lane0 = {
         vid
-        for vid, res in results.items()
+        for vid, res in (results.items() if index is None else index.on((edge,)))
         if res[tc.VAR_ROAD_ID] == edge and int(res[tc.VAR_LANE_INDEX]) == 0
     }
     veh = ss["veh"]
@@ -1368,6 +1436,7 @@ def _weave_vacate_step(
     results: Any,
     lanes: dict[int, list[tuple[float, str]]],
     t: float,
+    index: _RoadIndex | None = None,
 ) -> None:
     """Through traffic vacates the weave lane upstream of the section (2026-09-24, block 3).
 
@@ -1458,7 +1527,7 @@ def _weave_vacate_step(
     where: dict[str, tuple[str, int]] = {}
     weave: list[tuple[float, str]] = []
     target: list[tuple[float, str]] = []
-    for vid, res in results.items():
+    for vid, res in results.items() if index is None else index.on(spec):
         road = res[tc.VAR_ROAD_ID]
         lanes_e = spec.get(road)
         if lanes_e is None:
@@ -1596,6 +1665,7 @@ def _weave_exit_prepare_step(
     results: Any,
     lanes: dict[int, list[tuple[float, str]]],
     t: float,
+    index: _RoadIndex | None = None,
 ) -> None:
     """Exiters move right before the section: the vacate rule's mirror (2026-09-24, block 3, WP-62).
 
@@ -1699,7 +1769,7 @@ def _weave_exit_prepare_step(
     # lane k continues into section lane k + 1 (``lanes[k + 1]``) -----------
     where: dict[str, tuple[str, int]] = {}
     by_off: dict[int, list[tuple[float, str]]] = {}
-    for vid, res in results.items():
+    for vid, res in results.items() if index is None else index.on(spec):
         road = res[tc.VAR_ROAD_ID]
         lanes_e = spec.get(road)
         if lanes_e is None:
@@ -2522,7 +2592,14 @@ def _weave_short_section_rule(length_m: float, prm: dict[str, float]) -> dict[st
     }
 
 
-def _weave_step(mod: Any, tc: Any, ws: dict[str, Any], results: Any, t: float) -> None:
+def _weave_step(
+    mod: Any,
+    tc: Any,
+    ws: dict[str, Any],
+    results: Any,
+    t: float,
+    index: _RoadIndex | None = None,
+) -> None:
     """One step of a weaving section (``RampSpec.merge = "weave"``).
 
     :func:`_scripted_merge_step` generalised to the two crossing movements of
@@ -2738,7 +2815,18 @@ def _weave_step(mod: Any, tc: Any, ws: dict[str, Any], results: Any, t: float) -
     lanes: dict[int, list[tuple[float, str]]] = {}
     x_of: dict[str, float] = {}
     v_of: dict[str, float] = {}
-    for vid, res in results.items():
+    if index is not None:
+        # the pass below over the section's roads only (_RoadIndex); a driven
+        # vehicle on an internal junction lane is the one thing it would have
+        # read off them (_zone_scan_roads)
+        scan_roads = _zone_scan_roads(ws)
+        for vid in veh:
+            res_t = results.get(vid)
+            if res_t is not None:
+                road_t = res_t[tc.VAR_ROAD_ID]
+                if road_t not in scan_roads and road_t.startswith(":"):
+                    in_transit.add(vid)
+    for vid, res in results.items() if index is None else index.on(scan_roads):
         road = res[tc.VAR_ROAD_ID]
         if road in exit_edges:
             if vid in exiting and vid not in ws["exited"]:
@@ -2773,11 +2861,11 @@ def _weave_step(mod: Any, tc: Any, ws: dict[str, Any], results: Any, t: float) -
     # through traffic vacates the weave lane upstream of the section (third
     # derivation, 2026-09-24 block 3): the only rule touching through vehicles
     # other than as a chosen gap's follower
-    _weave_vacate_step(mod, tc, ws, results, lanes, t)
+    _weave_vacate_step(mod, tc, ws, results, lanes, t, index)
     # its mirror for the exit movement (WP-62, ``exit_prepare``): exiters
     # asked into the lane feeding section lane 1 before the section, after
     # the vacate rule and before the section takes any vehicle under control
-    _weave_exit_prepare_step(mod, tc, ws, results, lanes, t)
+    _weave_exit_prepare_step(mod, tc, ws, results, lanes, t, index)
     for vid in [v for v in veh if v not in pending and v not in in_transit]:
         st = veh.pop(vid)
         if vid not in results:
@@ -3973,7 +4061,14 @@ def _measured_crossings(
                     mm["touched"][fid] = t
 
 
-def _measured_step(mod: Any, tc: Any, ws: dict[str, Any], results: Any, t: float) -> None:
+def _measured_step(
+    mod: Any,
+    tc: Any,
+    ws: dict[str, Any],
+    results: Any,
+    t: float,
+    index: _RoadIndex | None = None,
+) -> None:
     """One step of a measured merge zone (``RampSpec.merge = "measured"``; docs/MERGE_MODEL.md).
 
     **Who is driven** (B§5.2): every vehicle on a zone edge whose lane does
@@ -4066,7 +4161,18 @@ def _measured_step(mod: Any, tc: Any, ws: dict[str, Any], results: Any, t: float
     approach_prev: dict[str, int] = mm["approach_k"]
     approach_now: dict[str, int] = {}
     reach0: Mapping[int, frozenset[str]] = reach[ws["edges"][0]]
-    for vid, res in results.items():
+    if index is not None:
+        # the pass below over the zone's roads only (_RoadIndex); a driven
+        # vehicle on an internal junction lane is the one thing it would have
+        # read off them (_zone_scan_roads)
+        scan_roads = _zone_scan_roads(ws)
+        for vid in veh:
+            res_t = results.get(vid)
+            if res_t is not None:
+                road_t = res_t[tc.VAR_ROAD_ID]
+                if road_t not in scan_roads and road_t.startswith(":"):
+                    in_transit.add(vid)
+    for vid, res in results.items() if index is None else index.on(scan_roads):
         road = res[tc.VAR_ROAD_ID]
         if road in exit_edges:
             if vid in exiting and vid not in ws["exited"]:
@@ -4119,8 +4225,8 @@ def _measured_step(mod: Any, tc: Any, ws: dict[str, Any], results: Any, t: float
         lst.sort()
     mm["approach_k"] = approach_now
     # --- the weave's rules upstream of a weaving section (inert otherwise) --
-    _weave_vacate_step(mod, tc, ws, results, lanes, t)
-    _weave_exit_prepare_step(mod, tc, ws, results, lanes, t)
+    _weave_vacate_step(mod, tc, ws, results, lanes, t, index)
+    _weave_exit_prepare_step(mod, tc, ws, results, lanes, t, index)
     _measured_handover_step(mod, tc, ws, results, x_of, v_of, pending)
     # --- the crossings made since the last step (relaxation granted) --------
     _measured_crossings(mod, tc, ws, results, x_of, t)
@@ -4670,6 +4776,7 @@ def _lane_end_step(
     le: dict[str, Any],
     results: Any,
     controlled: Callable[[str], bool],
+    index: _RoadIndex | None = None,
 ) -> list[tuple[str, str]]:
     """One step of the lane-end give-up (``OSMNetwork.lane_end_giveup_m``, WP-71).
 
@@ -4725,7 +4832,7 @@ def _lane_end_step(
     d_max = float(le["distance_m"])
     front: dict[tuple[str, int], float] = {}
     cand: list[tuple[str, str, int, float]] = []
-    for vid, res in results.items():
+    for vid, res in results.items() if index is None else index.on(by_edge):
         road = res[tc.VAR_ROAD_ID]
         rec = by_edge.get(road)
         if rec is None:
@@ -5062,13 +5169,15 @@ def _downstream_bins(
     n_bins = max(math.ceil(horizon / DOWNSTREAM_BIN_M), 1)
     sel = (ahead > 0.0) & (ahead <= horizon)
     idx = np.minimum((ahead[sel] // DOWNSTREAM_BIN_M).astype(np.int64), n_bins - 1)
-    sums = np.zeros(n_bins)
-    counts = np.zeros(n_bins)
-    np.add.at(sums, idx, vs[sel])
-    np.add.at(counts, idx, 1.0)
-    with np.errstate(invalid="ignore"):
-        means = np.where(counts > 0, sums / np.maximum(counts, 1.0), np.nan)
-    return tuple(float(m) for m in means)
+    # ``bincount`` adds each weight to its bin in input order from 0.0 — the
+    # additions ``np.add.at`` made here before 2026-10-07, so the same sums
+    # bit for bit, at a fraction of the cost (this runs per AV and step). A
+    # bin's mean is its sum over its count, NaN where the count is 0.
+    sums = np.bincount(idx, weights=vs[sel], minlength=n_bins)
+    counts = np.bincount(idx, minlength=n_bins)
+    means = np.full(n_bins, np.nan)
+    np.divide(sums, counts, out=means, where=counts > 0)
+    return tuple(means.tolist())
 
 
 def _stale_snapshot(
@@ -5140,37 +5249,73 @@ def _edie_edges_frame(
         duration_s: Simulated duration [s] (grid extent in time).
         total_length_m: Road length [m] (grid extent in space).
     """
-    nt = max(math.ceil(duration_s / EDGES_DT_BIN_S), 1)
-    nx = max(math.ceil(total_length_m / EDGES_DX_BIN_M), 1)
-    tts = np.zeros((nt, nx))
-    ttd = np.zeros((nt, nx))
+    acc = _EdieAccumulator(sample_dt_s, duration_s, total_length_m)
     if len(traj):
-        ti = np.minimum((traj["t"].to_numpy() / EDGES_DT_BIN_S).astype(np.int64), nt - 1)
-        xi = np.clip((traj["x"].to_numpy() / EDGES_DX_BIN_M).astype(np.int64), 0, nx - 1)
-        v = traj["v"].to_numpy()
-        np.add.at(tts, (ti, xi), sample_dt_s)
-        np.add.at(ttd, (ti, xi), v * sample_dt_s)
-    dt_eff = np.minimum(EDGES_DT_BIN_S, duration_s - np.arange(nt) * EDGES_DT_BIN_S).clip(
-        min=sample_dt_s
-    )
-    dx_eff = np.minimum(EDGES_DX_BIN_M, total_length_m - np.arange(nx) * EDGES_DX_BIN_M).clip(
-        min=1e-9
-    )
-    area = np.outer(dt_eff, dx_eff)
-    with np.errstate(invalid="ignore", divide="ignore"):
-        mean_speed = np.where(tts > 0, ttd / np.where(tts > 0, tts, 1.0), np.nan)
-    t_centers = np.arange(nt) * EDGES_DT_BIN_S + dt_eff / 2.0
-    x_centers = np.arange(nx) * EDGES_DX_BIN_M + dx_eff / 2.0
-    tt, xx = np.meshgrid(t_centers, x_centers, indexing="ij")
-    return pd.DataFrame(
-        {
-            "t_bin": tt.ravel(),
-            "x_bin": xx.ravel(),
-            "mean_speed": mean_speed.ravel(),
-            "density": (tts / area).ravel(),
-            "flow": (ttd / area).ravel(),
-        }
-    )
+        acc.add(traj["t"].to_numpy(), traj["x"].to_numpy(), traj["v"].to_numpy())
+    return acc.frame()
+
+
+class _EdieAccumulator:
+    """The Edie bins of :func:`_edie_edges_frame`, filled chunk by chunk.
+
+    The runner feeds it each trajectory row group as the group is written
+    (:class:`_TrajectoryWriter`), so no ``(t, x, v)`` copy of the whole run
+    is held until the end (24 B per row: ≈ 2.5 GB on a 106 M-row four-hour
+    corridor, and as much again for the frame the old code concatenated
+    them into). ``np.add.at`` adds unbuffered, one row at a time in the
+    order given, so feeding the rows in file order in any number of chunks
+    performs exactly the additions of one call over all of them: every bin
+    sum, and so ``edges.parquet``, is bit-identical (2026-10-07,
+    docs/PERFORMANCE_2026-10-07.md).
+    """
+
+    def __init__(self, sample_dt_s: float, duration_s: float, total_length_m: float) -> None:
+        self.sample_dt_s = sample_dt_s
+        self.duration_s = duration_s
+        self.total_length_m = total_length_m
+        self.nt = max(math.ceil(duration_s / EDGES_DT_BIN_S), 1)
+        self.nx = max(math.ceil(total_length_m / EDGES_DX_BIN_M), 1)
+        self.tts = np.zeros((self.nt, self.nx))
+        self.ttd = np.zeros((self.nt, self.nx))
+
+    def add(self, t: np.ndarray, x: np.ndarray, v: np.ndarray) -> None:
+        """Add samples ``t`` [s], ``x`` [m], ``v`` [m/s] (float64, in row order)."""
+        if not len(t):
+            return
+        ti = np.minimum((t / EDGES_DT_BIN_S).astype(np.int64), self.nt - 1)
+        xi = np.clip((x / EDGES_DX_BIN_M).astype(np.int64), 0, self.nx - 1)
+        np.add.at(self.tts, (ti, xi), self.sample_dt_s)
+        np.add.at(self.ttd, (ti, xi), v * self.sample_dt_s)
+
+    def frame(self) -> pd.DataFrame:
+        """The full grid as the contract's edges frame (see :func:`_edie_edges_frame`)."""
+        nt, nx, tts, ttd = self.nt, self.nx, self.tts, self.ttd
+        sample_dt_s, duration_s, total_length_m = (
+            self.sample_dt_s,
+            self.duration_s,
+            self.total_length_m,
+        )
+        dt_eff = np.minimum(EDGES_DT_BIN_S, duration_s - np.arange(nt) * EDGES_DT_BIN_S).clip(
+            min=sample_dt_s
+        )
+        dx_eff = np.minimum(EDGES_DX_BIN_M, total_length_m - np.arange(nx) * EDGES_DX_BIN_M).clip(
+            min=1e-9
+        )
+        area = np.outer(dt_eff, dx_eff)
+        with np.errstate(invalid="ignore", divide="ignore"):
+            mean_speed = np.where(tts > 0, ttd / np.where(tts > 0, tts, 1.0), np.nan)
+        t_centers = np.arange(nt) * EDGES_DT_BIN_S + dt_eff / 2.0
+        x_centers = np.arange(nx) * EDGES_DX_BIN_M + dx_eff / 2.0
+        tt, xx = np.meshgrid(t_centers, x_centers, indexing="ij")
+        return pd.DataFrame(
+            {
+                "t_bin": tt.ravel(),
+                "x_bin": xx.ravel(),
+                "mean_speed": mean_speed.ravel(),
+                "density": (tts / area).ravel(),
+                "flow": (ttd / area).ravel(),
+            }
+        )
 
 
 def _versions() -> dict[str, str]:
@@ -5632,77 +5777,105 @@ buffer at ~100 MB while the file content is unchanged."""
 class _TrajectoryWriter:
     """Row-group streaming writer for the contract-typed trajectories table.
 
-    Rows are appended column-wise into ``cols``; :meth:`maybe_flush` writes a
-    Parquet row group (through an open file object, see :func:`_write_parquet`)
-    once :data:`TRAJ_FLUSH_ROWS` are buffered, keeping only a compact numpy
-    copy of ``(t, x, v)`` for the post-run Edie edges frame and each vehicle's
-    first and last row (``first_sample`` / ``last_sample``: ``(t, x, lane)``)
-    for :data:`VEHICLES_FILE` — taken from the rows as they are written, so
+    Each output step is buffered as one chunk per column
+    (:meth:`append_step`: numpy arrays of the step's rows, ``veh_id`` a
+    list); :meth:`maybe_flush` concatenates the chunks and writes a Parquet
+    row group (through an open file object, see :func:`_write_parquet`)
+    once :data:`TRAJ_FLUSH_ROWS` rows are buffered, hands the group's
+    ``(t, x, v)`` to the Edie accumulator of the post-run edges frame (when
+    one is given) and keeps each vehicle's first and last row
+    (``first_sample`` / ``last_sample``: ``(t, x, lane)``) for
+    :data:`VEHICLES_FILE` — taken from the rows as they are written, so
     they are the file's first and last row of the vehicle by construction.
+
+    Until 2026-10-07 every row was appended value by value into Python
+    lists and the whole run's ``(t, x, v)`` was kept for the edges frame;
+    the columns written are the same values in the same row groups, so the
+    file is byte-identical (docs/PERFORMANCE_2026-10-07.md).
     """
 
-    def __init__(self, path: Path, is_ring: bool) -> None:
+    def __init__(self, path: Path, is_ring: bool, edie: _EdieAccumulator | None = None) -> None:
         fields = list(_TRAJ_SCHEMA_BASE)
         if is_ring:
             fields.append(("x_unwrapped", pa.float64()))
         self._fields = fields
         self.schema = pa.schema(fields)
-        self.cols: dict[str, list[Any]] = {name: [] for name, _ in fields}
+        self._chunks: dict[str, list[Any]] = {name: [] for name, _ in fields}
+        self._n_buffered = 0
         self._sink = open(path, "wb")
         self._writer = pq.ParquetWriter(self._sink, self.schema)
-        self._txv: list[tuple[np.ndarray, np.ndarray, np.ndarray]] = []
+        self._edie = edie
         self.n_rows = 0
         self.first_sample: dict[str, tuple[float, float, int]] = {}
         self.last_sample: dict[str, tuple[float, float, int]] = {}
 
-    def _track_first_last(self) -> None:
-        """Update ``first_sample`` / ``last_sample`` from the buffered rows.
+    def append_step(self, t: float, veh_id: Sequence[str], **columns: np.ndarray) -> None:
+        """Buffer one output step's rows.
 
-        The rows are appended in time order, so within the buffer a vehicle's
-        last row is its last occurrence and its first row the last occurrence
-        in reverse; across flushes the earliest buffer holds the first row.
+        Args:
+            t: The step's time [s] (every row's ``t``).
+            veh_id: The rows' vehicle ids, in row order.
+            **columns: Every other schema column (``x``, ``lane``, ``v``,
+                ``a``, the four flags, and ``x_unwrapped`` on a ring) as an
+                array of ``len(veh_id)`` values in row order.
         """
-        ids, ts, xs, lanes = (self.cols[k] for k in ("veh_id", "t", "x", "lane"))
-        # lazily zipped: only one row per vehicle is ever held, not the buffer
-        self.last_sample.update(zip(ids, zip(ts, xs, lanes, strict=True), strict=True))
-        rows_reversed = zip(reversed(ts), reversed(xs), reversed(lanes), strict=True)
+        n = len(veh_id)
+        if n == 0:
+            return
+        self._chunks["t"].append(np.full(n, t, dtype=np.float64))
+        self._chunks["veh_id"].append(veh_id)
+        for name, _ in self._fields[2:]:
+            self._chunks[name].append(columns[name])
+        self._n_buffered += n
+
+    def _track_first_last(
+        self, ids: Sequence[str], t: np.ndarray, x: np.ndarray, lane: np.ndarray
+    ) -> None:
+        """Update ``first_sample`` / ``last_sample`` from the rows being written.
+
+        The rows are in time order, so within a row group a vehicle's last
+        row is its last occurrence and its first row its first occurrence;
+        across groups the earliest group holds the first row.
+        """
+        n = len(ids)
+        last_at = {vid: i for i, vid in enumerate(ids)}
+        first_at = {vid: i for i, vid in zip(range(n - 1, -1, -1), reversed(ids), strict=True)}
+
+        def samples(at: dict[str, int]) -> Iterable[tuple[str, tuple[float, float, int]]]:
+            idx = np.fromiter(at.values(), dtype=np.intp, count=len(at))
+            rows = zip(t[idx].tolist(), x[idx].tolist(), lane[idx].tolist(), strict=True)
+            return zip(at, rows, strict=True)
+
+        self.last_sample.update(samples(last_at))
         first = self.first_sample
-        for vid, row in dict(zip(reversed(ids), rows_reversed, strict=True)).items():
+        for vid, row in samples(first_at):
             if vid not in first:
                 first[vid] = row
 
     def maybe_flush(self, force: bool = False) -> None:
-        n = len(self.cols["t"])
+        n = self._n_buffered
         if n == 0 or (n < TRAJ_FLUSH_ROWS and not force):
             return
-        self._track_first_last()
-        arrays = [pa.array(self.cols[name], type=dtype) for name, dtype in self._fields]
+        ids = [vid for chunk in self._chunks["veh_id"] for vid in chunk]
+        cols: dict[str, Any] = {"veh_id": ids}
+        for name, _ in self._fields:
+            if name != "veh_id":
+                cols[name] = np.concatenate(self._chunks[name])
+        self._track_first_last(ids, cols["t"], cols["x"], cols["lane"])
+        arrays = [pa.array(cols[name], type=dtype) for name, dtype in self._fields]
         self._writer.write_table(pa.Table.from_arrays(arrays, schema=self.schema))
-        self._txv.append(
-            (
-                np.asarray(self.cols["t"], dtype=np.float64),
-                np.asarray(self.cols["x"], dtype=np.float64),
-                np.asarray(self.cols["v"], dtype=np.float64),
-            )
-        )
+        if self._edie is not None:
+            self._edie.add(cols["t"], cols["x"], cols["v"])
         self.n_rows += n
-        for name in self.cols:
-            self.cols[name] = []
+        self._n_buffered = 0
+        for name in self._chunks:
+            self._chunks[name] = []
 
-    def close(self) -> pd.DataFrame:
-        """Flush, close the file, and return the ``(t, x, v)`` frame of all rows."""
+    def close(self) -> None:
+        """Flush the last row group and close the file."""
         self.maybe_flush(force=True)
         self._writer.close()
         self._sink.close()
-        if not self._txv:
-            return pd.DataFrame({"t": [], "x": [], "v": []}, dtype=np.float64)
-        return pd.DataFrame(
-            {
-                "t": np.concatenate([c[0] for c in self._txv]),
-                "x": np.concatenate([c[1] for c in self._txv]),
-                "v": np.concatenate([c[2] for c in self._txv]),
-            }
-        )
 
 
 def _vehicle_table(
@@ -6537,9 +6710,28 @@ def run_micro(
             )
 
     traj_path = run_dir / "trajectories.parquet"
-    traj_writer = _TrajectoryWriter(traj_path, is_ring)
-    cols = traj_writer.cols
+    # Edie weighting uses the REALIZED sample interval (out_every whole steps),
+    # not the nominal 1/output_hz: sampling happens on whole simulation steps,
+    # so a requested rate that does not divide the step length is rounded down
+    # and the nominal interval would scale density/flow by nominal/realized.
+    # The bins are filled row group by row group as the trajectories are
+    # written (_EdieAccumulator), so the run's rows are never held twice.
+    edie = _EdieAccumulator(out_every * step, cfg.sim.duration_s, bundle.total_length_m)
+    traj_writer = _TrajectoryWriter(traj_path, is_ring, edie)
     n_gave_up_seen = [0] * len(weave_states)  # size of each ws["gave_up"] already recorded
+    # Subscription keys hoisted out of the step loop (module attribute reads
+    # per vehicle and step were a measurable share of its Python time).
+    var_road, var_pos, var_speed = tc.VAR_ROAD_ID, tc.VAR_LANEPOSITION, tc.VAR_SPEED
+    var_lane, var_accel, var_fuel = tc.VAR_LANE_INDEX, tc.VAR_ACCELERATION, tc.VAR_FUELCONSUMPTION
+    # The trajectory flags as id sets: a flag no vehicle carries is a
+    # constant column (no per-row lookup); otherwise membership, which is
+    # the truth value ``dict.get(vid, False)`` gave per row before.
+    flag_ids = {
+        "is_av": frozenset(v for v, f in is_av_by_id.items() if f),
+        "complied": frozenset(v for v, f in complied_by_id.items() if f),
+        "is_heavy": frozenset(v for v, f in is_heavy_by_id.items() if f),
+        "is_hov": frozenset(v for v, f in is_hov_by_id.items() if f),
+    }
 
     try:
         for k in range(n_steps):
@@ -6599,10 +6791,13 @@ def run_micro(
             # therefore controllers, VSL, trajectories) covers vehicles on
             # corridor edges only — ramp edges have no linear x.
             if has_ramps:
+                on_corridor: list[str] = []
                 for vid, res in results.items():
-                    if res[tc.VAR_ROAD_ID] not in offsets_by_edge:
-                        fuel_mg[vid] = fuel_mg.get(vid, 0.0) + res[tc.VAR_FUELCONSUMPTION] * step
-                ids = sorted(v for v in results if results[v][tc.VAR_ROAD_ID] in offsets_by_edge)
+                    if res[var_road] in offsets_by_edge:
+                        on_corridor.append(vid)
+                    else:
+                        fuel_mg[vid] = fuel_mg.get(vid, 0.0) + res[var_fuel] * step
+                ids = sorted(on_corridor)
             else:
                 ids = sorted(results)
             if not ids:
@@ -6625,20 +6820,17 @@ def run_micro(
                     _emergency_handback_step(mod, tc, results, handback, step)
                 continue
 
-            speeds = np.array([results[v][tc.VAR_SPEED] for v in ids])
-            xs = np.array(
-                [
-                    offsets_by_edge[results[v][tc.VAR_ROAD_ID]] + results[v][tc.VAR_LANEPOSITION]
-                    for v in ids
-                ]
-            )
+            rows = [results[v] for v in ids]
+            speeds = np.array([r[var_speed] for r in rows])
+            xs = np.array([offsets_by_edge[r[var_road]] + r[var_pos] for r in rows])
             if is_ring:
                 xs = xs % circumference
 
             # Fuel accumulation (mg/s × step, every step — see module docstring).
-            for i, vid in enumerate(ids):
-                fuel_mg[vid] = fuel_mg.get(vid, 0.0) + results[vid][tc.VAR_FUELCONSUMPTION] * step
-                if is_ring:
+            for vid, r in zip(ids, rows, strict=True):
+                fuel_mg[vid] = fuel_mg.get(vid, 0.0) + r[var_fuel] * step
+            if is_ring:
+                for i, vid in enumerate(ids):
                     last, unw = unwrap_x.get(vid, (xs[i], xs[i]))
                     d = (xs[i] - last + circumference / 2.0) % circumference - circumference / 2.0
                     unwrap_x[vid] = (float(xs[i]), unw + d)
@@ -6722,9 +6914,12 @@ def run_micro(
                         ms_r["released"].append(t)
                         ms_r["last_release_s"] = t
 
+            # This step's vehicles by road for the section rules below
+            # (_RoadIndex: built on their first query, never otherwise).
+            road_index = _RoadIndex(results, var_road)
             # Scripted on-ramp merges (see the setup block above).
             for ss in scripted_states:
-                _scripted_merge_step(mod, tc, ss, results, t)
+                _scripted_merge_step(mod, tc, ss, results, t, road_index)
             # The measured merge model's relaxations, run-wide, before any zone
             # reads a headway (docs/MERGE_MODEL.md; None without the model).
             if measured_run is not None:
@@ -6733,9 +6928,9 @@ def run_micro(
             # above), upstream first.
             for n_ws, ws in enumerate(weave_states):
                 if ws.get("mm"):
-                    _measured_step(mod, tc, ws, results, t)
+                    _measured_step(mod, tc, ws, results, t, road_index)
                 else:
-                    _weave_step(mod, tc, ws, results, t)
+                    _weave_step(mod, tc, ws, results, t, road_index)
                 if len(ws["gave_up"]) > n_gave_up_seen[n_ws]:
                     for vid in ws["gave_up"]:
                         gave_up_at.setdefault(vid, t)
@@ -6748,6 +6943,7 @@ def run_micro(
                     lane_end,
                     results,
                     lambda v: _commanded_by_runner(weave_states, scripted_states, v),
+                    road_index,
                 ):
                     gave_up_at.setdefault(vid, t)
                     lane_end_dest[vid] = dest
@@ -6915,19 +7111,29 @@ def run_micro(
 
             # Trajectory capture at the output cadence.
             if (k + 1) % out_every == 0:
-                for i, vid in enumerate(ids):
-                    cols["t"].append(t)
-                    cols["veh_id"].append(vid)
-                    cols["x"].append(float(xs[i]))
-                    cols["lane"].append(int(results[vid][tc.VAR_LANE_INDEX]))
-                    cols["v"].append(float(speeds[i]))
-                    cols["a"].append(float(results[vid][tc.VAR_ACCELERATION]))
-                    cols["is_av"].append(is_av_by_id.get(vid, False))
-                    cols["complied"].append(complied_by_id.get(vid, False))
-                    cols["is_heavy"].append(is_heavy_by_id.get(vid, False))
-                    cols["is_hov"].append(is_hov_by_id.get(vid, False))
-                    if is_ring:
-                        cols["x_unwrapped"].append(unwrap_x[vid][1])
+                n_ids = len(ids)
+                flags = {
+                    name: (
+                        np.fromiter((v in on for v in ids), dtype=np.bool_, count=n_ids)
+                        if on
+                        else np.zeros(n_ids, dtype=np.bool_)
+                    )
+                    for name, on in flag_ids.items()
+                }
+                traj_writer.append_step(
+                    t,
+                    ids,
+                    x=xs,
+                    lane=np.array([int(r[var_lane]) for r in rows], dtype=np.int32),
+                    v=speeds,
+                    a=np.array([float(r[var_accel]) for r in rows], dtype=np.float64),
+                    **flags,
+                    **(
+                        {"x_unwrapped": np.array([unwrap_x[v][1] for v in ids], dtype=np.float64)}
+                        if is_ring
+                        else {}
+                    ),
+                )
                 traj_writer.maybe_flush()
         running = frozenset(mod.vehicle.getIDList())
         n_arrived = n_departed - len(running)
@@ -6939,14 +7145,8 @@ def run_micro(
         mod.close()
 
     # --- Artifacts --------------------------------------------------------
-    traj_df = traj_writer.close()
-    # Edie weighting uses the REALIZED sample interval (out_every whole steps),
-    # not the nominal 1/output_hz: sampling happens on whole simulation steps,
-    # so a requested rate that does not divide the step length is rounded down
-    # and the nominal interval would scale density/flow by nominal/realized.
-    edges_df = _edie_edges_frame(
-        traj_df, out_every * step, cfg.sim.duration_s, bundle.total_length_m
-    )
+    traj_writer.close()
+    edges_df = edie.frame()
     edges_path = run_dir / "edges.parquet"
     _write_parquet(pa.Table.from_pandas(edges_df, preserve_index=False), edges_path)
     ramps_cfg = list(cfg.network.ramps) if isinstance(cfg.network, OSMNetwork) else []
