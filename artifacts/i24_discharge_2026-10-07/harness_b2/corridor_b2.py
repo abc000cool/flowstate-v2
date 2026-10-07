@@ -62,6 +62,29 @@ REDUCE_DEFINITION = (
 )
 
 
+def same_values(x: object, y: object, rel_tol: float = 1e-9) -> bool:
+    """Equality that lets floats differ by rounding noise, exact for everything else.
+
+    The committed flow family's inputs were built on an Intel n2 machine on 2026-09-17; a
+    rebuild on an AMD n2d machine (stage p13, 2026-10-07) reproduced every coverage factor
+    to 16 significant digits but not bit for bit (one ulp, a different reduction order),
+    and the exact comparison refused a run that was the same in every quantity the demand
+    is written from (the scenario's inflows carry six decimals). Numbers within 1e-9
+    relative are the same number here; ints, strings, None and shapes must match exactly.
+    """
+    if isinstance(x, bool) or isinstance(y, bool):
+        return x == y
+    if isinstance(x, (int, float)) and isinstance(y, (int, float)):
+        return math.isclose(float(x), float(y), rel_tol=rel_tol, abs_tol=0.0)
+    if isinstance(x, list) and isinstance(y, list):
+        return len(x) == len(y) and all(
+            same_values(a, b, rel_tol) for a, b in zip(x, y, strict=True)
+        )
+    if isinstance(x, dict) and isinstance(y, dict):
+        return x.keys() == y.keys() and all(same_values(x[k], y[k], rel_tol) for k in x)
+    return x == y
+
+
 def rel(p: Path) -> str:
     p = p.resolve()
     return str(p.relative_to(REPO)) if p.is_relative_to(REPO) else str(p)
@@ -188,7 +211,7 @@ def cmd_arm(a: argparse.Namespace) -> None:
         ),
         "entry lane shares": (ref_in["entry_lane_shares"], rc_in["entry_lane_shares"]),
     }
-    differ = [k for k, (x, y) in same.items() if x != y]
+    differ = [k for k, (x, y) in same.items() if not same_values(x, y)]
     if differ:
         fail(
             f"{a.rc_inputs} differs from {a.ref_inputs} beyond the ramp correction: {', '.join(differ)}"

@@ -78,3 +78,25 @@ def test_the_ingest_installs_every_p13_output_and_the_run_files(tmp_path: Path) 
     for name in files:
         if not name.startswith("logs/"):
             assert (repo / name).read_text() == files[name], name
+
+
+def test_the_arm_guard_treats_one_ulp_of_coverage_as_the_same_number() -> None:
+    """Stage p13's first launch (2026-10-07) was refused because the coverage factors rebuilt
+    on an AMD machine differed from the committed Intel-built ones in the 16th digit; the
+    scenario's inflows carry six decimals, so the demand was the same. Ints, shapes and
+    strings must still match exactly."""
+    import importlib.util
+
+    path = Path("artifacts/i24_discharge_2026-10-07/harness_b2/corridor_b2.py")
+    spec = importlib.util.spec_from_file_location("p13_corridor_b2", path)
+    assert spec is not None and spec.loader is not None
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    same = mod.same_values
+    assert same([0.6052631989032525, 0.49086154730557285], [0.6052631989032526, 0.4908615473055729])
+    assert same({"a": [1, 2.0, "x", None]}, {"a": [1, 2.0, "x", None]})
+    assert not same([0.6052631989032525], [0.6052631989032525 * (1 + 1e-6)])
+    assert not same([1329, 740], [1329, 741])
+    assert not same([1.0, 2.0], [1.0])
+    assert not same({"a": 1}, {"b": 1})
+    assert not same(True, 1.0) or same(True, True)
