@@ -168,6 +168,31 @@ def masked(doc: dict) -> dict:
     return d
 
 
+def same_configuration(doc: dict, ref_doc: dict) -> bool:
+    """True when the two scenario documents are the same configuration up to the name and the ramp values.
+
+    Compared as validated configurations through the config-hash payload, not as raw YAML:
+    the builder on the VM writes every field the model knows, including ones added after
+    the committed scenario was written and left at their defaults (``av.emergency_handback``,
+    ``fleet.speed_factor``, ``network.merge_model_set``, ...), while the committed file omits
+    them. The payload drops fields at their defaults, so those keys do not count (stage p13's
+    second launch was refused on exactly that, 2026-10-07). The ramp time grids must match;
+    the ramp values are equalised before the comparison so only they may differ.
+    """
+    from flowstate_core.config import ScenarioConfig, config_hash_payload
+
+    if masked(doc)["network"]["ramps"] != masked(ref_doc)["network"]["ramps"]:
+        return False  # a different ramp count, kind or time grid is a different configuration
+    cmp = json.loads(json.dumps(doc))
+    cmp["name"] = ref_doc.get("name", cmp.get("name"))
+    for mine, theirs in zip(cmp["network"]["ramps"], ref_doc["network"]["ramps"], strict=True):
+        key = "inflow" if mine["kind"] == "on" else "exit_fraction"
+        mine[key] = json.loads(json.dumps(theirs[key]))
+    return config_hash_payload(ScenarioConfig.model_validate(cmp)) == config_hash_payload(
+        ScenarioConfig.model_validate(ref_doc)
+    )
+
+
 def cmd_arm(a: argparse.Namespace) -> None:
     from i24_fit_demand_scale import scaled_config
 
@@ -218,7 +243,7 @@ def cmd_arm(a: argparse.Namespace) -> None:
         )
 
     doc = scaled_config(s, fleet, kind, base_p.resolve(), a.name)
-    if masked(doc) != masked(ref_doc):
+    if not same_configuration(doc, ref_doc):
         fail(f"the arm differs from {rel(ref_p)} beyond its name and the ramp values")
     checks = {
         "reference ramp values": (

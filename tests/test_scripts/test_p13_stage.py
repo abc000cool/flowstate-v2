@@ -10,6 +10,7 @@ and the score itself; nothing of it is reported as not ingested.
 
 from __future__ import annotations
 
+import json
 import subprocess
 from pathlib import Path
 
@@ -100,3 +101,36 @@ def test_the_arm_guard_treats_one_ulp_of_coverage_as_the_same_number() -> None:
     assert not same([1.0, 2.0], [1.0])
     assert not same({"a": 1}, {"b": 1})
     assert not same(True, 1.0) or same(True, True)
+
+
+def test_the_arm_guard_ignores_default_valued_keys_the_committed_file_omits() -> None:
+    """Stage p13's second launch (2026-10-07) was refused because the builder on the VM writes
+    every field the model knows, defaults included, while the committed `_dc_refit` omits the
+    ones added after it was written; the configurations are the same. A changed non-ramp value
+    or a different ramp time grid must still refuse."""
+    import importlib.util
+
+    import yaml
+
+    path = Path("artifacts/i24_discharge_2026-10-07/harness_b2/corridor_b2.py")
+    spec = importlib.util.spec_from_file_location("p13_corridor_b2_cfg", path)
+    assert spec is not None and spec.loader is not None
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    ref = yaml.safe_load(Path("scenarios/i24_replica_flow_speedcal_dc_refit.yaml").read_text())
+    doc = json.loads(json.dumps(ref))
+    doc["name"] = "arm"
+    doc.setdefault("av", {})["emergency_handback"] = True  # a default the committed file omits
+    doc["fleet"]["speed_factor"] = 1.0
+    for ramp in doc["network"]["ramps"]:
+        key = "inflow" if ramp["kind"] == "on" else "exit_fraction"
+        ramp[key] = [[t, v * 0.9] for t, v in ramp[key]]  # the ramp values may differ
+    assert mod.same_configuration(doc, ref)
+    changed = json.loads(json.dumps(doc))
+    changed["fleet"]["speed_factor"] = 1.05
+    assert not mod.same_configuration(changed, ref)
+    grid = json.loads(json.dumps(doc))
+    ramp = grid["network"]["ramps"][0]
+    key = "inflow" if ramp["kind"] == "on" else "exit_fraction"
+    ramp[key] = ramp[key][:-1]
+    assert not mod.same_configuration(grid, ref)
