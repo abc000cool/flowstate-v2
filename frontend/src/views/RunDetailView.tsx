@@ -14,17 +14,11 @@ import { Link, useParams, useSearchParams } from 'react-router-dom';
 import { getRun, getRunHeatmap, getRunMetrics, isMockActive } from '../api/client';
 import type { HeatField, Heatmap, RunDetail, RunMetrics } from '../api/types';
 import { useAppState } from '../components/AppContext';
-import {
-  ProgressBar,
-  SeededBadge,
-  StatusChip,
-  StripChart,
-  TierBadge,
-  MetricCard,
-} from '../components/bits';
+import { ProgressBar, SeededBadge, StatusChip, TierBadge } from '../components/bits';
 import { HeatmapCanvas, RampLegend } from '../components/HeatmapCanvas';
 import { InsertionPanel } from '../components/InsertionPanel';
 import { MergeDiagnosticsPanel } from '../components/MergeDiagnostics';
+import { MetricCard, StripChart } from '../components/metrics';
 import { toastError } from '../components/toast';
 import { DEMO_HASH_LABEL, DEMO_ROW_TITLE } from '../lib/demo';
 import { failureReason } from '../lib/format';

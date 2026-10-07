@@ -1,0 +1,9 @@
+/* Onboard corridor view (and its split-audit table).
+   Split verbatim from the retired app.css (DASHBOARD_DESIGN.md §12.2, step 0).
+   Owner: B (step 4, §10.2). */
+
+/* the remedy line under a defect row of the split-audit table */
+table.data td.remedy {
+  font-family: var(--font-ui);
+  white-space: normal;
+}

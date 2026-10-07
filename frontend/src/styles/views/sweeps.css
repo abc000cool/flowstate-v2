@@ -1,0 +1,105 @@
+/* Sweeps view: sweep matrix, baseline cell, tooltip.
+   Split verbatim from the retired app.css (DASHBOARD_DESIGN.md §12.2, step 0).
+   Owner: C (step 4, §10.5). */
+
+/* ============================== sweeps ============================== */
+
+.sweep-matrix {
+  border-collapse: collapse;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.sweep-matrix th {
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--faint);
+  letter-spacing: 0.08em;
+  padding: 6px 10px;
+  text-align: center;
+}
+
+.sweep-matrix th.rowh {
+  text-align: right;
+}
+
+.sweep-matrix td.cell {
+  width: 92px;
+  height: 52px;
+  text-align: center;
+  border: 1px solid var(--bg);
+  border-radius: var(--r1);
+  cursor: pointer;
+  transition: outline 80ms;
+  outline: 1px solid transparent;
+  outline-offset: -2px;
+}
+
+.sweep-matrix td.cell:hover {
+  outline-color: var(--accent);
+}
+
+.sweep-matrix td.cell .d {
+  font-weight: 700;
+}
+
+.sweep-matrix td.cell .n {
+  font-size: 9px;
+  color: rgba(230, 234, 242, 0.55);
+}
+
+.sweep-matrix td.pending {
+  color: var(--faint);
+  cursor: default;
+  background: var(--panel-inset);
+}
+
+.sweep-tip {
+  position: fixed;
+  z-index: 60;
+  background: #0d1119;
+  border: 1px solid var(--panel-edge);
+  border-radius: var(--r2);
+  padding: 8px 11px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text);
+  pointer-events: none;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.sweep-tip .t-muted {
+  color: var(--muted);
+}
+
+/* sweep baseline (p=0, no controlled vehicles) reference cell */
+.sweep-matrix td.cell.baseline {
+  height: 40px;
+  background: var(--panel-inset);
+  outline: 1px dashed rgba(245, 184, 92, 0.45);
+  color: var(--muted);
+}
+
+.sweep-matrix td.cell.baseline .d {
+  font-weight: 500;
+}
+
+/* ===================== identical sweep realisations ================= */
+
+.sweep-matrix .identical {
+  color: var(--amber);
+  font-weight: 700;
+}
+
+/* ============ no-observation metrics (CIOut n=0, reason set) ========= */
+/* A metric no replicate produced is said in words, never as a dash or a zero:
+   the API distinguishes "no estimate" from "an underpowered estimate". */
+.sweep-matrix td.cell .d.noobs {
+  font-size: 9px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  color: var(--muted);
+}

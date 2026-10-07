@@ -1,0 +1,140 @@
+/* Scenarios view: scenario cards, dropzone, composer.
+   Split verbatim from the retired app.css (DASHBOARD_DESIGN.md §12.2, step 0).
+   Owner: B (step 4, §10.1). */
+
+/* ============================== scenario cards ====================== */
+
+.card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: var(--s2);
+}
+
+.scen-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s1);
+  padding: var(--s2);
+  transition: border-color 120ms;
+}
+
+.scen-card:hover {
+  border-color: #263048;
+}
+
+.scen-card .thumb {
+  height: 110px;
+  border-radius: var(--r2);
+  background: var(--panel-inset);
+  border: 1px solid var(--panel-edge);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.scen-card .name {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  color: var(--text);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  justify-content: space-between;
+}
+
+.scen-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.scen-meta b {
+  color: var(--text);
+  font-weight: 500;
+}
+
+.scen-actions {
+  display: flex;
+  gap: var(--s1);
+  margin-top: 2px;
+}
+
+.dropzone {
+  border: 1px dashed #2a3348;
+  border-radius: var(--r3);
+  padding: var(--s3);
+  text-align: center;
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  cursor: pointer;
+  transition:
+    border-color 120ms,
+    background 120ms;
+}
+
+.dropzone:hover,
+.dropzone.over {
+  border-color: rgba(79, 209, 224, 0.55);
+  background: var(--accent-dim);
+  color: var(--accent);
+}
+
+.compose-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: var(--s2);
+}
+
+.slider-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.slider-row input[type='range'] {
+  flex: 1;
+}
+
+.slider-val {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--accent);
+  min-width: 44px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ===================== rejected API key / demo data ================= */
+.scen-card.demo {
+  border-style: dashed;
+  border-color: rgba(245, 184, 92, 0.35);
+}
+
+.scen-meta .hash.muted {
+  color: var(--faint);
+  font-weight: 400;
+}
+
+/* ===================== composer passthrough notice ================== */
+
+.passthrough {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: var(--s2);
+  border: 1px dashed var(--panel-edge);
+  border-radius: var(--r2);
+  background: var(--panel-inset);
+}
+
+/* read-only network facts of an OSM preset in the composer */
+.osm-facts {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}

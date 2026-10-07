@@ -1,0 +1,282 @@
+/* App shell: left rail, status line, top bar, banners, content column,
+   view title, settings drawer.
+   Split verbatim from the retired app.css (DASHBOARD_DESIGN.md §12.2, step 0).
+   Owner: A (step 1, §6). Note: .dot and @keyframes dotpulse live here and are
+   also used by .chip in components.css. */
+
+/* ============================== shell =============================== */
+
+.app {
+  display: flex;
+  height: 100%;
+  overflow: hidden;
+}
+
+/* ---- left rail ---- */
+
+.rail {
+  width: 196px;
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  background: linear-gradient(180deg, #0d111a 0%, var(--bg) 100%);
+  border-right: 1px solid var(--panel-edge);
+  padding: var(--s2) var(--s1);
+}
+
+.rail-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: var(--s1);
+}
+
+.rail-link {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 12px;
+  border-radius: var(--r2);
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  border-left: 2px solid transparent;
+  transition:
+    background 120ms,
+    color 120ms;
+}
+
+.rail-link svg {
+  flex: none;
+  opacity: 0.75;
+}
+
+.rail-link:hover {
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.rail-link.active {
+  color: var(--accent);
+  background: var(--accent-dim);
+  border-left-color: var(--accent);
+}
+
+.rail-foot {
+  margin-top: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s1);
+  padding: var(--s1) 4px 0;
+  border-top: 1px solid var(--panel-edge);
+}
+
+.statusline {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  color: var(--muted);
+  padding: 4px 8px;
+}
+
+.dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex: none;
+}
+.dot.ok {
+  background: var(--ok);
+  box-shadow: 0 0 0 3px var(--ok-dim);
+}
+.dot.down {
+  background: var(--danger);
+  box-shadow: 0 0 0 3px var(--danger-dim);
+}
+.dot.demo {
+  background: var(--amber);
+  box-shadow: 0 0 0 3px var(--amber-dim);
+}
+.dot.pulse {
+  animation: dotpulse 2.4s ease-in-out infinite;
+}
+
+@keyframes dotpulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.45;
+  }
+}
+
+/* ---- main column ---- */
+
+.main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.topbar {
+  height: 52px;
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  padding: 0 var(--s3);
+  border-bottom: 1px solid var(--panel-edge);
+  background: rgba(17, 21, 31, 0.6);
+}
+
+.wordmark {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  font-size: 15px;
+  letter-spacing: 0.28em;
+  color: var(--text);
+  user-select: none;
+}
+
+.wordmark b {
+  color: var(--accent);
+  font-weight: 700;
+}
+
+.topbar-sep {
+  width: 1px;
+  height: 20px;
+  background: var(--panel-edge);
+}
+
+.corridor-name {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--muted);
+  letter-spacing: 0.06em;
+}
+
+.corridor-name b {
+  color: var(--text);
+  font-weight: 500;
+}
+
+.topbar-spacer {
+  flex: 1;
+}
+
+.utc-clock {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--faint);
+  letter-spacing: 0.08em;
+  font-variant-numeric: tabular-nums;
+}
+
+.offline-banner {
+  flex: none;
+  padding: 6px var(--s3);
+  background: var(--amber-dim);
+  border-bottom: 1px solid rgba(245, 184, 92, 0.35);
+  color: var(--amber);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  letter-spacing: 0.04em;
+}
+
+.content {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--s3);
+}
+
+.view {
+  max-width: 1240px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s3);
+}
+
+.view-title {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--muted);
+  display: flex;
+  align-items: baseline;
+  gap: var(--s2);
+}
+
+.view-title .count {
+  color: var(--faint);
+  letter-spacing: 0.05em;
+}
+
+/* ============================== drawer ============================== */
+
+.drawer-scrim {
+  position: fixed;
+  inset: 0;
+  background: rgba(4, 6, 10, 0.6);
+  z-index: 80;
+}
+
+.drawer {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 340px;
+  background: var(--panel);
+  border-left: 1px solid var(--panel-edge);
+  z-index: 90;
+  padding: var(--s3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+  animation: drawer-in 180ms ease-out;
+}
+
+@keyframes drawer-in {
+  from {
+    transform: translateX(24px);
+    opacity: 0;
+  }
+  to {
+    transform: none;
+    opacity: 1;
+  }
+}
+
+.drawer h2 {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+/* ===================== rejected API key / demo data ================= */
+
+.auth-banner {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  padding: 6px var(--s3);
+  background: var(--danger-dim);
+  border-bottom: 1px solid rgba(240, 100, 122, 0.4);
+  color: var(--danger);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  letter-spacing: 0.04em;
+}

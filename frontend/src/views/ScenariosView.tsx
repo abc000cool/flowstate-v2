@@ -39,9 +39,9 @@ const showsPresetBadge = (s: LibraryItem): boolean =>
   typeof s.preset === 'boolean' ? s.preset : isPreset(s);
 import type { CreateRunRequest, Network, OSMNetwork, ScenarioConfig } from '../api/types';
 import { useAppState } from '../components/AppContext';
-import { SchematicThumb } from '../components/bits';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { GuidedFirstRun } from '../components/GuidedFirstRun';
+import { SchematicThumb } from '../components/schematics';
 import { toast, toastError } from '../components/toast';
 import { useAuthFailed, useOfflineFallback, usePoll } from '../lib/hooks';
 import {

@@ -1,7 +1,8 @@
 # FlowState Dashboard
 
-Dark mission-control frontend for FlowState v2 (Vite + React 18 + TypeScript,
-hand-rolled CSS design system — no Tailwind).
+Dashboard for FlowState v2 (Vite + React 18 + TypeScript, plain global CSS on
+design tokens, light and dark themes — no Tailwind). Design brief:
+`docs/design/DASHBOARD_DESIGN.md` ("Paper & Signal").
 
 ## Commands
 
@@ -30,7 +31,11 @@ live in localStorage; change them from the Settings drawer in the left rail.
 
 ## Map of the code
 
-- `src/styles/tokens.css` — design tokens (colors, 8px grid, fonts)
+- `src/styles/tokens.css` — design tokens, light + dark themes (brief §5);
+  then `base.css` → `shell.css` → `components.css` → `viz.css` → `views/*.css`,
+  imported in that order by `src/main.tsx`
+- `src/lib/theme.ts` — System/Light/Dark preference, `useResolvedTheme`, `readToken`
+- `src/components/icons.tsx` — vendored Lucide icons (ISC), `<Icon name=… />`
 - `src/lib/colormap.ts` — heatmap ramps (documented anchor stops, unit-tested)
 - `src/lib/format.ts` — typed min/km/km-per-h axis + readout helpers
 - `src/api/client.ts` — typed fetch client for the v2 API contract

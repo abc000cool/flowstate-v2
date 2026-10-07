@@ -7,12 +7,18 @@
       href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%230B0E14'/%3E%3Cpath d='M5 22 Q11 10 16 16 T27 10' stroke='%234FD1E0' stroke-width='2.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E"
     />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="color-scheme" content="dark" />
-    <title>FLOWSTATE — Traffic Operations</title>
+    <meta name="color-scheme" content="light dark" />
+    <title>FlowState</title>
+    <script>
+      try {
+        var t = localStorage.getItem('flowstate.theme');
+        if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t;
+      } catch (e) {}
+    </script>
     <style>
-      html {
-        background: #0b0e14;
-      }
+      html { background: #f9f9f8; }
+      @media (prefers-color-scheme: dark) { html:not([data-theme='light']) { background: #111110; } }
+      html[data-theme='dark'] { background: #111110; }
     </style>
   </head>
   <body>

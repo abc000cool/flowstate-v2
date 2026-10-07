@@ -1,52 +1,488 @@
-/* FlowState design tokens — dark mission-control instrument panel.
-   Single committed dark theme (operations room), restrained accents,
-   1px edges, no glow spam. All spacing on an 8px grid. */
+/* =====================================================================
+   FlowState design tokens: "Paper & Signal"
+   Source of truth: docs/design/DASHBOARD_DESIGN.md §5.
 
+   Light theme lives on :root. The dark theme is declared twice and the two
+   bodies MUST stay identical (src/test/tokens.test.ts checks it):
+     1. OS dark preference, unless the user pinned light;
+     2. the user pinned dark (Settings → Appearance).
+
+   Neutral (Sand), green, amber and red scale values: Radix Colors
+   (MIT, https://github.com/radix-ui/colors). Blue: FlowState's own ramp,
+   shared with the report figures (scripts/m3_analyze_sweep.py SEQ_BLUES).
+   Categorical series: the validated data-viz reference palette, the same
+   hexes as CONTROLLER_COLORS in the report figures.
+   ===================================================================== */
+
+/* ---------- theme-invariant ---------- */
 :root {
-  /* surfaces */
-  --bg: #0b0e14;
-  --panel: #11151f;
-  --panel-edge: #1b2130;
-  --panel-raised: #151a26;
-  --panel-inset: #0d1119;
+  /* type families */
+  --font-sans: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
 
-  /* type */
-  --text: #e6eaf2;
-  --muted: #8a93a6;
-  --faint: #5a6375;
+  /* type scale: size / line-height pairs */
+  --text-11: 11px;  --leading-11: 16px;
+  --text-12: 12px;  --leading-12: 16px;
+  --text-13: 13px;  --leading-13: 20px;
+  --text-14: 14px;  --leading-14: 20px;  --leading-14-prose: 22px;
+  --text-16: 16px;  --leading-16: 24px;
+  --text-20: 20px;  --leading-20: 28px;
+  --text-24: 24px;  --leading-24: 32px;
+  --text-32: 32px;  --leading-32: 40px;
 
-  /* accents */
-  --accent: #4fd1e0;
-  --accent-dim: rgba(79, 209, 224, 0.14);
-  --amber: #f5b85c;
-  --amber-dim: rgba(245, 184, 92, 0.14);
-  --danger: #f0647a;
-  --danger-dim: rgba(240, 100, 122, 0.14);
-  --ok: #58d6a3;
-  --ok-dim: rgba(88, 214, 163, 0.14);
+  --weight-regular: 400;
+  --weight-medium: 500;
+  --weight-semibold: 600;
 
-  /* spacing — 8px grid */
-  --s1: 8px;
-  --s2: 16px;
-  --s3: 24px;
-  --s4: 32px;
-  --s5: 40px;
-  --s6: 48px;
+  --tracking-tight: -0.017em;   /* Inter 20px and up */
+  --tracking-snug: -0.011em;    /* Inter 16px */
+  --tracking-normal: -0.006em;  /* Inter 13–14px */
+  --tracking-none: 0;           /* Inter 11–12px; ALL mono */
+  --tracking-caps: 0.04em;      /* 11px uppercase eyebrows, badges */
+
+  /* spacing: 4px base */
+  --space-0-5: 2px;
+  --space-1: 4px;
+  --space-1-5: 6px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+  --space-16: 64px;
 
   /* radii */
-  --r1: 4px;
-  --r2: 6px;
-  --r3: 10px;
+  --radius-xs: 4px;     /* badges, checkboxes, sweep cells, kbd */
+  --radius-sm: 6px;     /* buttons, inputs, nav items, tooltips, segmented */
+  --radius-md: 8px;     /* panels, cards, callouts, toasts */
+  --radius-lg: 12px;    /* dialogs, menus, command palette */
+  --radius-full: 9999px;/* status pills, dots, progress */
 
-  /* fonts */
-  --font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace;
-  --font-ui: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  /* sizes */
+  --control-h-sm: 28px;
+  --control-h-md: 32px;
+  --control-h-lg: 36px;
+  --row-h: 36px;
+  --row-h-compact: 28px;
+  --icon-sm: 14px;
+  --icon-md: 16px;
+  --icon-lg: 20px;
+  --sidebar-w: 232px;
+  --sidebar-w-collapsed: 56px;
+  --topbar-h: 48px;
+  --content-max: 1440px;
+  --content-max-narrow: 960px;
+  --prose-max: 72ch;
 
-  /* card treatment: 1px edge + subtle top inset highlight */
-  --card-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03), 0 1px 2px rgba(0, 0, 0, 0.4);
+  /* motion */
+  --duration-1: 80ms;    /* color/background hover */
+  --duration-2: 120ms;   /* button press, toggles, segmented */
+  --duration-3: 180ms;   /* tooltip/popover/toast enter */
+  --duration-4: 240ms;   /* dialog/drawer enter */
+  --duration-progress: 400ms;
+  --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+  --ease-enter: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-exit: cubic-bezier(0.4, 0, 1, 1);
 
-  /* focus ring */
-  --ring: 0 0 0 2px rgba(79, 209, 224, 0.45);
+  /* z-index */
+  --z-base: 0;
+  --z-sticky: 10;     /* sticky table headers / first columns */
+  --z-sidebar: 20;
+  --z-topbar: 30;
+  --z-dropdown: 40;
+  --z-overlay: 80;    /* scrims */
+  --z-modal: 90;      /* dialogs, drawers, command palette */
+  --z-toast: 100;
+  --z-tooltip: 110;   /* above dialogs: tooltips can live inside them */
 
+  /* focus */
+  --focus-width: 2px;
+  --focus-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --duration-1: 0ms;
+    --duration-2: 0ms;
+    --duration-3: 0ms;
+    --duration-4: 0ms;
+    --duration-progress: 0ms;
+  }
+}
+
+/* ---------- light theme (default) ---------- */
+:root {
+  color-scheme: light;
+
+  /* neutral scale: Radix Sand (light) */
+  --gray-1: #fdfdfc;
+  --gray-2: #f9f9f8;
+  --gray-3: #f1f0ef;
+  --gray-4: #e9e8e6;
+  --gray-5: #e2e1de;
+  --gray-6: #dad9d6;
+  --gray-7: #cfceca;
+  --gray-8: #bcbbb5;
+  --gray-9: #8d8d86;
+  --gray-10: #82827c;
+  --gray-11: #63635e;
+  --gray-12: #21201c;
+
+  /* surfaces */
+  --bg-canvas: var(--gray-2);   /* page behind everything, sidebar */
+  --bg-surface: #ffffff;        /* panels, cards, tables, topbar */
+  --bg-raised: #ffffff;         /* menus, popovers, dialogs, drawers, toasts (+shadow) */
+  --bg-subtle: var(--gray-2);   /* table header, wells, code, fact lists */
+  --bg-hover: var(--gray-3);
+  --bg-active: var(--gray-4);   /* pressed, selected row, active nav item */
+  --bg-input: #ffffff;
+  --bg-inverse: var(--gray-12); /* simple tooltips, kbd */
+  --bg-overlay: rgb(33 32 28 / 0.32);
+
+  /* text */
+  --text-primary: var(--gray-12);
+  --text-secondary: var(--gray-11);
+  --text-disabled: var(--gray-9);
+  --text-inverse: var(--gray-1);
+  --text-on-accent: #ffffff;
+
+  /* borders */
+  --border-subtle: var(--gray-4);   /* row dividers, inner separators */
+  --border-default: var(--gray-6);  /* panels, cards, sidebar edge, topbar */
+  --border-strong: var(--gray-7);   /* secondary buttons, segmented controls */
+  --border-input: var(--gray-9);    /* inputs/selects/file: >= 3:1 vs surface */
+
+  /* accent: FlowState blue */
+  --accent-solid: #256abf;
+  --accent-solid-hover: #1c5cab;
+  --accent-solid-active: #184f95;
+  --accent-text: #1f63b8;
+  --accent-subtle: #eef3fa;
+  --accent-border: #9ec5f4;
+  --focus-ring: #256abf;
+
+  /* semantic (status only) */
+  --success-text: #1b744d;
+  --success-subtle: #e6f6eb;
+  --success-border: #adddc0;
+  --success-solid: #30a46c;
+  --warning-text: #975800;
+  --warning-subtle: #fefbe9;
+  --warning-border: #f3d673;
+  --warning-solid: #ffc53d;
+  --danger-text: #c0262b;
+  --danger-subtle: #feebec;
+  --danger-border: #fdbdbe;
+  --danger-solid: #ce2c31;
+  --info-text: var(--accent-text);
+  --info-subtle: var(--accent-subtle);
+  --info-border: var(--accent-border);
+
+  /* progress */
+  --progress-track: var(--gray-4);
+  --progress-running: var(--accent-solid);
+  --progress-done: var(--success-text);
+  --progress-failed: var(--danger-text);
+
+  /* shadows: floating layers only, never on surfaces */
+  --shadow-sm: 0 1px 2px rgb(33 32 28 / 0.06);
+  --shadow-md: 0 1px 3px rgb(33 32 28 / 0.06), 0 6px 16px rgb(33 32 28 / 0.08);
+  --shadow-lg: 0 4px 12px rgb(33 32 28 / 0.08), 0 24px 56px rgb(33 32 28 / 0.18);
+
+  /* select chevron (stroke = --text-secondary) */
+  --icon-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%2363635e' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+
+  /* data-viz chrome (plots read these at paint time) */
+  --viz-surface: var(--bg-surface);
+  --viz-frame: var(--border-default);
+  --viz-grid: var(--gray-4);
+  --viz-axis: var(--gray-8);
+  --viz-tick-text: var(--text-secondary);
+  --viz-crosshair: var(--gray-12);
+  --viz-crosshair-halo: rgb(255 255 255 / 0.8);
+  --viz-null-bg: var(--gray-3);
+  --viz-null-hatch: var(--gray-7);
+  --viz-ci-opacity: 0.14;
+
+  /* categorical series: validated, light, surface #ffffff (§7.3) */
+  --viz-baseline: #8d8d86;   /* "baseline (no controlled vehicles)": neutral, not a slot */
+  --viz-series-1: #2a78d6;   /* follower_stopper */
+  --viz-series-2: #eb6834;   /* pi_saturation */
+  --viz-series-3: #1baf7a;   /* jad */
+  --viz-series-4: #eda100;   /* vsl / infrastructure */
+  --viz-series-5: #e87ba4;   /* pi_meanfrac (superseded, labelled) */
+
+  /* ordinal (compliance / penetration as series): validated --ordinal */
+  --viz-ord-1: #86b6ef;
+  --viz-ord-2: #5598e7;
+  --viz-ord-3: #256abf;
+  --viz-ord-4: #104281;
+
+  /* sweep matrix diverging bins (§7.4) */
+  --viz-div-neutral: var(--gray-3);
+  --viz-div-better-1: #cde2fb;
+  --viz-div-better-2: #9ec5f4;
+  --viz-div-better-3: #5598e7;
+  --viz-div-better-4: #256abf;
+  --viz-div-worse-1: #fcd5d0;
+  --viz-div-worse-2: #f6aba2;
+  --viz-div-worse-3: #e7685e;
+  --viz-div-worse-4: #bd2e2b;
+  --viz-div-ink-1-3: var(--gray-12);  /* text on neutral and classes 1–3 */
+  --viz-div-ink-4: #ffffff;           /* text on class 4 */
+}
+
+/* ---------- dark theme: OS preference (unless pinned light) ---------- */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    color-scheme: dark;
+
+    --gray-1: #111110;
+    --gray-2: #191918;
+    --gray-3: #222221;
+    --gray-4: #2a2a28;
+    --gray-5: #31312e;
+    --gray-6: #3b3a37;
+    --gray-7: #494844;
+    --gray-8: #62605b;
+    --gray-9: #6f6d66;
+    --gray-10: #7c7b74;
+    --gray-11: #b5b3ad;
+    --gray-12: #eeeeec;
+
+    --bg-canvas: var(--gray-1);
+    --bg-surface: var(--gray-2);
+    --bg-raised: var(--gray-3);
+    --bg-subtle: var(--gray-1);
+    --bg-hover: var(--gray-3);
+    --bg-active: var(--gray-4);
+    --bg-input: var(--gray-1);
+    --bg-inverse: var(--gray-12);
+    --bg-overlay: rgb(0 0 0 / 0.6);
+
+    --text-primary: var(--gray-12);
+    --text-secondary: var(--gray-11);
+    --text-disabled: var(--gray-9);
+    --text-inverse: var(--gray-1);
+    --text-on-accent: #ffffff;
+
+    --border-subtle: var(--gray-4);
+    --border-default: var(--gray-6);
+    --border-strong: var(--gray-7);
+    --border-input: var(--gray-9);
+
+    --accent-solid: #256abf;
+    --accent-solid-hover: #2f6fc4;
+    --accent-solid-active: #1c5cab;
+    --accent-text: #86b6ef;
+    --accent-subtle: #1b2939;
+    --accent-border: #265085;
+    --focus-ring: #5598e7;
+
+    --success-text: #3dd68c;
+    --success-subtle: #132d21;
+    --success-border: #20573e;
+    --success-solid: #30a46c;
+    --warning-text: #ffca16;
+    --warning-subtle: #302008;
+    --warning-border: #5c3d05;
+    --warning-solid: #ffc53d;
+    --danger-text: #ff9592;
+    --danger-subtle: #3b1219;
+    --danger-border: #72232d;
+    --danger-solid: #ce2c31;
+    --info-text: var(--accent-text);
+    --info-subtle: var(--accent-subtle);
+    --info-border: var(--accent-border);
+
+    --progress-track: var(--gray-5);
+    --progress-running: var(--accent-text);
+    --progress-done: var(--success-text);
+    --progress-failed: var(--danger-text);
+
+    --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.4);
+    --shadow-md: 0 1px 3px rgb(0 0 0 / 0.4), 0 8px 24px rgb(0 0 0 / 0.5);
+    --shadow-lg: 0 4px 12px rgb(0 0 0 / 0.4), 0 24px 64px rgb(0 0 0 / 0.6);
+
+    --icon-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%23b5b3ad' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+
+    --viz-surface: var(--bg-surface);
+    --viz-frame: var(--border-default);
+    --viz-grid: var(--gray-4);
+    --viz-axis: var(--gray-7);
+    --viz-tick-text: var(--text-secondary);
+    --viz-crosshair: var(--gray-12);
+    --viz-crosshair-halo: rgb(0 0 0 / 0.7);
+    --viz-null-bg: var(--gray-3);
+    --viz-null-hatch: var(--gray-6);
+    --viz-ci-opacity: 0.22;
+
+    --viz-baseline: #7c7b74;
+    --viz-series-1: #3987e5;
+    --viz-series-2: #d95926;
+    --viz-series-3: #199e70;
+    --viz-series-4: #c98500;
+    --viz-series-5: #d55181;
+
+    --viz-ord-1: #256abf;
+    --viz-ord-2: #3987e5;
+    --viz-ord-3: #6da7ec;
+    --viz-ord-4: #b7d3f6;
+
+    --viz-div-neutral: var(--gray-4);
+    --viz-div-better-1: #1f3654;
+    --viz-div-better-2: #204b7f;
+    --viz-div-better-3: #215da5;
+    --viz-div-better-4: #7aaeef;
+    --viz-div-worse-1: #502824;
+    --viz-div-worse-2: #77312b;
+    --viz-div-worse-3: #993a33;
+    --viz-div-worse-4: #e88f85;
+    --viz-div-ink-1-3: var(--gray-12);
+    --viz-div-ink-4: var(--gray-1);
+  }
+}
+
+/* ---------- dark theme: pinned (body identical to the block above) ---------- */
+:root[data-theme='dark'] {
   color-scheme: dark;
+
+  --gray-1: #111110;
+  --gray-2: #191918;
+  --gray-3: #222221;
+  --gray-4: #2a2a28;
+  --gray-5: #31312e;
+  --gray-6: #3b3a37;
+  --gray-7: #494844;
+  --gray-8: #62605b;
+  --gray-9: #6f6d66;
+  --gray-10: #7c7b74;
+  --gray-11: #b5b3ad;
+  --gray-12: #eeeeec;
+
+  --bg-canvas: var(--gray-1);
+  --bg-surface: var(--gray-2);
+  --bg-raised: var(--gray-3);
+  --bg-subtle: var(--gray-1);
+  --bg-hover: var(--gray-3);
+  --bg-active: var(--gray-4);
+  --bg-input: var(--gray-1);
+  --bg-inverse: var(--gray-12);
+  --bg-overlay: rgb(0 0 0 / 0.6);
+
+  --text-primary: var(--gray-12);
+  --text-secondary: var(--gray-11);
+  --text-disabled: var(--gray-9);
+  --text-inverse: var(--gray-1);
+  --text-on-accent: #ffffff;
+
+  --border-subtle: var(--gray-4);
+  --border-default: var(--gray-6);
+  --border-strong: var(--gray-7);
+  --border-input: var(--gray-9);
+
+  --accent-solid: #256abf;
+  --accent-solid-hover: #2f6fc4;
+  --accent-solid-active: #1c5cab;
+  --accent-text: #86b6ef;
+  --accent-subtle: #1b2939;
+  --accent-border: #265085;
+  --focus-ring: #5598e7;
+
+  --success-text: #3dd68c;
+  --success-subtle: #132d21;
+  --success-border: #20573e;
+  --success-solid: #30a46c;
+  --warning-text: #ffca16;
+  --warning-subtle: #302008;
+  --warning-border: #5c3d05;
+  --warning-solid: #ffc53d;
+  --danger-text: #ff9592;
+  --danger-subtle: #3b1219;
+  --danger-border: #72232d;
+  --danger-solid: #ce2c31;
+  --info-text: var(--accent-text);
+  --info-subtle: var(--accent-subtle);
+  --info-border: var(--accent-border);
+
+  --progress-track: var(--gray-5);
+  --progress-running: var(--accent-text);
+  --progress-done: var(--success-text);
+  --progress-failed: var(--danger-text);
+
+  --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.4);
+  --shadow-md: 0 1px 3px rgb(0 0 0 / 0.4), 0 8px 24px rgb(0 0 0 / 0.5);
+  --shadow-lg: 0 4px 12px rgb(0 0 0 / 0.4), 0 24px 64px rgb(0 0 0 / 0.6);
+
+  --icon-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%23b5b3ad' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+
+  --viz-surface: var(--bg-surface);
+  --viz-frame: var(--border-default);
+  --viz-grid: var(--gray-4);
+  --viz-axis: var(--gray-7);
+  --viz-tick-text: var(--text-secondary);
+  --viz-crosshair: var(--gray-12);
+  --viz-crosshair-halo: rgb(0 0 0 / 0.7);
+  --viz-null-bg: var(--gray-3);
+  --viz-null-hatch: var(--gray-6);
+  --viz-ci-opacity: 0.22;
+
+  --viz-baseline: #7c7b74;
+  --viz-series-1: #3987e5;
+  --viz-series-2: #d95926;
+  --viz-series-3: #199e70;
+  --viz-series-4: #c98500;
+  --viz-series-5: #d55181;
+
+  --viz-ord-1: #256abf;
+  --viz-ord-2: #3987e5;
+  --viz-ord-3: #6da7ec;
+  --viz-ord-4: #b7d3f6;
+
+  --viz-div-neutral: var(--gray-4);
+  --viz-div-better-1: #1f3654;
+  --viz-div-better-2: #204b7f;
+  --viz-div-better-3: #215da5;
+  --viz-div-better-4: #7aaeef;
+  --viz-div-worse-1: #502824;
+  --viz-div-worse-2: #77312b;
+  --viz-div-worse-3: #993a33;
+  --viz-div-worse-4: #e88f85;
+  --viz-div-ink-1-3: var(--gray-12);
+  --viz-div-ink-4: var(--gray-1);
+}
+
+/* ---------- legacy aliases: DELETE in step 5 (§12) ---------- */
+:root {
+  --bg: var(--bg-canvas);
+  --panel: var(--bg-surface);
+  --panel-edge: var(--border-default);
+  --panel-raised: var(--bg-subtle);
+  --panel-inset: var(--bg-subtle);
+  --text: var(--text-primary);
+  --muted: var(--text-secondary);
+  --faint: var(--text-secondary);   /* upgraded: the old --faint failed AA */
+  --accent: var(--accent-text);
+  --accent-dim: var(--accent-subtle);
+  --amber: var(--warning-text);
+  --amber-dim: var(--warning-subtle);
+  --danger: var(--danger-text);
+  --danger-dim: var(--danger-subtle);
+  --ok: var(--success-text);
+  --ok-dim: var(--success-subtle);
+  --s1: var(--space-2);
+  --s2: var(--space-4);
+  --s3: var(--space-6);
+  --s4: var(--space-8);
+  --s5: var(--space-10);
+  --s6: var(--space-12);
+  --r1: var(--radius-xs);
+  --r2: var(--radius-sm);
+  --r3: var(--radius-md);
+  --font-ui: var(--font-sans);
+  --card-shadow: none;
+  --ring: 0 0 0 var(--focus-width) var(--focus-ring);
 }

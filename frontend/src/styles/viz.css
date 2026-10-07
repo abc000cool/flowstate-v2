@@ -1,0 +1,160 @@
+/* Data viz: heatmap box, hover readout, ramp legend, metric cards, CI bars,
+   per-replicate strip charts.
+   Split verbatim from the retired app.css (DASHBOARD_DESIGN.md §12.2, step 0).
+   Owner: C (step 3, §7). */
+
+.heatmap-box {
+  position: relative;
+}
+
+.heatmap-box canvas {
+  display: block;
+  width: 100%;
+}
+
+.heatmap-overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.hover-readout {
+  position: absolute;
+  top: 10px;
+  right: 12px;
+  background: rgba(11, 14, 20, 0.88);
+  border: 1px solid var(--panel-edge);
+  border-radius: var(--r2);
+  padding: 5px 10px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text);
+  pointer-events: none;
+  font-variant-numeric: tabular-nums;
+}
+
+.legend {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.legend .bar {
+  width: 120px;
+  height: 8px;
+  border-radius: 4px;
+  border: 1px solid var(--panel-edge);
+}
+
+/* metric cards */
+.metric-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(185px, 1fr));
+  gap: var(--s2);
+}
+
+.metric-card {
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  background: var(--panel-raised);
+  border: 1px solid var(--panel-edge);
+  border-radius: var(--r2);
+}
+
+.metric-card .m-label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  color: var(--muted);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 6px;
+}
+
+.metric-card .m-value {
+  font-family: var(--font-mono);
+  font-size: 22px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+}
+
+.metric-card .m-unit {
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--muted);
+  margin-left: 5px;
+}
+
+.ci-track {
+  position: relative;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--panel-inset);
+  border: 1px solid var(--panel-edge);
+}
+
+.ci-fill {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  background: rgba(79, 209, 224, 0.35);
+  border-radius: 2px;
+}
+
+.ci-mean {
+  position: absolute;
+  top: -3px;
+  width: 2px;
+  height: 10px;
+  background: var(--accent);
+  border-radius: 1px;
+}
+
+.ci-text {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--faint);
+  font-variant-numeric: tabular-nums;
+}
+
+/* strip charts (per-replicate tiny multiples) */
+.strip-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(185px, 1fr));
+  gap: var(--s2);
+}
+
+.strip {
+  padding: 10px 12px;
+  background: var(--panel-inset);
+  border: 1px solid var(--panel-edge);
+  border-radius: var(--r2);
+}
+
+.strip .s-label {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.12em;
+  color: var(--faint);
+  margin-bottom: 4px;
+}
+
+/* ============ no-observation metrics (CIOut n=0, reason set) ========= */
+/* A metric no replicate produced is said in words, never as a dash or a zero:
+   the API distinguishes "no estimate" from "an underpowered estimate". */
+.metric-card .m-value.m-noobs {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  line-height: 1.6;
+}
