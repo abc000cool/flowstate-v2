@@ -535,3 +535,61 @@ vehicles off the network (realised demand below 0.977). **k = 0 stays on I-24.**
 I-24 demand fitter (`scripts/i24_fit_demand_scale.py`, objective segment-speed RMSPE) chooses scales that
 build a backlog whenever the drivers are stronger — its objective does not see insertion — so a refit under
 a changed fleet needs an insertion constraint before its speed fit can be trusted.
+
+**Insertion re-analysis of the Amendment 2 refits — 2026-10-07, after the p7 result. An analysis of
+recorded runs, not a calibration: no simulation was run, no artifact was changed, nothing is adopted, and
+k = 0 stays on I-24.** The fitter now has an opt-in insertion constraint. `scripts/i24_fit_demand_scale.py
+--min-inserted F` chooses the best-objective scale among those whose inserted fraction (departed / planned,
+on the fit's single seed) is at least F. If no scale reaches F, it chooses the scale with the highest
+inserted fraction and flags `constraint_unmet` in the artifact, the scenario header and the console. With
+the option off, the fit and its artifact are byte-identical to before. A GEH reading on the link flows
+(CLAUDE.md §6.3) is reported beside the speed RMSPE. It selects only under `--objective geh`.
+`--analyze-artifact` re-reads a saved fit's per-scale numbers. On the three refits, and on the fit that set
+the reference's 0.800 as a control:
+
+| refit (fit artifact) | rule | scale | inserted (fit seed) | RMSPE fit / held-out hour | GEH < 5, fit hour |
+|---|---|---|---|---|---|
+| k = 1 (`demand_scale_i24_flow_dc.json`) | recorded (speed only) | 0.925 | 0.9177 | 33.63 / 31.24 % | 25.0 % |
+| | ≥ 0.97 | 0.825 | 0.9949 | 38.32 / 50.97 % | 26.4 % |
+| | ≥ 0.98 | 0.825 | 0.9949 | 38.32 / 50.97 % | 26.4 % |
+| k = 0.25 (`demand_scale_i24_flow_dck025.json`) | recorded (speed only) | 0.900 | 0.9266 | 31.98 / 39.39 % | 25.0 % |
+| | ≥ 0.97 | 0.825 | 0.9772 | 34.53 / 36.38 % | 20.8 % |
+| | ≥ 0.98 | 0.800 | 0.9959 | 38.61 / 37.27 % | 23.6 % |
+| k = 0.5 (`demand_scale_i24_flow_dck05.json`) | recorded (speed only) | 0.900 | 0.9386 | 34.90 / 37.45 % | 18.1 % |
+| | ≥ 0.97 | 0.850 | 0.9760 | 36.63 / 35.49 % | 23.6 % |
+| | ≥ 0.98 | 0.825 | 0.9851 | 37.31 / 37.70 % | 22.2 % |
+| k = 0, control (`demand_scale_i24_flow.json`) | recorded = ≥ 0.97 = ≥ 0.98 | 0.800 | 0.9835 | 32.66 / 45.95 % | 12.5 % |
+
+Reproduce with `uv run --no-sync python scripts/i24_fit_demand_scale.py --analyze-artifact
+artifacts/demand_scale_i24_flow_dc.json --analyze-artifact artifacts/demand_scale_i24_flow_dck025.json
+--analyze-artifact artifacts/demand_scale_i24_flow_dck05.json --analyze-artifact
+artifacts/demand_scale_i24_flow.json --min-inserted 0.97 --min-inserted 0.98`. The table is pinned by
+`tests/test_scripts/test_i24_fit_demand_scale.py`. Every number in the table comes from one fit seed
+(6914975401685141156), not a 20-seed battery.
+
+- **The constraint moves every refit down by 0.05 to 0.10, to 0.800–0.850, and leaves the reference's
+  0.800 unchanged.** That scale inserts 0.9835 on its fit seed, so the constraint does not disturb the
+  canonical arm.
+- **Most of the refits' speed advantage was the backlog.** Against the control fit on the same seed, k = 1
+  at 0.825 is worse on both hours (38.3 / 51.0 % against 32.7 / 46.0 %). k = 0.25 and k = 0.5 at their
+  constrained scales are worse on the fit hour (34.5–38.6 % against 32.7 %) and better on the held-out
+  hour (35.5–37.7 % against 46.0 %). Whether any of them would pass this amendment's rule is unknown: no
+  battery has run at these scales, and the rule needs the wave criterion plus GEH and RMSPE over 20 seeds.
+- **F = 0.98 is the threshold consistent with the clarification; F = 0.97 is not.** The fitter's inserted
+  fraction comes from one seed, while the clarification bounds the 20-replicate mean (at least 0.977). The
+  four batteries run at a fitted scale show the gap. Each battery's first replicate is the fit seed and
+  reproduces the fit's fraction exactly, but the mean over 20 replicates differs from it by up to 0.009 in
+  either direction (`simulated.demand_realized_fraction`): 0.9835 against 0.9868 (reference), 0.9177
+  against 0.9212 (k = 1), 0.9266 against 0.9176 (k = 0.25) and 0.9386 against 0.9298 (k = 0.5). At 0.97,
+  k = 0.5's choice (0.850) inserts 0.976 on its fit seed, which is already below 0.977.
+- **The table covers the recorded scales only.** A constrained fit centres its refine round on its
+  constrained coarse choice, which is 0.800 for all three refits. It would therefore also have run 0.725,
+  0.750 and 0.775, and the saved grids lack those scales (`procedure.refine_missing`). Their neighbours
+  read 91–98 % (0.700) and 39–42 % (0.800) fit-hour RMSPE, so they are unlikely to win, but this is not
+  excluded.
+- **GEH is reported, not used to select.** One seed over 72 fit-hour bins moves 1.4 points per bin. On
+  the control grid, `--objective geh` would pick 0.775 rather than 0.800, which is too unstable to select
+  on without replicates.
+
+A future amendment may pass `--min-inserted 0.98` to the refit stages (`p4_i24_refit`, `p7_i24_amax_wave`
+in `scripts/gcp/pipeline_i24.sh`). Those stages are unchanged.
