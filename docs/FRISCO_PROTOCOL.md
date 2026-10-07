@@ -406,3 +406,116 @@ realised demand share (`simulated.demand_realized_fraction`, mean over the 20
 replicates) no more than 1 percentage point below the reference arm's (0.987,
 `artifacts/i24_validation_flow_speedcal_ref.json`), i.e. at least 0.977; the
 backlog is reported for every arm.
+
+### Amendment 3 — 2026-10-07: PROPOSED, not adopted (the ramp-to-ramp share at a weave with no origin–destination count)
+
+Drafted by the coordinator during the owner's absence, while the fixture
+sensitivity of docs/TH52_CROSSING_SHARE.md §10 was running and before any of
+its results were read, and before any corridor run that varies the share. The
+range below was fixed in that note's §5 before any run. Adopting it, or any
+part of it, needs the owner. *(The sensitivity's result, recorded afterwards
+in §10 there: across the range the section test's flow criterion passes at 1,
+9, 20, 20 and 20 of 20 seeds, and the test as a whole at 0, 0, 1, 2 and 6.
+Nothing below was changed after it.)*
+
+**Why.** At a weaving section the model splits the exit's volume between the
+mainline and the entrance in proportion to their volumes (HCM 7th ed. 7.1,
+ch. 13, Equations 13-2 to 13-6, the simple weaving-volume estimate). The
+ramp-to-ramp share is then an assumption, not a measurement. At the I-94 WB
+T.H.52 weave (US 52 NB to exit 242B) no count, published figure or agency
+figure gives it (docs/TH52_CROSSING_SHARE.md §3), and the T.H.52 section
+fixture's flow verdict changes inside its bounded range (§5 there, D1 of
+docs/WEAVE_LOSS_DIAGNOSIS.md §3.11). §2.3 already asks for this case: where a
+split cannot be defended, the study uses a documented assumption "and tests
+how much the results depend on it (item 11)". §8.5 does not yet list the
+share among the varied inputs, and §7 does not list it among what calibration
+may change.
+
+**What §8.5 adds.**
+1. **Scope.** A weaving section (an entrance and the next exit joined by an
+   auxiliary lane) whose ramp-to-ramp volume has no origin–destination
+   measurement carries its ramp-to-ramp share s = v_RR / v_ON as an uncertain
+   input of the §8.5 design. The documented assumption stays the
+   proportional split (`WeaveSpec.ramp_to_ramp_share` unset, the model as
+   today).
+2. **Range, stated before any run.** From the proportional split P_w of each
+   5-minute window to an upper bound s_max with its source; basis
+   `stated_assumption`. For T.H.52: s_max = 0.70, source
+   docs/TH52_CROSSING_SHARE.md §5 (the upper 95 % limit of the least-biased
+   count reading, itself biased upward; at 0.70 the peak hour's mainline flow
+   to 242B falls to 4.8 %). Nothing below the proportional split is sampled:
+   no source points below it (§3, §4 there). Adding a symmetric lower end is
+   the owner's choice at adoption.
+3. **Other weaves.** The same rule applies to every weaving section of a
+   study. A weave whose s_max has not been bounded with a stated source before
+   the first run stays at the proportional split and is listed in the report
+   as an unexamined split assumption. On I-94 that is the Ruth St weave today.
+4. **Sampling rule.** One more Latin-hypercube coordinate u ∈ [0, 1) per
+   weave in scope, from the design's own stream. In each 5-minute window the
+   share is s_w = P_w + u · (s_max − P_w), clipped to the window's exit volume
+   (v_OFF,w / v_ON,w). u = 0 is the current model at every window, and the
+   share rises monotonically with u in every window. The swap keeps the volume
+   of every leg and every exit (`microsim.vehicles.build_corridor_plan`), so u
+   changes only who crosses, never demand. The other §8.5 rules are
+   unchanged: at least 10 samples × 5 seeds, with seeds nested in samples as
+   today.
+5. **Reporting.**
+   - Every strategy effect is reported over the design that includes u. The
+     90 % sign rule then decides whether the effect is robust to the share.
+   - The T.H.52 and S790 results are also reported conditional on the share:
+     the per-sample means against u.
+   - The gate (§6) is judged at u = 0, the documented assumption, as today.
+     The gate's checks at u = 1 are reported beside it as a sensitivity and
+     are never used to pass it.
+   - The report's limitations name every weave whose split is carried this
+     way, with its range and source.
+
+**What adoption needs (not built).**
+- **A per-window form of the key.** `WeaveSpec.ramp_to_ramp_share`
+  (2026-10-07, default off, hash-neutral) takes one share for the whole run.
+  It refuses a window whose exit volume is below the ramp-to-ramp volume it
+  asks for. That serves the 20-minute T.H.52 fixture. It does not serve
+  the four-hour corridor. There the proportional split falls from about 0.33
+  at 05:30 to 0.18 at the peak, and in seven windows between 07:30 and 08:05
+  the conservation exit volume is below 0.70 · v_ON (lowest 0.34 at 07:50,
+  where S97's queue breaks conservation; docs/TH52_CROSSING_SHARE.md §5).
+  Rule 4 needs the share as u with s_max, applied per window with the clip,
+  and the clipped windows counted in `meta.json["ramp_to_ramp_shares"]`.
+- **An uncertainty kind** in `validation.uncertainty`, e.g. `ramp_to_ramp_u`:
+  range [0, 1], nominal 0, basis `stated_assumption`, source the bounding
+  note, mapping to the key of the named entrance. It is not in the default
+  space: a study declares it per weave. It was not added on 2026-10-07. It
+  touches `default_space` (which lists every derivable kind by default),
+  `apply`, the parameter checks (a share is not a positive scale factor) and
+  `scripts/uncertainty_runs.py`'s kind options.
+- **Timing on long corridors.** The swap pairs entrants with mainline
+  vehicles departing in the same 5-minute window. Mainline vehicles are
+  windowed at their departure from the corridor's entry, where their exit
+  fraction is read. On I-94 that is about 10 km (6–7 free-flow minutes)
+  upstream of the weave, so a swapped exit trip reaches the gore about that
+  much earlier than the trip it replaces. Adoption either accepts this, as
+  the exit draw already does, or windows mainline vehicles by their
+  free-flow arrival at the weave.
+
+**What would turn the share into calibration.** Each route needs its own
+dated §7 amendment, because §7 does not list an origin–destination split at a
+weave. Under the change control above, results are then reported under both
+the proportional split and the calibrated share.
+- **(a) MnDOT's study report.** The Hwy 52 Lafayette Bridge / I-94 / I-35E
+  study (January 2022 – October 2024) offers its final report on request
+  (docs/TH52_CROSSING_SHARE.md E1). If it gives an AM-peak volume or share
+  for US 52 NB → I-35E NB, that is §2.3's "agency's best available count".
+  Requesting it is the owner's call.
+- **(b) A pre-registered count-based estimate.** The loop-count method of
+  MnDOT MN/RC-1999-40 (E7 there), with the specification fixed before it is
+  run:
+  - the calibration days only;
+  - 15-minute windows, slot fixed effects, free-flow windows;
+  - an errors-in-variables correction from the data-quality artifact's count
+    error.
+  It is adopted only if its 95 % interval is narrower than 0.20. Otherwise
+  the interval replaces this amendment's range as the share's range.
+  docs/TH52_CROSSING_SHARE.md §4 expects it to fail that test.
+- **(c) A direct count.** One AM peak of video at the 242B gore, or an agency
+  origin–destination product (MnDOT or the Met Council), counting US 52
+  entrants by the exit they take. This is the measurement that settles it.

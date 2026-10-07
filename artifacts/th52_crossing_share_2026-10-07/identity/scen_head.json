@@ -1,0 +1,168 @@
+{
+ "_from": "<SCRATCH>/head/packages/flowstate_core/flowstate_core/__init__.py",
+ "_weave_defaults": {
+  "accept_gap_s": 0.6,
+  "force_after_s": 4.0,
+  "force_within_m": 80.0,
+  "change_duration_s": 2.0,
+  "lookahead_m": 120.0,
+  "exit_accept_gap_s": 0.6,
+  "vacate_ahead_m": 500.0,
+  "vacate_max_veh_h": 0.0,
+  "pair_release_s": 2.0,
+  "exit_giveup_m": 5.0,
+  "exit_prepare": 0.0
+ },
+ "scenarios/corridor_10km.yaml": {
+  "hash": "da716176df0f",
+  "dump_sha": "bc8d200d08f2c3e9"
+ },
+ "scenarios/corridor_10km_workzone.yaml": {
+  "hash": "d2962527850a",
+  "dump_sha": "136bd166e2da7360"
+ },
+ "scenarios/gallery_i24_nashville.yaml": {
+  "hash": "4b763d628eea",
+  "dump_sha": "63ac61e016544bd6"
+ },
+ "scenarios/gallery_us75_dallas.yaml": {
+  "hash": "2b3f62b2c689",
+  "dump_sha": "fd59f81da267ed30"
+ },
+ "scenarios/i24_replica.yaml": {
+  "hash": "de32a67e44cd",
+  "dump_sha": "81cc4d4a68e42f42"
+ },
+ "scenarios/i24_replica_corrected.yaml": {
+  "hash": "395bf4ed5cbb",
+  "dump_sha": "48c96a6962587923"
+ },
+ "scenarios/i24_replica_flow.yaml": {
+  "hash": "85d3b4858b13",
+  "dump_sha": "db7e99e4eca9d6a5"
+ },
+ "scenarios/i24_replica_flow_corrected.yaml": {
+  "hash": "7380e64e7317",
+  "dump_sha": "4c8d33bdd325be80"
+ },
+ "scenarios/i24_replica_flow_corrected_dc.yaml": {
+  "hash": "db0a5677e909",
+  "dump_sha": "048f743bc766eb44"
+ },
+ "scenarios/i24_replica_flow_speedcal.yaml": {
+  "hash": "ae5861a4d906",
+  "dump_sha": "9c17fd2f3468b1c0"
+ },
+ "scenarios/i24_replica_flow_speedcal_dc.yaml": {
+  "hash": "8976a1773674",
+  "dump_sha": "7f0cf6dcb3efab32"
+ },
+ "scenarios/i24_replica_flow_speedcal_dc_refit.yaml": {
+  "hash": "ada3f406504b",
+  "dump_sha": "c78181b4f3276c61"
+ },
+ "scenarios/i24_replica_flow_speedcal_measured.yaml": {
+  "hash": "8103d6067875",
+  "dump_sha": "8898bb35b429c7f1"
+ },
+ "scenarios/i24_replica_flow_speedcal_ramps.yaml": {
+  "hash": "2b7ad25536b2",
+  "dump_sha": "3bca3a3226b6f272"
+ },
+ "scenarios/i24_replica_speedcal.yaml": {
+  "hash": "4a2329533017",
+  "dump_sha": "39d814099d0efc0c"
+ },
+ "scenarios/i24_replica_speedcal_heavy.yaml": {
+  "hash": "d7f445b88a54",
+  "dump_sha": "a136db3d65dbe353"
+ },
+ "scenarios/i24_replica_speedcal_ramps.yaml": {
+  "hash": "a49cd7bc87c9",
+  "dump_sha": "dceffde2b0cdf546"
+ },
+ "scenarios/i24_replica_zip.yaml": {
+  "hash": "201a14ad28cd",
+  "dump_sha": "39f43d008ae74978"
+ },
+ "scenarios/i24_replica_zip_corrected.yaml": {
+  "hash": "bc9d52d03617",
+  "dump_sha": "f44c7c232e5152d4"
+ },
+ "scenarios/i24_replica_zip_speedcal.yaml": {
+  "hash": "10f55ff4da64",
+  "dump_sha": "12e6fdaf010f2a3c"
+ },
+ "scenarios/i24_replica_zip_speedcal_heavy.yaml": {
+  "hash": "56b9010f6a0b",
+  "dump_sha": "e2d08e90d0050da9"
+ },
+ "scenarios/i24_replica_zip_speedcal_ramps.yaml": {
+  "hash": "771927b74a79",
+  "dump_sha": "4e6be364ef011a53"
+ },
+ "scenarios/mndot_i94_wb_stpaul.yaml": {
+  "hash": "a04738a33de4",
+  "dump_sha": "e509d842e63ba4bc"
+ },
+ "scenarios/mndot_i94_wb_stpaul_weave.yaml": {
+  "hash": "da8cb6f07030",
+  "dump_sha": "e5ca0058dc4468c6"
+ },
+ "scenarios/mndot_i94_wb_stpaul_weave_dc.yaml": {
+  "hash": "db9fbab5fc6e",
+  "dump_sha": "2d28d9afb2ec1038"
+ },
+ "scenarios/mndot_i94_wb_stpaul_weave_dc_cal.yaml": {
+  "hash": "beaaa710e6b3",
+  "dump_sha": "24eb5c795d6db5ba"
+ },
+ "scenarios/mndot_i94_wb_stpaul_weave_dc_cal_netfix.yaml": {
+  "hash": "182e3ec2f500",
+  "dump_sha": "86fe7d6233da6ab9"
+ },
+ "scenarios/mndot_i94_wb_stpaul_weave_dc_cal_sf.yaml": {
+  "hash": "8ad95d570201",
+  "dump_sha": "edebcc44c93be9e3"
+ },
+ "scenarios/mndot_i94_wb_stpaul_weave_dc_netfix.yaml": {
+  "hash": "bd97bc3dcbeb",
+  "dump_sha": "c0cea8aeca64588f"
+ },
+ "scenarios/mndot_i94_wb_stpaul_weave_head60.yaml": {
+  "hash": "bcd263470989",
+  "dump_sha": "b2e72e1dda1cb6dc"
+ },
+ "scenarios/mndot_i94_wb_stpaul_weave_head60_scripted.yaml": {
+  "hash": "6909c34023be",
+  "dump_sha": "b1fe18918e2e94e9"
+ },
+ "scenarios/mndot_i94_wb_stpaul_weave_measured.yaml": {
+  "hash": "d317700d4156",
+  "dump_sha": "9b9140504012958f"
+ },
+ "scenarios/mndot_i94_wb_stpaul_weave_slice.yaml": {
+  "hash": "c8332755623a",
+  "dump_sha": "b88627d012b03d43"
+ },
+ "scenarios/mndot_i94_wb_stpaul_weave_slice_measured.yaml": {
+  "hash": "c889d17f1849",
+  "dump_sha": "6b3e117b69d7a003"
+ },
+ "scenarios/mndot_i94_wb_stpaul_weave_slice_netfix.yaml": {
+  "hash": "c0a7c9143a57",
+  "dump_sha": "f50827e4ea14ecb8"
+ },
+ "scenarios/ring_sugiyama.yaml": {
+  "hash": "d5472987265c",
+  "dump_sha": "0d050c04e592dcb6"
+ },
+ "scenarios/us101_replica.yaml": {
+  "hash": "8df1eac5a540",
+  "dump_sha": "a88238aefac9a538"
+ },
+ "scenarios/us101_replica_calibrated.yaml": {
+  "hash": "c7c94aec6b79",
+  "dump_sha": "13a78d7468963abd"
+ }
+}

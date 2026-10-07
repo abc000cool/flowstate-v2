@@ -3696,3 +3696,40 @@ No config field added.
   and `artifacts/demand_mndot_i94_wb_stpaul_cal.json` (its `provenance` block
   names every input with its sha256; `config_hash` is the written scenario's).
   `--check` re-derives and compares; pipeline stage `p8_i94_cal` runs it first.
+
+## Weave ramp-to-ramp share (`WeaveSpec.ramp_to_ramp_share`, default off) — 2026-10-07
+
+- **Config.** `WeaveSpec.ramp_to_ramp_share: float | None = None`, in
+  [0, 1]: the share of the weave entrance's vehicles that leave at the paired
+  exit (v_RR / v_ON). Unset keeps the proportional split (every vehicle
+  reaching the exit draws its `exit_fraction` alike). The field is absent from
+  `model_dump` when unset (`exclude_if`), so it is absent from the config
+  hash, YAML and `meta.json["config"]`: every committed scenario hashes and
+  dumps as before. It is a demand input, not a merge-model parameter, so it
+  is allowed with `merge: measured` as well as `weave`. No committed scenario
+  sets it (docs/TH52_CROSSING_SHARE.md; docs/FRISCO_PROTOCOL.md Amendment 3,
+  proposed).
+- **Plan** (`microsim.vehicles.build_corridor_plan`,
+  `_apply_ramp_to_ramp_shares`). After the exit draws, the entrants of each
+  `RAMP_TO_RAMP_WINDOW_S` (300 s) window of departure should hold
+  `R(s · N_w) − R(s · N_{w−1})` routes `on<k>_off<j>`, where `N_w` is the
+  cumulative entrant count and `R(x) = floor(x + 1/2)`. The builder swaps
+  destinations with corridor-entry vehicles of the same window bound for the
+  exit (`main_off<j>`). Below the drawn split it swaps the other way, with
+  `main` or `main_off<m>` past the weave. Pairs are spread evenly in
+  departure order. No random number is drawn. Origins, departures, lanes,
+  parameters and every leg's and exit's count per window are unchanged. A
+  window whose exit volume is below the ramp-to-ramp volume asked for is a
+  `ValueError` naming the window and the largest feasible share.
+  `FleetPlan.ramp_to_ramp` (new, default `()`) holds one record per such
+  entrance.
+- **`meta.json["ramp_to_ramp_shares"]`** (only when set; a meta written with it
+  unset is unchanged) is a list of `{ramp, exit_ramp, share, window_s,
+  n_entrants, n_ramp_to_ramp_drawn, share_drawn, n_ramp_to_ramp,
+  share_realized, n_swapped_to_exit, n_swapped_from_exit, n_exit}`. `n_exit`
+  counts the corridor-entry and entrance vehicles bound for the exit
+  (unchanged by the swap).
+- **Script.** `scripts/merge_model_selfcheck.py th52 --ramp-to-ramp-share S`
+  sets the key on every weave block (either model). `th52` rows gain
+  `ramp_to_ramp` (the meta record, `null` unset), plus `run_summary`'s `lock`
+  and `lowest_zone_minute_ms` at every share.

@@ -79,6 +79,13 @@ RING_JITTER_M: Final[float] = 0.5
 #: Corridor insertion jitter as a fraction of the nominal headway.
 DEPART_JITTER_FRAC: Final[float] = 0.3
 
+#: Window of departure [s] within which :func:`build_corridor_plan` meets a
+#: weave entrance's ``WeaveSpec.ramp_to_ramp_share`` by swapping
+#: destinations: the 5-minute resolution of the detector counts that set the
+#: ramp inflows and exit fractions (``RampSpec.inflow`` / ``exit_fraction``
+#: steps), so the swap never moves a trip across a demand step.
+RAMP_TO_RAMP_WINDOW_S: Final[float] = 300.0
+
 
 @dataclass(frozen=True)
 class FleetPlan:
@@ -135,6 +142,11 @@ class FleetPlan:
     ramp in the scenario (nothing drawn)."""
     merge_z_lag: tuple[float, ...] = ()
     """The same for the lag (follower-side) critical gap."""
+    ramp_to_ramp: tuple[dict[str, Any], ...] = ()
+    """One record per weave entrance with ``WeaveSpec.ramp_to_ramp_share``
+    set (:func:`build_corridor_plan`, :func:`_apply_ramp_to_ramp_shares`): the
+    share asked, the share drawn before the swap and the one realized, and
+    the counts. Empty ⇒ no such entrance (every plan before 2026-10-07)."""
 
     def heavy(self, i: int) -> bool:
         """Whether vehicle ``i`` is a heavy vehicle."""
@@ -723,6 +735,154 @@ def _step_value(steps: Sequence[tuple[float, float]], t: float) -> float:
     return value
 
 
+def _spread_pick(candidates: Sequence[int], n: int) -> list[int]:
+    """``n`` of ``candidates`` (``n <= len``) spread evenly over the list, in order."""
+    size = len(candidates)
+    return [candidates[(2 * q + 1) * size // (2 * n)] for q in range(n)]
+
+
+def _apply_ramp_to_ramp_shares(
+    route_list: list[str],
+    departs: Sequence[float],
+    origin_idx: Sequence[int],
+    ramps: Sequence[RampSpec],
+    pos: Mapping[str, int],
+) -> tuple[dict[str, Any], ...]:
+    """Meet every ``WeaveSpec.ramp_to_ramp_share`` by swapping destinations (in place).
+
+    For a weave entrance ``k`` with the share ``s`` set and its paired exit
+    ``j`` (``WeaveSpec.exit_ramp``), per :data:`RAMP_TO_RAMP_WINDOW_S` window of
+    departure ``w`` (``floor(depart / window)``), in time order: the entrants
+    departing in ``w`` should hold ``t_w = R(s · N_w) − R(s · N_{w−1})``
+    ramp-to-ramp routes ``on<k>_off<j>``, with ``N_w`` the entrants departed
+    by the end of ``w`` and ``R(x) = floor(x + 1/2)`` (cumulative rounding, so
+    the run's realized share is within half a vehicle of ``s · N``).
+
+    * Short of ``t_w`` (the share is above the drawn split): entrants bound
+      elsewhere (``on<k>`` or ``on<k>_off<m>``) and mainline vehicles bound for
+      the exit (``main_off<j>``) of the same window are picked, spread evenly
+      over each list in departure order, and paired in order; the entrant
+      takes ``on<k>_off<j>`` and the mainline vehicle the entrant's former
+      suffix (``main`` or ``main_off<m>``).
+    * Above ``t_w``: the mirror, with mainline vehicles that pass the weave
+      bound elsewhere (``main``, or ``main_off<m>`` with ``m`` at or after the
+      entrance's attach edge).
+
+    Origins, departure times and lanes, parameters and every other draw are
+    untouched, and so is the window's count on every route suffix: each leg
+    and each exit carries the plan's volume, and only who crosses changes
+    (docs/TH52_CROSSING_SHARE.md §7). Mainline vehicles are windowed by their
+    departure at the corridor entry, the time at which their exit fraction is
+    read (:func:`build_corridor_plan`), not by their arrival at the weave.
+
+    Raises:
+        ValueError: In some window the exit volume (entrants and mainline
+            vehicles of the window bound for the paired exit) is smaller than
+            the ramp-to-ramp volume the share asks for, or (below the drawn
+            split) too few mainline vehicles pass the weave bound elsewhere.
+
+    Returns:
+        One record per such entrance, in ramp order (``FleetPlan.ramp_to_ramp``).
+    """
+    records: list[dict[str, Any]] = []
+    window = RAMP_TO_RAMP_WINDOW_S
+    for k, ramp in enumerate(ramps):
+        if ramp.kind != "on" or ramp.weave is None or ramp.weave.ramp_to_ramp_share is None:
+            continue
+        share = float(ramp.weave.ramp_to_ramp_share)
+        label = ramp.name or ramp.attach_edge
+        exits = [
+            m for m, r in enumerate(ramps) if r.kind == "off" and r.name == ramp.weave.exit_ramp
+        ]
+        if len(exits) != 1:
+            raise ValueError(
+                f"ramp {label}: weave exit_ramp {ramp.weave.exit_ramp!r} must name exactly one "
+                f"off-ramp (found {len(exits)})"
+            )
+        j = exits[0]
+        exit_label = ramps[j].name
+        entry = pos[ramp.attach_edge]
+        on_base, rr, fr = f"on{k}", f"on{k}_off{j}", f"main_off{j}"
+        passes_bound_elsewhere = {"main"} | {
+            f"main_off{m}"
+            for m, r in enumerate(ramps)
+            if r.kind == "off" and m != j and pos[r.attach_edge] >= entry
+        }
+        entrants: dict[int, list[int]] = {}
+        mainline: dict[int, list[int]] = {}
+        for i, t in enumerate(departs):
+            w = int(t // window)
+            if origin_idx[i] == k:
+                entrants.setdefault(w, []).append(i)
+            elif origin_idx[i] < 0:
+                mainline.setdefault(w, []).append(i)
+        n_before = sum(route_list[i] == rr for ws in entrants.values() for i in ws)
+        n_exit = sum(
+            route_list[i] in (rr, fr) for ws in (*entrants.values(), *mainline.values()) for i in ws
+        )
+        n_cum, target_cum, to_exit, from_exit = 0, 0, 0, 0
+        for w in sorted(entrants):
+            ent, main = entrants[w], mainline.get(w, [])
+            n_cum += len(ent)
+            target_prev, target_cum = target_cum, math.floor(share * n_cum + 0.5)
+            target = target_cum - target_prev
+            have = [i for i in ent if route_list[i] == rr]
+            to_exit_main = [i for i in main if route_list[i] == fr]
+            t0, t1 = w * window, (w + 1) * window
+            exit_volume = len(have) + len(to_exit_main)
+            if target > exit_volume:
+                raise ValueError(
+                    f"ramp {label}: ramp_to_ramp_share {share:g} asks {target} of the "
+                    f"{len(ent)} entrants departing in [{t0:g}, {t1:g}) s to take "
+                    f"{exit_label!r}, but only {exit_volume} vehicles departing then are "
+                    "bound for it: the exit's volume must be at least the ramp-to-ramp "
+                    f"volume (largest feasible share in this window "
+                    f"{exit_volume / len(ent):.3f})"
+                )
+            need = target - len(have)
+            if need > 0:
+                elsewhere = [i for i in ent if route_list[i] != rr]
+                pairs = zip(
+                    _spread_pick(elsewhere, need), _spread_pick(to_exit_main, need), strict=True
+                )
+                for e, m in pairs:
+                    route_list[m] = "main" + route_list[e][len(on_base) :]
+                    route_list[e] = rr
+                to_exit += need
+            elif need < 0:
+                through = [i for i in main if route_list[i] in passes_bound_elsewhere]
+                if len(through) < -need:
+                    raise ValueError(
+                        f"ramp {label}: ramp_to_ramp_share {share:g} needs {-need} mainline "
+                        f"vehicles departing in [{t0:g}, {t1:g}) s that pass the weave bound "
+                        f"elsewhere to take {exit_label!r}, but only {len(through)} depart then"
+                    )
+                pairs = zip(_spread_pick(have, -need), _spread_pick(through, -need), strict=True)
+                for e, m in pairs:
+                    route_list[e] = on_base + route_list[m][len("main") :]
+                    route_list[m] = fr
+                from_exit -= need
+        n_entrants = n_cum
+        n_after = sum(route_list[i] == rr for ws in entrants.values() for i in ws)
+        records.append(
+            {
+                "ramp": label,
+                "exit_ramp": exit_label,
+                "share": share,
+                "window_s": window,
+                "n_entrants": n_entrants,
+                "n_ramp_to_ramp_drawn": n_before,
+                "share_drawn": n_before / n_entrants if n_entrants else None,
+                "n_ramp_to_ramp": n_after,
+                "share_realized": n_after / n_entrants if n_entrants else None,
+                "n_swapped_to_exit": to_exit,
+                "n_swapped_from_exit": from_exit,
+                "n_exit": n_exit,
+            }
+        )
+    return tuple(records)
+
+
 def build_corridor_plan(
     inflow: list[tuple[float, float]],
     duration_s: float,
@@ -809,6 +969,7 @@ def build_corridor_plan(
         )
 
     routes: tuple[str, ...] = ()
+    ramp_to_ramp: tuple[dict[str, Any], ...] = ()
     if ramps:
         pos = {e: i for i, e in enumerate(corridor_edges)}
         for ramp in ramps:
@@ -830,6 +991,7 @@ def build_corridor_plan(
                     chosen = f"_off{j}"
                     break
             route_list.append(base + chosen)
+        ramp_to_ramp = _apply_ramp_to_ramp_shares(route_list, departs, origin_idx, ramps, pos)
         routes = tuple(route_list)
     return FleetPlan(
         params=tuple(params),
@@ -843,6 +1005,7 @@ def build_corridor_plan(
         heavy_lane_shares=heavy_lane_shares,
         is_hov=tuple(hov_flags),
         speed_factor=draw_speed_factors(fleet, heavy_flags, n, rng),
+        ramp_to_ramp=ramp_to_ramp,
     )
 
 

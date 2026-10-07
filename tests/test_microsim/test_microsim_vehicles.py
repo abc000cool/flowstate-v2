@@ -408,6 +408,150 @@ class TestRampPlans:
             write_corridor_routes(self.CORRIDOR, bad, "IDM", 0.5, tmp_path / "bad.rou.xml")
 
 
+class TestRampToRampShare:
+    """``WeaveSpec.ramp_to_ramp_share`` (2026-10-07, docs/TH52_CROSSING_SHARE.md):
+    the plan builder swaps destinations so the weave entrance's realized share
+    is the one asked, every leg's and every exit's volume unchanged."""
+
+    CORRIDOR = ("e0", "e1", "e2", "e3")
+    DURATION_S = 1200.0
+
+    def _ramps(self, share=None, *, weave=True, exit_fraction=((0.0, 0.3), (600.0, 0.25))):
+        from flowstate_core.config import RampSpec, WeaveSpec
+
+        entrance = {"kind": "on", "edges": ["on_a"], "attach_edge": "e1", "name": "A"}
+        entrance["inflow"] = [(0.0, 0.25), (300.0, 0.35)]
+        if weave:
+            entrance["merge"] = "weave"
+            entrance["weave"] = WeaveSpec(exit_ramp="B", ramp_to_ramp_share=share)
+        return [
+            RampSpec(kind="off", edges=["off_d"], attach_edge="e0", exit_fraction=[(0.0, 0.1)]),
+            RampSpec(**entrance),
+            RampSpec(
+                kind="off",
+                edges=["off_b"],
+                attach_edge="e1",
+                exit_fraction=list(exit_fraction),
+                name="B",
+            ),
+            RampSpec(
+                kind="off", edges=["off_c"], attach_edge="e2", exit_fraction=[(0.0, 0.1)], name="C"
+            ),
+        ]
+
+    def _plan(self, ramps, seed=SEED):
+        return build_corridor_plan(
+            [(0.0, 0.8), (600.0, 1.0)],
+            self.DURATION_S,
+            FleetSpec(),
+            AVSpec(penetration=0.05),
+            make_rng(seed),
+            ramps=ramps,
+            corridor_edges=self.CORRIDOR,
+        )
+
+    @staticmethod
+    def _legs(plan):
+        """Per 300-s window of departure: vehicles by origin and by destination."""
+        import collections
+
+        out = collections.Counter()
+        for i, rid in enumerate(plan.route):
+            w = int(plan.depart_s[i] // 300.0)
+            origin, _, dest = rid.partition("_")
+            out[(w, "origin", origin)] += 1
+            out[(w, "dest", dest or "end")] += 1
+        return out
+
+    def test_unset_plan_and_route_file_are_byte_identical(self, tmp_path):
+        """Unset, the builder never touches the routes: the plan (and its route
+        file) is the one of the same ramps without any weave block — the plan
+        every weave scenario had before the key existed."""
+        from microsim.vehicles import ramp_routes
+
+        unset, plain = self._plan(self._ramps(None)), self._plan(self._ramps(weave=False))
+        assert unset == plain and unset.ramp_to_ramp == ()
+        files = [
+            write_corridor_routes(
+                self.CORRIDOR,
+                p,
+                "IDM",
+                0.5,
+                tmp_path / f"{tag}.rou.xml",
+                lanes=3,
+                routes=ramp_routes(self.CORRIDOR, r),
+            ).read_bytes()
+            for tag, p, r in (
+                ("unset", unset, self._ramps(None)),
+                ("plain", plain, self._ramps(weave=False)),
+            )
+        ]
+        assert files[0] == files[1]
+
+    @pytest.mark.parametrize("share", [0.0, 0.1, 0.4, 0.5, 0.7])
+    @pytest.mark.parametrize("seed", [SEED, 3])
+    def test_share_realized_and_every_leg_conserved(self, share, seed, tmp_path):
+        from microsim.vehicles import ramp_routes
+
+        base = self._plan(self._ramps(None), seed)
+        plan = self._plan(self._ramps(share), seed)
+        k, j = 1, 2  # the entrance and its paired exit in ramp order
+        entrants = [r for r in plan.route if r.startswith(f"on{k}")]
+        n_rr = sum(r == f"on{k}_off{j}" for r in entrants)
+        # cumulative rounding: within half a vehicle of share x entrants
+        assert abs(n_rr - share * len(entrants)) <= 0.5
+        (rec,) = plan.ramp_to_ramp
+        assert rec["share"] == share and rec["n_entrants"] == len(entrants)
+        assert rec["n_ramp_to_ramp"] == n_rr and rec["share_realized"] == n_rr / len(entrants)
+        drawn = sum(r == f"on{k}_off{j}" for r in base.route)
+        assert rec["n_ramp_to_ramp_drawn"] == drawn
+        assert rec["n_swapped_to_exit"] - rec["n_swapped_from_exit"] == n_rr - drawn
+        # every origin and every destination keeps its volume in every window
+        assert self._legs(plan) == self._legs(base)
+        assert rec["n_exit"] == sum(r in (f"main_off{j}", f"on{k}_off{j}") for r in base.route)
+        # only routes change; no random number was drawn for the swap
+        for field in ("params", "is_av", "complied", "depart_s", "depart_lane", "speed_factor"):
+            assert getattr(plan, field) == getattr(base, field), field
+        # the upstream exit's vehicles never reach the weave and are never swapped
+        up = [i for i, r in enumerate(base.route) if r == "main_off0"]
+        assert all(plan.route[i] == "main_off0" for i in up)
+        # every route is one the network has
+        names = ramp_routes(self.CORRIDOR, self._ramps(share))
+        assert set(plan.route) <= set(names)
+        write_corridor_routes(
+            self.CORRIDOR, plan, "IDM", 0.5, tmp_path / "r.rou.xml", lanes=3, routes=names
+        )
+
+    def test_share_is_met_window_by_window(self):
+        """The swap is per 300-s window of departure, so the share holds in
+        each window and no trip moves across a demand step."""
+        plan = self._plan(self._ramps(0.6))
+        for w in range(4):
+            ent = [
+                r
+                for i, r in enumerate(plan.route)
+                if r.startswith("on1") and int(plan.depart_s[i] // 300.0) == w
+            ]
+            assert abs(sum(r == "on1_off2" for r in ent) / len(ent) - 0.6) <= 1.0 / len(ent)
+
+    def test_infeasible_share_is_refused(self):
+        """The exit's volume must be at least the ramp-to-ramp volume."""
+        ramps = self._ramps(0.9, exit_fraction=((0.0, 0.05),))
+        with pytest.raises(ValueError, match="must be at least the ramp-to-ramp volume"):
+            self._plan(ramps)
+        # ... and the message names the window and the largest feasible share
+        with pytest.raises(ValueError, match=r"departing in \[0, 300\) s.*largest feasible share"):
+            self._plan(ramps)
+        # a share the exit can carry is accepted
+        assert self._plan(self._ramps(0.1, exit_fraction=((0.0, 0.05),))).ramp_to_ramp
+        # every entrant to the exit needs an exit volume of at least the entrance's
+        with pytest.raises(ValueError, match="must be at least the ramp-to-ramp volume"):
+            self._plan(self._ramps(1.0))
+
+    def test_deterministic(self):
+        assert self._plan(self._ramps(0.5)) == self._plan(self._ramps(0.5))
+
+
 class TestLcStrategic:
     """FleetSpec.lc_strategic → vType lcStrategic (docs/CONTRACTS.md §2)."""
 

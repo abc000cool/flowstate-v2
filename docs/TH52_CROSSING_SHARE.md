@@ -10,7 +10,9 @@ what the model should do with it.
 
 Nothing was simulated. No code, scenario, fixture, test or golden was changed,
 and nothing was committed. The only computation was a reading of the corridor's
-committed 5-minute detector table (§4), run in session scratch.
+committed 5-minute detector table (§4), run in session scratch. *(§10, added
+later the same day, records the default-off key that §6 asked for and the
+fixture sensitivity run with it.)*
 
 Labels:
 - **[published]**: a figure or statement from the linked public source.
@@ -383,6 +385,9 @@ leg volumes, so the mapping is approximate):
 
 ## 7. The cheapest test
 
+*(Superseded later the same day: the package key and the selfcheck's
+`--ramp-to-ramp-share` now do this, §10.)*
+
 **What exists.**
 - `scripts/merge_model_selfcheck.py` cannot vary the share:
   - `th52` runs the fixture's proportional split;
@@ -500,3 +505,220 @@ print(
 The other rows change the `tod` window, `k` (1 or 3) and `fe`. The
 calibration-days row adds
 `ff.day.isin({"20260902", "20260903", "20260908", "20260915", "20260916"})`.
+
+## 10. The key and the fixture sensitivity (2026-10-07, later)
+
+§6 asked for a default-off key in the plan builder, and §7 for a sensitivity
+of the section test to the share. Both now exist. This is a **sensitivity,
+not a calibration**: it shows how much the locked test's verdict depends on
+an unmeasured input. No share is chosen from it, and the model's split is
+unchanged.
+
+Labels as above, plus **[run]**: a run made for this section. The per-seed
+rows are in `artifacts/th52_crossing_share_2026-10-07/th52_<arm>.json`, the
+summary in `summary.json` there.
+
+### 10.0 In plain English
+
+- **The key.** `WeaveSpec.ramp_to_ramp_share` sets the share of a weave
+  entrance's vehicles that take the paired exit.
+  - Its volume is unchanged: the plan swaps destinations between entrants and
+    mainline vehicles bound for the exit. So does the volume of every other
+    leg; only who crosses changes.
+  - Unset, nothing changes: 37 fixture and golden runs are byte-identical to
+    HEAD, and the 38 committed scenarios hash and dump the same.
+- **The T.H.52 section test** (calibrated I-94 drivers, seeds 3–22) across the
+  bounded range [proportional, 0.70]:
+  - **Flow (GEH < 5)** passes at 1 of 20 seeds at the proportional split
+    (realized 0.295 on average), 9 of 20 at 0.40, and 20 of 20 from 0.50 up.
+  - **Station speed** (above 20 m/s in every 5-minute window) is the binding
+    criterion: 0, 0, 1, 2 and 6 of 20.
+  - **So the locked test passes** at 0, 0, 1, 2 and 6 of 20 seeds.
+  - No collision, no lock, and given-up exits at or below the reference at
+    every share.
+- **Reading.** Inside the range this note bounded, the flow verdict flips
+  between 0.40 and 0.50. The test's full verdict fails at every share. The
+  T.H.52 result therefore cannot be read as a merge-model finding until the
+  share is measured, and it does not pass at any share in the range.
+
+### 10.1 What was implemented
+
+- **Config** (`flowstate_core.config.WeaveSpec.ramp_to_ramp_share`).
+  - `float | None`, default `None`, validated to [0, 1].
+  - Absent from `model_dump` when unset (Pydantic's `exclude_if`). So it is
+    absent from the config hash, from YAML and from `meta.json["config"]`.
+  - A demand input, not a merge parameter: allowed with `merge: weave` and
+    `merge: measured`. No committed scenario sets it.
+- **Plan** (`microsim.vehicles.build_corridor_plan` →
+  `_apply_ramp_to_ramp_shares`), after the exit draws:
+  - Per 300-s window of departure, the entrance's ramp-to-ramp count is set to
+    the cumulative rounding of s × entrants, so the run's realized share is
+    within half a vehicle of s.
+  - Short of it, an entrant bound elsewhere and a corridor-entry vehicle bound
+    for the exit, both departing in that window, swap destinations (§7's
+    swap). Pairs are spread evenly in departure order. Above it, the mirror.
+  - No random number is drawn. Every other draw of the seed (departures,
+    lanes, parameters, AV tags, speed factors) is the unset plan's, so arms
+    pair seed by seed on everything but who crosses.
+  - **Refused:** a window whose exit volume is below the ramp-to-ramp volume
+    asked for. The `ValueError` names the window and its largest feasible
+    share.
+- **Records.** `meta.json["ramp_to_ramp_shares"]`, written only when set: the
+  share, the share drawn before the swap, the share realized, the swap counts
+  and the exit's count. `FleetPlan.ramp_to_ramp` carries the same.
+- **Script.** `merge_model_selfcheck.py th52 --ramp-to-ramp-share S`. Its rows
+  gain `ramp_to_ramp`, and at every share `run_summary`'s `lock` and
+  `lowest_zone_minute_ms`.
+- **Tests.**
+  - `TestRampToRampShare` (`tests/test_microsim/test_microsim_vehicles.py`):
+    - unset gives the plan and route file of the same ramps without a weave
+      block, byte for byte;
+    - at 0.0–0.7 and two seeds, the realized share is within half a vehicle,
+      every origin and destination keeps its count in every window, and
+      nothing but routes changes;
+    - the share holds window by window;
+    - infeasible shares are refused.
+  - `test_ramp_to_ramp_share_is_hash_neutral_until_it_is_set`
+    (`tests/test_flowstate_core/test_config_hash.py`).
+  - `TestRampToRampShareRun`
+    (`tests/test_microsim/test_microsim_merge_managed_meter.py`): SUMO on the
+    T.H.52 fixture, seed 4. At 0.5 the record matches the route file and
+    every leg's count; unset writes no record.
+- **Contract note:** docs/CONTRACTS.md, "Weave ramp-to-ramp share".
+
+### 10.2 Unset is byte-identical [run]
+
+- **Method.** The W1 method (docs/WEAVE_LOSS_DIAGNOSIS.md §8.2).
+  - Two `git archive HEAD` trees (`9bd17ff`), the second with only
+    `config.py`, `vehicles.py`, `runner.py` and `merge_model_selfcheck.py`
+    copied in.
+  - The 37 cases of W1's `harness/cmp.py`: the 12 micro goldens, the
+    T.H.52, Ruth St, McKnight Rd and T.H.61 fixtures, the T.H.52 section with
+    the calibrated drivers at seeds 3–5, and the measured model on three
+    fixtures. Case configs come from the HEAD tree in both legs.
+  - Compared per run: every Parquet file's sha256, the whole `meta.json`
+    (config dump included; wall time removed), `compute_metrics` and the
+    config hash.
+- **Result.**
+  - **37 of 37 identical**, 19 of them weave runs
+    (`identity/identity_head.json`, `identity/identity_change.json`).
+  - **The 38 committed scenarios** have the same config hash and the same full
+    `model_dump` in both trees, and `WEAVE_DEFAULTS` is unchanged
+    (`identity/scen_*.json`, `identity/hashes2.py`).
+  - **Goldens:** `pytest -m "not slow" tests/test_microsim
+    tests/test_flowstate_core` passes (756 passed, 13 xfailed, 2 xpassed; the
+    xfails and xpasses are the existing non-strict marks).
+
+### 10.3 The sensitivity [run]
+
+**Command.** `merge_model_selfcheck.py th52 --model weave --fleet-from
+scenarios/mndot_i94_wb_stpaul_weave_dc.yaml --seeds 3-22`, without the key
+and with `--ramp-to-ramp-share` 0.4, 0.5, 0.6 and 0.7. That is 100 runs, about
+2 s each on macOS, two at a time.
+
+**Readouts.**
+- The section test's criteria (`th52_criteria`).
+- Locks are `run_summary`'s flag.
+- Paired t-intervals against the unset arm at the same seed, 19 degrees of
+  freedom.
+- Planned crossers per hour = (entrants bound past the exit + corridor-entry
+  vehicles bound for it) × 3; same seeds in every arm.
+
+| share | realized (mean) | planned crossers, veh/h | exit-end flow, veh/h (mean ± sd) | vs proportional, paired [95 %] | GEH < 5 | station speed > 20 m/s | lowest station speed, m/s (mean) | collisions | exits given up | locks | all criteria (locked test) |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| proportional (unset) | 0.295 | 1,916 | 4,361 ± 83 | — | 1 / 20 | 0 / 20 | 17.07 | 0 | 66 of 8,334 | 0 | 0 / 20 |
+| 0.40 | 0.400 | 1,657 | 4,527 ± 106 | +166 [+113, +220] | 9 / 20 | 0 / 20 | 17.85 | 0 | 42 of 8,557 | 0 | 0 / 20 |
+| 0.50 | 0.501 | 1,411 | 4,713 ± 87 | +353 [+301, +404] | 20 / 20 | 1 / 20 | 18.37 | 0 | 44 of 8,901 | 0 | 1 / 20 |
+| 0.60 | 0.600 | 1,171 | 4,791 ± 66 | +430 [+389, +472] | 20 / 20 | 2 / 20 | 18.77 | 0 | 46 of 9,075 | 0 | 2 / 20 |
+| 0.70 | 0.700 | 925 | 4,819 ± 34 | +458 [+417, +499] | 20 / 20 | 6 / 20 | 18.93 | 0 | 36 of 9,155 | 0 | 6 / 20 |
+
+The observed inflow is 4,877 veh/h. The realized proportional share runs from
+0.26 to 0.35 across seeds. The set shares are exact at every seed (204 of 407
+entrants at 0.50).
+
+**Other criteria.**
+- **Demand departs (i):** 11 of 20 seeds at proportional, 18 at 0.40, and 20
+  from 0.50 up. Entrance departures are 95.1 %, 98.3 % and then 100 %.
+- **Give-ups (iv):** pass at every seed of every arm.
+- **−9 m/s² vehicle-steps:** 2 at proportional, 0 elsewhere.
+- **The lowest one-minute zone speed:** at least 5.8 m/s in every run.
+
+**The reference reproduces.** The unset arm matches W1's reference
+(docs/WEAVE_LOSS_DIAGNOSIS.md §8.3) field for field: 4,361 ± 83, GEH 1/20,
+all criteria 0/20, 66 of 8,334 given up, 2 hard-brake steps, lowest station
+speed 17.07 m/s.
+
+### 10.4 Reading
+
+- **The flow verdict flips inside the bounded range.** Between 0.40 and 0.50
+  the share moves GEH < 5 from 9 of 20 to 20 of 20 seeds. At 0.70 the section
+  carries 4,819 veh/h: 458 of the 465 veh/h the diagnosis lost to crossing
+  (the ceiling with nothing to cross carries 4,826, docs/WEAVE_LOSS_DIAGNOSIS.md
+  §3.11). The flow loss is a function of an unmeasured input.
+- **The locked test fails at every share in the range.** Station speed lags
+  flow, as D1 showed. At 0.70 the station-speed criterion passes at 6 of 20
+  seeds; the mean lowest window is 18.9 m/s against 20.
+  - The ceiling passes all criteria at 20 of 20.
+  - So 925 crossers an hour still slow the exit end below the free-flow bound
+    at most seeds.
+  - Nothing here says whether that is a model defect or what the real road
+    does at that crossing volume. At 05:30–05:50 the real road ran S97 at
+    26.8–27.4 m/s.
+- **Against D1.** At about the same crossing volume the swap passes all
+  criteria more often than D1's relocation:
+  - 925 crossers per hour at 0.70: 6 of 20;
+  - D1 at p = 0.5, about 950: 1 of 20.
+  D1 also moved about p · 177 veh/h from the mainline onto the ramp, which
+  the swap does not. The §5 mapping of D1's p to a share was approximate, as
+  stated there. The swap's figures replace it.
+- **Safety.** No collision at any share, and fewer given-up exits than the
+  reference at every share. Varying the share does not trade safety for flow.
+- **What this does not show.**
+  - The peak hour. Its proportional share is 0.18 and the same shares remove
+    more crossers (§5).
+  - The corridor. There the key's single share would be refused in the
+    07:30–08:05 windows (§5's clipping). The proposed amendment's per-window
+    form is not built.
+  - Whether the real share is anywhere in this range. That is §6.3's open
+    question, unchanged.
+
+### 10.5 What follows from it
+
+1. **Do not adopt any share as calibration.** The proportional split stays
+   the model's documented assumption (§6.1). The result above is the reason
+   §6.2 asked for the share to be carried as an uncertain input: the flow
+   verdict depends on it.
+2. **docs/FRISCO_PROTOCOL.md Amendment 3** is drafted there as **PROPOSED,
+   not adopted**. It covers:
+   - the share carried in §8.5 over [proportional, 0.70], sampled as
+     s_w = P_w + u · (0.70 − P_w) per window with the clip;
+   - the gate judged at u = 0;
+   - the routes to calibration: MnDOT's study report, a pre-registered
+     count-based estimate, or a video count.
+   Adoption needs the per-window form of the key and an uncertainty kind.
+   Neither was built here: the kind touches `validation.uncertainty`'s
+   default space and `scripts/uncertainty_runs.py`, which another session is
+   editing.
+3. **The cheapest decisive step is still the measurement** (§6.3): request
+   MnDOT's report (E1) or count the gore. Until then, the T.H.52 result is
+   reported conditional on the share.
+
+### 10.6 Reproduce
+
+From the repository root (about 4 minutes, two arms at a time):
+
+```sh
+A=artifacts/th52_crossing_share_2026-10-07
+th52() { uv run --no-sync python scripts/merge_model_selfcheck.py th52 --model weave \
+    --fleet-from scenarios/mndot_i94_wb_stpaul_weave_dc.yaml --seeds 3-22 "$@"; }
+th52 --out $A/th52_prop.json
+for s in 0.4 0.5 0.6 0.7; do
+  th52 --ramp-to-ramp-share $s --out $A/th52_s0${s#0.}0.json
+done
+uv run --no-sync python $A/stats.py $A        # the table of §10.3, summary.json
+```
+
+**Identity.** W1's harness, as in docs/WEAVE_LOSS_DIAGNOSIS.md §8.7. Run
+`harness/cmp.py HEAD_TREE OUT WORK` once per tree, with PYTHONPATH on that
+tree's packages. Then run `$A/identity/hashes2.py OUT` once per tree from the
+repository root.

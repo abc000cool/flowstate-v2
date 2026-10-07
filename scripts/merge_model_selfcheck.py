@@ -53,6 +53,14 @@ block of every run, e.g. ``--weave-set entrant_giveup_m=5`` for amendment W1
 (docs/WEAVE_LOSS_DIAGNOSIS.md §6.2). The runs' config hashes then differ from
 the committed fixtures'; nothing committed is changed.
 
+``th52`` takes ``--ramp-to-ramp-share S`` (either model): ``WeaveSpec.
+ramp_to_ramp_share`` set to ``S`` on every weave block — the share of the
+T.H.52 entrants taking the paired exit, with every leg's volume kept
+(docs/TH52_CROSSING_SHARE.md; a sensitivity input, docs/FRISCO_PROTOCOL.md
+Amendment 3, proposed). Its rows gain ``ramp_to_ramp`` (the run's
+``meta.json["ramp_to_ramp_shares"]``, ``None`` unset) and, at every share,
+``run_summary``'s ``lock`` flag and ``lowest_zone_minute_ms``.
+
 * ``ceiling`` — the T.H.52 section's ceiling with no crossing needed
   (docs/MERGE_MODEL.md amendment A2.3; WP-76's realization B at p = 1,
   docs/WEAVE_MODEL_PLAN.md, whose session harness was not kept and is
@@ -90,6 +98,8 @@ Run (from the repository root)::
     uv run --no-sync python scripts/merge_model_selfcheck.py th52 --model weave \
         --fleet-from scenarios/mndot_i94_wb_stpaul_weave_dc.yaml --weave-set entrant_giveup_m=5
     uv run --no-sync python scripts/merge_model_selfcheck.py ceiling --seeds 3-12 --speed-factor 1.245
+    uv run --no-sync python scripts/merge_model_selfcheck.py th52 --model weave \
+        --fleet-from scenarios/mndot_i94_wb_stpaul_weave_dc.yaml --ramp-to-ramp-share 0.5
 """
 
 from __future__ import annotations
@@ -196,6 +206,28 @@ def with_weave_params(cfg: Any, overrides: dict[str, float]) -> Any:
     for r in raw["network"]["ramps"]:
         if r.get("kind") == "on" and r.get("merge") == "weave" and r.get("weave") is not None:
             r["weave"]["weave_params"] = {**r["weave"].get("weave_params", {}), **overrides}
+            hit = True
+    return ScenarioConfig.model_validate(raw) if hit else cfg
+
+
+def with_ramp_to_ramp_share(cfg: Any, share: float | None) -> Any:
+    """``cfg`` with ``WeaveSpec.ramp_to_ramp_share`` set to ``share`` on every weave block.
+
+    Validated as any scenario is (a share outside [0, 1] is refused; an
+    infeasible one is refused when the plan is built). ``None``, or a config
+    with no weave block, is returned unchanged.
+    """
+    from flowstate_core.config import ScenarioConfig
+
+    if share is None:
+        return cfg
+    raw = cfg.model_dump(mode="json")
+    if raw["network"].get("kind") != "osm":
+        return cfg
+    hit = False
+    for r in raw["network"]["ramps"]:
+        if r.get("kind") == "on" and r.get("weave") is not None:
+            r["weave"]["ramp_to_ramp_share"] = float(share)
             hit = True
     return ScenarioConfig.model_validate(raw) if hit else cfg
 
@@ -629,6 +661,8 @@ def th52_criteria(paths: Any) -> dict[str, Any]:
         # the entrance's departures
         "entrants_took_exit": [z.get("n_entrant_took_exit"), on["n_departed"]],
         "hard_brake_vehicle_steps": int((df.a <= -EMERGENCY_DECEL_MS2 + 1e-6).sum()),
+        # WeaveSpec.ramp_to_ramp_share's record (None when unset)
+        "ramp_to_ramp": meta.get("ramp_to_ramp_shares"),
     }
     out["criteria"] = {
         "i_departed": main[0] >= 0.95 * main[1] and on["n_departed"] >= 0.95 * on["n_planned"],
@@ -964,6 +998,13 @@ def main(argv: list[str] | None = None) -> None:
                 default=None,
                 help="replace the fixture's fleet block with this scenario's (e.g. a _dc scenario)",
             )
+        if name == "th52":
+            p.add_argument(
+                "--ramp-to-ramp-share",
+                type=float,
+                default=None,
+                help="WeaveSpec.ramp_to_ramp_share on every weave block (a sensitivity input)",
+            )
         if name == "grid":
             p.add_argument("--only", default="", help="comma-separated fixture names")
     args = ap.parse_args(argv)
@@ -1036,9 +1077,17 @@ def main(argv: list[str] | None = None) -> None:
                     mmt._th52_corridor_config(seed), args.speed_factor, args.fleet_from
                 )
                 cfg = with_weave_params(to_model(cfg, args.model), weave_set)
+                cfg = with_ramp_to_ramp_share(cfg, args.ramp_to_ramp_share)
                 t0 = time.perf_counter()
                 paths = run_micro(cfg, seed, work / f"th52_{args.model}")
-                row = {**th52_criteria(paths), "wall_s": round(time.perf_counter() - t0, 2)}
+                wall_s = time.perf_counter() - t0
+                summary = run_summary(paths, wall_s)
+                row = {
+                    **th52_criteria(paths),
+                    "lock": summary["lock"],
+                    "lowest_zone_minute_ms": summary["lowest_zone_minute_ms"],
+                    "wall_s": round(wall_s, 2),
+                }
                 rows.append(row)
                 if not args.keep:
                     shutil.rmtree(paths.run_dir, ignore_errors=True)
@@ -1048,6 +1097,7 @@ def main(argv: list[str] | None = None) -> None:
                 "speed_factor": args.speed_factor,
                 "fleet_from": None if args.fleet_from is None else str(args.fleet_from),
                 "weave_set": weave_set,
+                "ramp_to_ramp_share": args.ramp_to_ramp_share,
                 "rows": rows,
             }
         if args.out is not None:

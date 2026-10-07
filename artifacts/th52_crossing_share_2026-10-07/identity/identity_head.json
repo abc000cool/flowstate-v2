@@ -1,0 +1,653 @@
+{
+ "golden:corridor_10km_smoke": {
+  "parquet": {
+   "edges.parquet": "71d828811e782c07edc1f2b7ff88ad04cc73deb55ed38c014430a9d189ec5040",
+   "journeys.parquet": "e718d8b6277089b92af669ce867f18b4bf81cdd92a709995868f42b1320dc707",
+   "trajectories.parquet": "1f0ee8e86f61d3a3b46d3cfb40caf8f05c97843c62d30df464a5dbd9cbb87114",
+   "vehicles.parquet": "d1697222e36bdd940b5644080e0b5d907710623344bf956b2af5e964c132cf34"
+  },
+  "meta_sha": "da21a5d17552fc18dfc9250898542f9042dba765d2a7d70595bf08a7cd3720cb",
+  "metrics_sha": "7e3fda4a08c76fafbe0b836d80ca9c8e54f0d2a710ce842d443dc55bfb325471",
+  "config_hash": "b1cc2fa808a5",
+  "n_collisions": 0,
+  "weave": [],
+  "wall_s": 0.3
+ },
+ "golden:corridor_10km_workzone": {
+  "parquet": {
+   "edges.parquet": "d0652e5752adcd1b850819a2182875dc1f21edb44eca66d952bd860b040426e7",
+   "journeys.parquet": "475e82d487aa1142ea11f437468f22ef4640a11242d0ca4d8e1b0c2d02963acd",
+   "trajectories.parquet": "4acf506bb617cce69a85664a8c52687b38ac2778430bda62d310578b8ebcad50",
+   "vehicles.parquet": "6857fd8894795d4f4e802eaebc263803b29cefef2bb27e7feda106105214489b"
+  },
+  "meta_sha": "d78642ac5be7140b1341ef76086984969f7b887dcb53fe93e5c3e9bbf80c4311",
+  "metrics_sha": "811ad7063c108662ae54c7744a19223890432820a61c98d3131d1060a835d500",
+  "config_hash": "51a5320eaf83",
+  "n_collisions": 0,
+  "weave": [],
+  "wall_s": 1.7
+ },
+ "golden:corridor_boundary_schedule": {
+  "parquet": {
+   "edges.parquet": "a466d2d2105b3bc946bf9f87106d04875d056a2368f73d8629269fc53bd9d416",
+   "journeys.parquet": "66699994d3f53a4b1f0f18bb5dd4119034c3c17c0a8ab16a4b3209e7eb48e1f4",
+   "trajectories.parquet": "05222bf0b1c92998b693269651ad28582e16bd1d6a12767a88b36e7346a85884",
+   "vehicles.parquet": "01fca3054dcedeb7a2cc74dc784658382697543c6dcc6f679253d4c01eb2d495"
+  },
+  "meta_sha": "eb15c2effd12937c10f901fe824fc0e9c92ae6185ea59847181ceaef01f469b6",
+  "metrics_sha": "bb2040748fda4c72dc872a2a56bed8bf28135378b3eeb54b80f781749a2109fc",
+  "config_hash": "8c448d48c2d6",
+  "n_collisions": 0,
+  "weave": [],
+  "wall_s": 0.2
+ },
+ "golden:corridor_workzone_heavy": {
+  "parquet": {
+   "edges.parquet": "7a681dfa863cdcc727bcfef63f56898c719b1933c8f06107b9b46c32ed4ce248",
+   "journeys.parquet": "247191534f9e9739b68bea93fccc7cec1ea947ccdb709da605e2b6eb8e97e182",
+   "trajectories.parquet": "0b1dc048915de61ae2210506c5eac310b10dd16f75b133ed63a8dbe3eda3b232",
+   "vehicles.parquet": "2a67244d8afd6212a42e3165d106499b28b2a13e254e280c6dfb8b5d4837dcec"
+  },
+  "meta_sha": "bdaf7f41a7be552f82069bb795f8d6365d2d55461f87989207683d8e4d240d8d",
+  "metrics_sha": "b866b370bd3c7cd5e8f0a3dac2d00e71c6951b526e8126e6fde83c8bcdf4172c",
+  "config_hash": "7e7dd0df8689",
+  "n_collisions": 0,
+  "weave": [],
+  "wall_s": 0.3
+ },
+ "golden:hov_corridor": {
+  "parquet": {
+   "edges.parquet": "417d2a1771087d4f74e493a52154fe279285aaf21d1eabc46c1918c5d49a385c",
+   "journeys.parquet": "9aa7710f8c8d637af39e914cc2ea5b8e1b11a43ac1242e3f3686f9628825e06b",
+   "trajectories.parquet": "5213cdfa71608f2ad7d51fd98d819fa391f89c2513ff92d91f206a50688e21f0",
+   "vehicles.parquet": "b444a3430c9b31a571d51f647f358ed7a8b6ca0fd5bd096f82fbaf487ad423e9"
+  },
+  "meta_sha": "8dfb0dd2c77bba863bf59e216ae030c6c415469488a3becd9381536c9c093adc",
+  "metrics_sha": "774a23a6ff2b5402dc2115b25b2f172f14061068851b6b101f5b9500f1a22ae4",
+  "config_hash": "df35be0a4d34",
+  "n_collisions": 0,
+  "weave": [],
+  "wall_s": 0.3
+ },
+ "golden:merge_measured": {
+  "parquet": {
+   "edges.parquet": "c3b0d99ae8009660e487a60ef31232412ccf3b02e7d21a8b2ed74e53d09ecd78",
+   "journeys.parquet": "9172eebd1f07324f569f5dc750d2f5511b7bead14caaa572feb93269d2d3456c",
+   "trajectories.parquet": "5888ecf7e4af984c2daf613a0c99a846bdfe78c9b79a0b6e1fe872b4821a3cd1",
+   "vehicles.parquet": "719be8e7488d80ff861e2072b322a8bbe65c13fd4a97dc8c47de69c6950eacf1"
+  },
+  "meta_sha": "d117d9245c48f807d6b8325cec5fc32403508c5121c2cb66a2e804306084c315",
+  "metrics_sha": "2078467dbd9f080369213704c0617a30fe9b0a1dc036d5b1edd8355123b63f7b",
+  "config_hash": "0894d998807c",
+  "n_collisions": 0,
+  "weave": [],
+  "wall_s": 0.2
+ },
+ "golden:merge_measured_accel": {
+  "parquet": {
+   "edges.parquet": "47cf4d4993ba5f5ab163e44285a025bb9a72de72b3e73572f5c94a0800e73f73",
+   "journeys.parquet": "0b2beb0827e5304350ebf255c79edcc1e5e62162ceb1a0f217cd07cacef24b69",
+   "trajectories.parquet": "487a56f00e58680c1cd1be06de0f18fd4a9c57a3a4568e6373e49b396289f7d3",
+   "vehicles.parquet": "388b7a7ff3bcc362f754ed544f8720face5e2a26c3390f00012bcab3b2801386"
+  },
+  "meta_sha": "268f05b0eb98a48eac52e0df444828f4b2d3d8056e0c098b05a594e3f2542e95",
+  "metrics_sha": "036884d8567c67faabecc88c0eb7daa3790fbfb2a4be6bc74d2647dbd21ffd70",
+  "config_hash": "2a475c64d120",
+  "n_collisions": 0,
+  "weave": [],
+  "wall_s": 0.3
+ },
+ "golden:merge_meter_alinea": {
+  "parquet": {
+   "edges.parquet": "89761b15d07c4ff74c294d2210649292a7c33d6dc7be30029bd6ca709d2ba620",
+   "journeys.parquet": "3875a3fbc768918e55cfb2bbd49afeb08f8612bd0a45065921da0033cb62d7b1",
+   "trajectories.parquet": "2047eac4f1895571d68904628e2612551f42164de08ca0eaa524ded503a051da",
+   "vehicles.parquet": "f1cb0f6a9b1852b886a8c11326a6a4f2fa59f7dc040db1a9d24fa79cbd15b4d6"
+  },
+  "meta_sha": "2b00182d52f1984e628529a74bb7be1057e806b6821c8ab55594cdac33a89b49",
+  "metrics_sha": "8cb3fa32d8eedfd3b12e48bec043abeab566c71e88118fee2dbd8eee322f06c9",
+  "config_hash": "c6292dc9fd2c",
+  "n_collisions": 0,
+  "weave": [],
+  "wall_s": 0.3
+ },
+ "golden:merge_scripted": {
+  "parquet": {
+   "edges.parquet": "46261647f6e8e5ac064a0f89e20fb1fe0551806a3cd2e8ab7b763573cb796c7c",
+   "journeys.parquet": "170d3a1664b87ea81747b86edf4b4e258580b2d45a829fd43ed2f10b51611311",
+   "trajectories.parquet": "b287e8857697082635a4703061846e2af331345c771c61b73cf2b5b5d0c006ae",
+   "vehicles.parquet": "03b6b7752b6587e406064699d3d801b3a4b44588b0c317440836df56f8d6eeeb"
+  },
+  "meta_sha": "2e0ec483e8e413a58ee56090ecc7484ffe3d490fd32e95fc0d7d091c3737d5b2",
+  "metrics_sha": "b60e1ace5f2351e91a3a1056fdd2964ebebc4cf801547d29ec2779d2ad48896c",
+  "config_hash": "f262517cb222",
+  "n_collisions": 0,
+  "weave": [],
+  "wall_s": 0.3
+ },
+ "golden:merge_weave": {
+  "parquet": {
+   "edges.parquet": "f1058001baa03578c060cde7e581265f441ae3000c323d9b7162bdddacd8bb5a",
+   "journeys.parquet": "0b9a671a1773855e3074be68d0cbbbb31bf29704ff42e9d1f66b647a449a00df",
+   "trajectories.parquet": "89d19a77eddb012117fec43f8d878d0a3cee85e524cfd177663a3c8981c4ee02",
+   "vehicles.parquet": "710a3e520ecaa74bf37ca7a444ca47a7ec52345de722ce7a30beacba001d77be"
+  },
+  "meta_sha": "282005a3ba2aa2896eeb9d121fb06158dee9345772d8eba7b59bdc27b93b1b04",
+  "metrics_sha": "0502e03d665966787e8ae9edfccb0241ded729299e0a3fb5cc8fcc64da1b985c",
+  "config_hash": "7f18d8f4db38",
+  "n_collisions": 0,
+  "weave": [
+   {
+    "ramp": "weave on-ramp",
+    "n_missed": 0,
+    "n_missed_exit": 0,
+    "n_entrant_took_exit": null
+   }
+  ],
+  "wall_s": 0.2
+ },
+ "golden:merge_zipper": {
+  "parquet": {
+   "edges.parquet": "865b0e8c99f8b48bcd34ad64338427863fe13fab8dd93d800e93a5202ce26777",
+   "journeys.parquet": "9c6e5153710aa922bbfdcdb04afe00b9780fac765c5ab953d2ba11970c240ccd",
+   "trajectories.parquet": "ba22d56a625f2d4d7ac95a803e7c2b426e893dd10bbbbdbc0a7a11e99e444462",
+   "vehicles.parquet": "bd371fba647c57d49fd2f896bd3a5967f7c4e4c6c8ab71a990e939d885e144fb"
+  },
+  "meta_sha": "32c340a3ff5318948a59f896d25b5e02ca2f7d55be63f72663c43d6b7cad12dd",
+  "metrics_sha": "85df0501e5694429fd23146ff4a20a21f527ef048b2cb3edb6c8adc56c21ccaa",
+  "config_hash": "f21a4f04d5bb",
+  "n_collisions": 0,
+  "weave": [],
+  "wall_s": 0.3
+ },
+ "golden:ring_sugiyama": {
+  "parquet": {
+   "edges.parquet": "582a06106a852056ef8de8e22d7b343920999988d5140e51d3e3424bd4b26c8f",
+   "journeys.parquet": "f6d97606cff1e794d24d691ee5c1103b72da9bea6894b47ece1fbdfc2ad39f74",
+   "trajectories.parquet": "0fdc61c0e009f5f838ff4340a4e169b0eafc6045f36d9eef90bb98362aef2c37",
+   "vehicles.parquet": "834de32d94f26fbf372277886a485d8235926584d624e6cd5819fdefb31e036f"
+  },
+  "meta_sha": "059c38863611a0a3761d78224957354521afb281728e669dbc3587955dfa1b4d",
+  "metrics_sha": "706a215e1fb123cd773c46c3df3cade1b2986b92501eead7531edd26b672a6d2",
+  "config_hash": "d5472987265c",
+  "n_collisions": 0,
+  "weave": [],
+  "wall_s": 0.2
+ },
+ "fixture:th52_corridor:s3": {
+  "parquet": {
+   "edges.parquet": "82272c277c4fcf250ada9a69c0476de969282cee34eef16ecb556eaa9b1031d9",
+   "journeys.parquet": "5aa6c8d131173978b4a5f150931972ef8b8d42334aad2ab1b905453222631d1f",
+   "trajectories.parquet": "33a30436347fbb68b16c9d3eb21280aa7ef4a790b1f18f68bd7fee7e852e0f34",
+   "vehicles.parquet": "11c0f75cc63c3ff5fab6c4e9c2b85c0efb1dd9c945533ecbf91bf15c83e5217e"
+  },
+  "meta_sha": "0bcfa4db9f30d9c09707a1705ae8a9f02e1d177dbba87571ae54d9c481137296",
+  "metrics_sha": "e458f922949f1d556a2423daa0fb3f967427b2b3835477fb9a9f128454c66166",
+  "config_hash": "f6cc384c5b65",
+  "n_collisions": 0,
+  "weave": [
+   {
+    "ramp": "th52",
+    "n_missed": 1,
+    "n_missed_exit": 1,
+    "n_entrant_took_exit": null
+   }
+  ],
+  "wall_s": 2.3
+ },
+ "fixture:th52_corridor:s4": {
+  "parquet": {
+   "edges.parquet": "4a05d599ea643fee5276435b438bedcb1a2c7b2efc7b1d66693f76bfb1640562",
+   "journeys.parquet": "ab7d8ed947c5deea744a4294c866d1e0365969dc4904e90ad2bfb466a8c3884a",
+   "trajectories.parquet": "4d70e90b079791a22328944d982a49f65aa569460114153e050fae689ec89389",
+   "vehicles.parquet": "d78ba4fdd62112d6daf2e2ed68aa346895ef4c5351ab3d156afe6c817bb0a254"
+  },
+  "meta_sha": "ed9ec93d298a9c4f96b57af3fa23956381bbe249f0f7175e8abafca6ece18760",
+  "metrics_sha": "b421a6a8e0fedf8ab076736a4b62951d76cfa3c49ebee571f436138d01e942f0",
+  "config_hash": "6bc8b18fc5c4",
+  "n_collisions": 0,
+  "weave": [
+   {
+    "ramp": "th52",
+    "n_missed": 1,
+    "n_missed_exit": 1,
+    "n_entrant_took_exit": null
+   }
+  ],
+  "wall_s": 2.5
+ },
+ "fixture:th52_capacity:s4": {
+  "parquet": {
+   "edges.parquet": "a3b8e7c7bf28bced8369a9e18810524f6da1f1193b91c39f4050cf896cb07e6d",
+   "journeys.parquet": "70394813c5d30543c2094d0865d7fd881f3dc128e4aa4a54aaaf2a01de2c4210",
+   "trajectories.parquet": "fe50ced347b160131d76131bae96fe768815f05e9fecf3a0fc2875a24f39bbbe",
+   "vehicles.parquet": "57aea818a62f6cca69c28ccfff10e75603c3fe0269bf5e6c9b8678e5aa9384be"
+  },
+  "meta_sha": "f2073b056ba8717d0d896721d5073715013d0063fb212a1a12e024533f3f89df",
+  "metrics_sha": "b7d751cf2ae70477edd8b09a3908a495ebc48e4ae1b3da598f2bfbc06912bac3",
+  "config_hash": "3617457d214d",
+  "n_collisions": 0,
+  "weave": [
+   {
+    "ramp": "th52",
+    "n_missed": 1,
+    "n_missed_exit": 1,
+    "n_entrant_took_exit": null
+   }
+  ],
+  "wall_s": 2.2
+ },
+ "fixture:th52_capacity:s5": {
+  "parquet": {
+   "edges.parquet": "7e9976565ea5a8887e35ef21626b92ed614858785f7fdfcf1d6ccdf0f89ccfdb",
+   "journeys.parquet": "82b5be093546cc05bec12c71f5951230b0596ccafb9ddc2b367eb94149ea2ce5",
+   "trajectories.parquet": "a25c9dd51b4029c26f4e082616af8e9b95931a69b0b5dd7aff0d195f5622b48d",
+   "vehicles.parquet": "7181f584cbca9b0a0faf5306a05f78b567923b3d268db2e1a4756062ae5d9975"
+  },
+  "meta_sha": "cd875434b7c3a6fb281db33dec5acdc1b535b63cd55f97e2f0bce845d749aa6d",
+  "metrics_sha": "9570baab0640d64263fa60bd3fbc5d34bb2af7e258c8360969a8bee38ef6b427",
+  "config_hash": "c22184c47bdc",
+  "n_collisions": 0,
+  "weave": [
+   {
+    "ramp": "th52",
+    "n_missed": 1,
+    "n_missed_exit": 1,
+    "n_entrant_took_exit": null
+   }
+  ],
+  "wall_s": 2.3
+ },
+ "fixture:th52_corridor_demand:s3": {
+  "parquet": {
+   "edges.parquet": "713ba94caf5917f92ae035ceb1f45ba7e2c3e18634637acb9a5274e61fe074f6",
+   "journeys.parquet": "b44e836010ba50456dcc203f018b99c8bd8ade4bf0fcf9ca7894b74d6960349c",
+   "trajectories.parquet": "61dfbbe0da505a13d41345ad0047f5dc989036878175b1958447e86309488401",
+   "vehicles.parquet": "5fe5ab2b6c7f3c660df3b213c5616546a057b28efe61878bf70f851ee3daeacd"
+  },
+  "meta_sha": "4b54c0ad5bab798cd1e9bcb44109a4307b65fb3904dba4abb3bb7467c50b7612",
+  "metrics_sha": "ee1cd3251abf1b11907c3f76229e7fcd761d34284814579f94dec564caa81377",
+  "config_hash": "eb415773dd45",
+  "n_collisions": 0,
+  "weave": [
+   {
+    "ramp": "th52",
+    "n_missed": 1,
+    "n_missed_exit": 1,
+    "n_entrant_took_exit": null
+   }
+  ],
+  "wall_s": 2.3
+ },
+ "fixture:th52_upstream:s3": {
+  "parquet": {
+   "edges.parquet": "c8459617124bf04e50fff21c620e82e946edec10b421bdd9fb23a7a49589ddfa",
+   "journeys.parquet": "af7e33a0bfd9a58e4a44fe7a858519ad520ada3724ae9df97d4ab32da1e5c3f4",
+   "trajectories.parquet": "0c08062547e554c7bb8b0a6bf2bef412aabb7e5a3ba28d77925d2ff150acfff4",
+   "vehicles.parquet": "396f5dac7ff2c67681a15967e7cbd9c3e34391c253b1db68717f8d40a2c2bd0d"
+  },
+  "meta_sha": "20cc1fedd2300486a0903a611768a3276ddf828750d3d6b53a37372e05f7ffae",
+  "metrics_sha": "33f90c6e347aabd79a0c18acd01d2b1a699415db9b18d5442c21c02ef762b0e9",
+  "config_hash": "42fe41ba6cc5",
+  "n_collisions": 0,
+  "weave": [
+   {
+    "ramp": "th52",
+    "n_missed": 3,
+    "n_missed_exit": 3,
+    "n_entrant_took_exit": null
+   }
+  ],
+  "wall_s": 3.0
+ },
+ "fixture:th52_upstream_fleet:s3": {
+  "parquet": {
+   "edges.parquet": "4cff20246807d3529c851a67fd2898d6e768fbf32efdc07f2fb8c9dec3c71c47",
+   "journeys.parquet": "3ba6e6b25c0a55357db0d59a64bdde0d66c399873ea2b8db7a1e74a12cec3177",
+   "trajectories.parquet": "b7d3378fc93be556f827929e0da85c7a9aadc2c33ef04e5a5b7f920f6feca01f",
+   "vehicles.parquet": "4593f4ce7aff33f8b57a443b5c1b90307032a614f7ee284ea19a4035f1444dbe"
+  },
+  "meta_sha": "16a7e3fe6fba0cbe4b0263763993bbca3c89e351a963f9ba64ea4bd32708f90a",
+  "metrics_sha": "fe4cd2dd8a2928c22e14e905023668913bb99d416746e702866a5585b202d08e",
+  "config_hash": "331527d2d298",
+  "n_collisions": 0,
+  "weave": [
+   {
+    "ramp": "th52",
+    "n_missed": 4,
+    "n_missed_exit": 4,
+    "n_entrant_took_exit": null
+   }
+  ],
+  "wall_s": 3.5
+ },
+ "fixture:ruth_entr:s3": {
+  "parquet": {
+   "edges.parquet": "3c7df58a87100acb22955c39f6d9361ef873dca37055fa723e4757a1e30c3e5c",
+   "journeys.parquet": "25daa6e96264dcfa2d0acfa9fd47b561a11c4857664b0f65389f3dd30dc00be1",
+   "trajectories.parquet": "99583b9ca7e85c2c5c54bf011d58d85ce80007379223bb217bde00ef1ac1cfe7",
+   "vehicles.parquet": "3ede3511a741592351881c32f0a46982ef35750f6dc6d1fdf9629d8d824b8982"
+  },
+  "meta_sha": "67f53316ab3e38d3de941280bec46e0580b6f9774687a864c33fcceffe72f9ad",
+  "metrics_sha": "77476e07ca1b747afcab95a5a31bb931d22620ca4cfb845428e04498aaf55940",
+  "config_hash": "24fa3c39ecaa",
+  "n_collisions": 0,
+  "weave": [
+   {
+    "ramp": "ruth",
+    "n_missed": 0,
+    "n_missed_exit": 0,
+    "n_entrant_took_exit": null
+   }
+  ],
+  "wall_s": 1.6
+ },
+ "fixture:ruth_exit:s3": {
+  "parquet": {
+   "edges.parquet": "e9d2b8913f793524d6c6d6c52c562c043ea01eb0a1a61e58d20181802cdccb1c",
+   "journeys.parquet": "8589381f3a17fe5e0218629e2d6e61db8773d3ea7567d78ae232c5da937cdebb",
+   "trajectories.parquet": "8542ebf08578f9fc32a288f600b07d97e0ec1aee21dd6a28e6180a44f5bdf702",
+   "vehicles.parquet": "a62555cf8bbbb221e99f245f1d9cdaa6eaa52f6228a7049d63add062b77de4f8"
+  },
+  "meta_sha": "b902d66fbbb9af75dd8499d638de02e17e09a3eaabffd0a851b225d74b08000b",
+  "metrics_sha": "3476e8c519c06da68dcf8ed53e4008140501d21329fe401243c5fcc89fe08d4e",
+  "config_hash": "f1e620eb7267",
+  "n_collisions": 0,
+  "weave": [
+   {
+    "ramp": "ruth",
+    "n_missed": 1,
+    "n_missed_exit": 1,
+    "n_entrant_took_exit": null
+   }
+  ],
+  "wall_s": 0.7
+ },
+ "fixture:ruth_entr_fleet:s3": {
+  "parquet": {
+   "edges.parquet": "a3e764b4cadc9f3bbe7321dfae2e6246e2c2cd3d51b426ce59d2a8ee881a45c4",
+   "journeys.parquet": "1e380b739a759fb1fa67dfaa353e391328ff7fae9c643c459deeb9e31ae95bad",
+   "trajectories.parquet": "7177f80555fb663decf4fc458dd63967bb862ea969d0e0e82cdf58df17b941fb",
+   "vehicles.parquet": "06c8c547dc2ed9f91174d4329805e916f2c130183b5cd3f13336501c50873638"
+  },
+  "meta_sha": "1d53e41e0f85fb60b10a6cea60a447079f07f45c9364a8a3f2f6b239b9ac022e",
+  "metrics_sha": "d9551b61130b2ee8eee8f80ef72ab499c24da1dc2ed51d20f112cd8667f487e1",
+  "config_hash": "944ffa38d7eb",
+  "n_collisions": 0,
+  "weave": [
+   {
+    "ramp": "ruth",
+    "n_missed": 1,
+    "n_missed_exit": 1,
+    "n_entrant_took_exit": null
+   }
+  ],
+  "wall_s": 1.1
+ },
+ "fixture:ruth_exit_fleet:s3": {
+  "parquet": {
+   "edges.parquet": "1157f352c5a48e91e64b97876a3f5e8ab509df4d09ec332f44f8fd9837498d61",
+   "journeys.parquet": "490a3997e331ea8abebe228ebbd763b3a53ae61b474e38c0797082a5a76b8b4c",
+   "trajectories.parquet": "015d425cf0408f708e3b1b25f05ef84dc1dddac30c90f1dba93eee1b4c724c99",
+   "vehicles.parquet": "a1a684f66207032d495be265064c73721a964c35bb80c700aa742f6d9b9c0295"
+  },
+  "meta_sha": "25ffdb9ac565663f883fcbffe004bbf2344b082b4aff426350e33e01d4b88b83",
+  "metrics_sha": "e85f697d2632235d4cdc78c71dee949765c89286ab96090bf26d0dba8cdc277e",
+  "config_hash": "b240333bebf7",
+  "n_collisions": 0,
+  "weave": [
+   {
+    "ramp": "ruth",
+    "n_missed": 12,
+    "n_missed_exit": 12,
+    "n_entrant_took_exit": null
+   }
+  ],
+  "wall_s": 0.8
+ },
+ "fixture:ruth_exit_fleet_271:s3": {
+  "parquet": {
+   "edges.parquet": "e136f1999bf6a9e9ec6e8957ab82a7db5f8142e0bed6bf5ef5b481e80b58eceb",
+   "journeys.parquet": "7e9886bb1c35ce6f0d6be57b987c456b00e7bebc2de31d793c68086fb42cc179",
+   "trajectories.parquet": "579a26fe27db823bffbb78178b8f089dd4df7fc71a0dfe5f2bf7bfa363009b48",
+   "vehicles.parquet": "7efb919f2ceb2ba896fdb16892cf9726638595f1bffab806f3f33c901b53bb94"
+  },
+  "meta_sha": "ae62a86950bd6b4bb04a68b255f8587c36b61f48aeeb6860739c0b4a24e4a2e4",
+  "metrics_sha": "7cc90c902855d93a4d6eee19ee7a93537dbb8df806d17aab853a7e7725046ba7",
+  "config_hash": "705cc7a3dead",
+  "n_collisions": 0,
+  "weave": [
+   {
+    "ramp": "ruth",
+    "n_missed": 7,
+    "n_missed_exit": 7,
+    "n_entrant_took_exit": null
+   }
+  ],
+  "wall_s": 0.8
+ },
+ "fixture:weave_moderate:s3": {
+  "parquet": {
+   "edges.parquet": "80e6dd6d3b07cfb45a5df19175f9986099bdb0787a75e637ca4bdbed30dc9b8d",
+   "journeys.parquet": "73a1937e294e1e3a61a1bc98c432267eae39f53e460fa873df24c5a67cb0c894",
+   "trajectories.parquet": "74db31e31081ead25028e3b818e6e4c86a3c09dd25c601fba8c2ac3694c881f4",
+   "vehicles.parquet": "4c3529be2b1cbb9de1f9240d755a06d81aafa1257cd906820fb50f98469c2cb0"
+  },
+  "meta_sha": "d3da77a2e2144ba522036f72eafa34fd0c05edccf1d5cebbb3a110a9b8be679d",
+  "metrics_sha": "7640b076e302a659bbfaf9872191efaa7bad16d7a52bfb82bba307dbe7adb7e7",
+  "config_hash": "9367a5e582a5",
+  "n_collisions": 0,
+  "weave": [
+   {
+    "ramp": "weave on-ramp",
+    "n_missed": 0,
+    "n_missed_exit": 0,
+    "n_entrant_took_exit": null
+   }
+  ],
+  "wall_s": 0.2
+ },
+ "fixture:weave_golden:s3": {
+  "parquet": {
+   "edges.parquet": "f1058001baa03578c060cde7e581265f441ae3000c323d9b7162bdddacd8bb5a",
+   "journeys.parquet": "0b9a671a1773855e3074be68d0cbbbb31bf29704ff42e9d1f66b647a449a00df",
+   "trajectories.parquet": "89d19a77eddb012117fec43f8d878d0a3cee85e524cfd177663a3c8981c4ee02",
+   "vehicles.parquet": "710a3e520ecaa74bf37ca7a444ca47a7ec52345de722ce7a30beacba001d77be"
+  },
+  "meta_sha": "282005a3ba2aa2896eeb9d121fb06158dee9345772d8eba7b59bdc27b93b1b04",
+  "metrics_sha": "0502e03d665966787e8ae9edfccb0241ded729299e0a3fb5cc8fcc64da1b985c",
+  "config_hash": "7f18d8f4db38",
+  "n_collisions": 0,
+  "weave": [
+   {
+    "ramp": "weave on-ramp",
+    "n_missed": 0,
+    "n_missed_exit": 0,
+    "n_entrant_took_exit": null
+   }
+  ],
+  "wall_s": 0.2
+ },
+ "fixture:mcknight:s3": {
+  "parquet": {
+   "edges.parquet": "4da9e979e63909e5faea42a48b0010986c5c01391f01dabd38e57e61ce2b5950",
+   "journeys.parquet": "20be20fc921697012c8c94f50a83d962570a4b6a95c29ab7c466fe08c79a18f8",
+   "trajectories.parquet": "d9553f3f91adf951d96af35c01838e87e808ae17c6a0ed401890799438f97ff5",
+   "vehicles.parquet": "4fd6093483794a62dc54cc8ef36c124213d3e234ef1897331941e3920ed11507"
+  },
+  "meta_sha": "331229fe3b2b818710e5ffd4d0c4ebedae28cce916485ec2ea08da80e32617b2",
+  "metrics_sha": "db86c997ea67307f5674a52d1b2027a8958865703ffd8c51f63e217ab77207ce",
+  "config_hash": "0c2ff01aa627",
+  "n_collisions": 0,
+  "weave": [],
+  "wall_s": 1.3
+ },
+ "fixture:mcknight:s4": {
+  "parquet": {
+   "edges.parquet": "542ad5e35786fda6fd85b120a6486f08a923f46ecb4f8e032d5ef1d5596d956a",
+   "journeys.parquet": "ef791c402bdcd741d2fc2da9400cfb9a28235aba9f3cdd20fdc9e25903c3defc",
+   "trajectories.parquet": "49f867c1b3a7b2c813c9c4a8217edfc9b9190eabb7be9b74a3a4dd871271fa03",
+   "vehicles.parquet": "2e70ff1d0a4dc80b09a041f0a59dd0f53d96d52df10bedfdc333b24ddd5a3247"
+  },
+  "meta_sha": "e51ddc09726b9e41de593fa04d1c6e494be63123f0f43c10e1fc4763cae51ac3",
+  "metrics_sha": "0b318173ca3a90fb3932e055d4b86d48c5fd373838b7b99b430eccc5d9eb2d8e",
+  "config_hash": "a0d4ccfb16d7",
+  "n_collisions": 0,
+  "weave": [],
+  "wall_s": 1.3
+ },
+ "fixture:mcknight:s5": {
+  "parquet": {
+   "edges.parquet": "ddd2b4d1350a1eb05d2a304f9ae957f3defb9805dc55953e3255425ff1961c8d",
+   "journeys.parquet": "89f90c9f2fa9507574ea725a3e76fd6864246f5357bdf27868634d57b3432002",
+   "trajectories.parquet": "2dd9663e8657bc20ef91f6487c589ece66774179946def1accec26c51cc61a4d",
+   "vehicles.parquet": "a95186d6931c1e47f892c976d2d5d1b442a5e5458816b61bdaae4b40d124cbf5"
+  },
+  "meta_sha": "df823dfaf5160f010302c5462b08e664757e938bdd1d40267072b6a5663180de",
+  "metrics_sha": "277186600a80048a4af53e74693a6582ff85204722855f04a0e2c976778946c2",
+  "config_hash": "831d7a15a216",
+  "n_collisions": 0,
+  "weave": [],
+  "wall_s": 1.3
+ },
+ "fixture:th61:s3": {
+  "parquet": {
+   "edges.parquet": "71bb505f2958c03f08426e3ee430c28f38c9d89fecc9b59ef00395e65bb1f9b0",
+   "journeys.parquet": "e84f52dcfa549a2d0e4f415a6d144dab4c1b0a911e101dfb459e673380105948",
+   "trajectories.parquet": "37f4c7add63d82abfcb035ae876fba375daacfcaae2aad045551ae8fb61898a4",
+   "vehicles.parquet": "6b9e5c2015f54452851ac72fc3f3f032f8f010e64c10f3f295a7759c55837eb5"
+  },
+  "meta_sha": "e1df97b38c62406424702baab1506e7695528430abee7bf66d592bed1eda9d06",
+  "metrics_sha": "8bd8120703fc78961bc08192b087e7d0ee3ec1e1c1578d282fcd3eb723a56e7e",
+  "config_hash": "5bed6ed54b35",
+  "n_collisions": 0,
+  "weave": [
+   {
+    "ramp": "th61",
+    "n_missed": 5,
+    "n_missed_exit": 5,
+    "n_entrant_took_exit": null
+   }
+  ],
+  "wall_s": 12.5
+ },
+ "fixture:merge_golden:s3": {
+  "parquet": {
+   "edges.parquet": "46261647f6e8e5ac064a0f89e20fb1fe0551806a3cd2e8ab7b763573cb796c7c",
+   "journeys.parquet": "170d3a1664b87ea81747b86edf4b4e258580b2d45a829fd43ed2f10b51611311",
+   "trajectories.parquet": "b287e8857697082635a4703061846e2af331345c771c61b73cf2b5b5d0c006ae",
+   "vehicles.parquet": "03b6b7752b6587e406064699d3d801b3a4b44588b0c317440836df56f8d6eeeb"
+  },
+  "meta_sha": "2e0ec483e8e413a58ee56090ecc7484ffe3d490fd32e95fc0d7d091c3737d5b2",
+  "metrics_sha": "b60e1ace5f2351e91a3a1056fdd2964ebebc4cf801547d29ec2779d2ad48896c",
+  "config_hash": "f262517cb222",
+  "n_collisions": 0,
+  "weave": [],
+  "wall_s": 0.4
+ },
+ "th52_dc:s3": {
+  "parquet": {
+   "edges.parquet": "defb2a2e70af538810548a85160948c1d9da0988caa347ac4d978a1a34651698",
+   "journeys.parquet": "3d0ec7e152b0ad803046b7f6213cc429775fd5adc2f8c3a13e172374b26c07d9",
+   "trajectories.parquet": "053343d2232fd03e875dc287a02ce866684d2473c87eb514a311c2425b31c296",
+   "vehicles.parquet": "3a634c48ddc0bedc7183e402140f7cb9e5d258825cb1ad03f2226b460e9e52c5"
+  },
+  "meta_sha": "6d22956feb12b387cd7239c9aa37c1175a47cf7f40b9128d25107936430901cc",
+  "metrics_sha": "8189b3ea0170c42bf9f56ae84396545aa8ef7fcff2d3f077e8473b25da6477f3",
+  "config_hash": "d2f5f3cde59e",
+  "n_collisions": 0,
+  "weave": [
+   {
+    "ramp": "th52",
+    "n_missed": 3,
+    "n_missed_exit": 3,
+    "n_entrant_took_exit": null
+   }
+  ],
+  "wall_s": 2.1
+ },
+ "th52_dc:s4": {
+  "parquet": {
+   "edges.parquet": "5337208b87c7fd69ccfb13fc4f65874217d42332af864ef2c997def840b6f763",
+   "journeys.parquet": "ffa2593619b952ca91e8d767b480b92667f1ee6a21a6a8073d5cff734c3aba6d",
+   "trajectories.parquet": "a158c7a6598110e437148f7c5670ccd250e28173b5372b80c21c9a573d3503e9",
+   "vehicles.parquet": "2825aeafc3d6f46a77cdb08d6034729773c014aa75c07c164023679208a07505"
+  },
+  "meta_sha": "a4e2192f73cb3834a6870222467fd34f7f40845e61e5e039a223c8e0896fe166",
+  "metrics_sha": "3e573e410b7de837e7f6f700a2995815958c8dbbc442b99849fabd2fdaf0d928",
+  "config_hash": "ebf93e2b094a",
+  "n_collisions": 0,
+  "weave": [
+   {
+    "ramp": "th52",
+    "n_missed": 5,
+    "n_missed_exit": 5,
+    "n_entrant_took_exit": null
+   }
+  ],
+  "wall_s": 2.5
+ },
+ "th52_dc:s5": {
+  "parquet": {
+   "edges.parquet": "9efc892c410522808f8b8346397b757064bcc9d55231f1246e5475d478685eda",
+   "journeys.parquet": "f2aedfac8ac16c1ba7af2f6818c1e2d572aa7ce441972a668c4253ed52af36b2",
+   "trajectories.parquet": "d0d93957f58ae11829b733141b9afcffe6137d0d31ffe269326f8c8c76e69597",
+   "vehicles.parquet": "3c24c5f999d320323407212497d3fc16a6814497c2baa00effef10c13a0c7493"
+  },
+  "meta_sha": "afa5439acaa9dcc40bcf93dc15ac9a8b2280f1b65ac7e2cbee15da212d9a0508",
+  "metrics_sha": "aab6c2cc2fa998d96eae57a9f96d620597f1692af0335d721bf04b66defe5ad8",
+  "config_hash": "ed9d920f7fbb",
+  "n_collisions": 0,
+  "weave": [
+   {
+    "ramp": "th52",
+    "n_missed": 1,
+    "n_missed_exit": 1,
+    "n_entrant_took_exit": null
+   }
+  ],
+  "wall_s": 2.1
+ },
+ "measured:th52_corridor:s3": {
+  "parquet": {
+   "edges.parquet": "90fb2b4f62895408ed6b7e677e8304ff1b6a39e44e9363998b3e19acc11c8a6d",
+   "journeys.parquet": "b29491258abc3d450cf229c21ca0f2e1ce41dbc478a446fa57327e949abedaea",
+   "trajectories.parquet": "eea4a3dcc18b95e2640cffdc4dc4ef0264c1fccb47c46d7d1afcabf5bcf9dc8e",
+   "vehicles.parquet": "f7fd20ae5552f5dbd06950c9cd16543c61a183f5b3923ac869819c4a408d2cd9"
+  },
+  "meta_sha": "7c7440d20b70c40b42058ae97fd1f3abcf4797c96c346b09478518409c87d55d",
+  "metrics_sha": "b072eaac6a4b914b1585b6e290ec8b8239d80343a4bb31fef24fa94a72560e0a",
+  "config_hash": "7352c1b440e1",
+  "n_collisions": 0,
+  "weave": [],
+  "wall_s": 2.6
+ },
+ "measured:ruth_entr:s3": {
+  "parquet": {
+   "edges.parquet": "449b0e6775ff6c4a2d9a7803aa81c8870d547a382383214336c19f1c25221999",
+   "journeys.parquet": "ddb403355c6722f6599b13e78abb0407fa74e79615c55dc7d796db119cf6392e",
+   "trajectories.parquet": "75c3f3dcb8ad83ece702bf57a68b8a98c52766b8152df6e662acbdbe3723a694",
+   "vehicles.parquet": "35969c781c42c9787138d3b510e71ddb00a0c80673345bc17b56273f60899bb1"
+  },
+  "meta_sha": "6385d46fc0735a7f61dadccc221b64f868db3cb0636dfdd9fda1806e637e4cd5",
+  "metrics_sha": "492ee0c6f698962f1c159fa3362fd4fae6249721410139fb11a1e45f9ade71d4",
+  "config_hash": "bd145a3f9c9a",
+  "n_collisions": 0,
+  "weave": [],
+  "wall_s": 1.2
+ },
+ "measured:mcknight:s3": {
+  "parquet": {
+   "edges.parquet": "ef075f5cfd42e849d401c2fe9f7e625c0f53ba7a862939c8e64fdd550a2a8e79",
+   "journeys.parquet": "828500151cb5d216b66dd09f29b4a75bf8bf940b79a51a3c6aa86fde013aa1b7",
+   "trajectories.parquet": "3f235f8c4f479d4924c0e036dc0b460798fcffac557b4400e2fa1e627e19c76a",
+   "vehicles.parquet": "e81da5c443560cdebfdc86ce02b78df4e0a528a76e9981c12ff36182f4fb8ca0"
+  },
+  "meta_sha": "d8afb41e77e4a5e1100e0acee96d7f261a873f5a5c2329ba9d02380a750c2ba7",
+  "metrics_sha": "89901cf7bec78a0a4605ccd0692fd75a7f38e26f5f3cc370331982825c394f85",
+  "config_hash": "579d8736ebf6",
+  "n_collisions": 0,
+  "weave": [],
+  "wall_s": 1.5
+ }
+}

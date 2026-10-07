@@ -167,6 +167,47 @@ def test_macro_tier_fields_are_hash_neutral_until_they_are_set():
     )
 
 
+def test_ramp_to_ramp_share_is_hash_neutral_until_it_is_set():
+    """``WeaveSpec.ramp_to_ramp_share`` (2026-10-07) is a new optional field:
+    unset, a weave scenario hashes and dumps (``meta.json["config"]``, YAML)
+    exactly as before the field existed; set, the hash moves; out of [0, 1]
+    is refused."""
+    import pytest
+    from pydantic import ValidationError
+
+    root = Path(__file__).resolve().parents[2]
+    cfg = ScenarioConfig.from_yaml(root / "scenarios" / "mndot_i94_wb_stpaul_weave_dc.yaml")
+    raw = cfg.model_dump(mode="json")
+    weaves = [r for r in raw["network"]["ramps"] if r.get("weave")]
+    assert weaves, "the scenario has weave entrances"
+    assert all("ramp_to_ramp_share" not in r["weave"] for r in weaves)
+    assert "ramp_to_ramp_share" not in json.dumps(config_hash_payload(cfg))
+
+    explicit = json.loads(json.dumps(raw))
+    for r in explicit["network"]["ramps"]:
+        if r.get("weave"):
+            r["weave"]["ramp_to_ramp_share"] = None
+    explicit_cfg = ScenarioConfig.model_validate(explicit)
+    assert config_hash(explicit_cfg) == config_hash(cfg)
+    assert explicit_cfg.model_dump(mode="json") == raw
+
+    def with_share(share: float) -> ScenarioConfig:
+        doc = json.loads(json.dumps(raw))
+        next(r for r in doc["network"]["ramps"] if r.get("weave"))["weave"][
+            "ramp_to_ramp_share"
+        ] = share
+        return ScenarioConfig.model_validate(doc)
+
+    set_cfg = with_share(0.5)
+    assert config_hash(set_cfg) != config_hash(cfg)
+    assert config_hash(with_share(0.6)) != config_hash(set_cfg)
+    dumped = set_cfg.model_dump(mode="json")
+    assert ScenarioConfig.model_validate(dumped) == set_cfg  # YAML/JSON round trip
+    for bad in (-0.1, 1.2):
+        with pytest.raises(ValidationError, match="ramp_to_ramp_share"):
+            with_share(bad)
+
+
 def test_pinned_ring_hash():
     root = Path(__file__).resolve().parents[2]
     cfg = ScenarioConfig.from_yaml(root / "scenarios" / "ring_sugiyama.yaml")

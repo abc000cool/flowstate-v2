@@ -385,6 +385,28 @@ class WeaveSpec(BaseModel):
     """Overrides of :data:`WEAVE_DEFAULTS`, plus the keys of
     :data:`WEAVE_OPTIONAL_KEYS` (no default; unset is off); unknown keys are
     rejected, and a key of :data:`REMOVED_WEAVE_KEYS` is refused by name."""
+    ramp_to_ramp_share: float | None = Field(
+        default=None, ge=0.0, le=1.0, exclude_if=lambda v: v is None
+    )
+    """Share of this entrance's vehicles that leave at the paired exit
+    (``v_RR / v_ON``, the ramp-to-ramp movement; 2026-10-07,
+    docs/TH52_CROSSING_SHARE.md). ``None`` (the default) keeps the plan's
+    proportional split: every vehicle reaching the exit draws its
+    ``exit_fraction`` alike (HCM 7th ed. ch. 13's simple weaving-volume
+    estimate). When set, ``microsim.vehicles.build_corridor_plan`` swaps
+    destinations, in each 300-s window of departure, between entrants and
+    mainline vehicles bound for the paired exit (or, below the drawn share,
+    the other way), so the entrance's realized share is this value while the
+    volume of every leg and every exit is the plan's; no random number is
+    drawn, so every other draw of the run is unchanged. A window whose exit
+    volume is smaller than the ramp-to-ramp volume the share asks for is
+    refused. An unmeasured demand input carried for sensitivity and
+    uncertainty (docs/FRISCO_PROTOCOL.md Amendment 3, proposed), never a
+    merge-model parameter, so it is allowed with ``merge="measured"`` too.
+    Not set by any committed scenario. Hash-neutral and absent from
+    ``model_dump`` (so from ``meta.json["config"]`` and YAML) when unset;
+    the realized share is recorded in ``meta.json["ramp_to_ramp_shares"]``
+    when set."""
 
     @model_validator(mode="after")
     def _check_params(self) -> Self:

@@ -3404,6 +3404,48 @@ class TestWeaveEntrantGiveup:
             assert a == b, name
 
 
+class TestRampToRampShareRun:
+    """``WeaveSpec.ramp_to_ramp_share`` through the runner (2026-10-07,
+    docs/TH52_CROSSING_SHARE.md): the T.H.52 section fixture (seed 4) at the
+    share 0.5 against the same seed unset."""
+
+    def test_realized_share_is_recorded_and_legs_are_kept(self, tmp_path):
+        import collections
+        import xml.etree.ElementTree as ET
+
+        def run(share: float | None, tag: str):
+            raw = _th52_corridor_config(4).model_dump(mode="json")
+            if share is not None:
+                raw["network"]["ramps"][0]["weave"]["ramp_to_ramp_share"] = share
+            paths = run_micro(ScenarioConfig.model_validate(raw), 4, tmp_path / tag)
+            meta = json.loads(paths.meta.read_text())
+            routes = ET.parse(paths.run_dir / "net" / "demand.rou.xml").getroot()
+            planned = [v.get("route") for v in routes.findall("vehicle")]
+            return meta, planned
+
+        meta_unset, unset = run(None, "unset")
+        assert "ramp_to_ramp_shares" not in meta_unset
+        assert "ramp_to_ramp_share" not in json.dumps(meta_unset["config"])
+        meta, half = run(0.5, "half")
+        (rec,) = meta["ramp_to_ramp_shares"]
+        assert rec["ramp"] == "th52" and rec["exit_ramp"] == "th52 exit" and rec["share"] == 0.5
+        n_on = sum(r.startswith("on0") for r in half)
+        assert rec["n_entrants"] == n_on
+        assert n_on == next(r for r in meta["ramps"] if r["name"] == "th52")["n_planned"]
+        assert rec["n_ramp_to_ramp"] == half.count("on0_off1")
+        assert abs(rec["n_ramp_to_ramp"] - 0.5 * n_on) <= 0.5
+        assert rec["share_realized"] == rec["n_ramp_to_ramp"] / n_on
+        # the proportional draw of the same seed is the unset run's
+        assert rec["n_ramp_to_ramp_drawn"] == unset.count("on0_off1")
+        assert rec["share_drawn"] < 0.4  # the fixture's proportional split is about 0.29
+        # every leg keeps its volume: the planned vehicles by origin and by destination
+        for part in (0, 1):
+            a = collections.Counter(r.partition("_")[2 * part] for r in half)
+            b = collections.Counter(r.partition("_")[2 * part] for r in unset)
+            assert a == b, part
+        assert meta["config_hash"] != meta_unset["config_hash"]
+
+
 class TestMeterStopPlacementReview:
     """Review of 2026-09-24: the braking inequality and its units."""
 

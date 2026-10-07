@@ -7463,6 +7463,10 @@ def run_micro(
         "weave_sections": [
             _weave_meta(ws, n_departed_by_route) for ws in weave_states if not ws.get("mm")
         ],
+        # WeaveSpec.ramp_to_ramp_share (2026-10-07, docs/TH52_CROSSING_SHARE.md):
+        # present only when an entrance sets it, so every other run's meta.json
+        # keeps exactly its keys
+        **({"ramp_to_ramp_shares": list(plan.ramp_to_ramp)} if plan.ramp_to_ramp else {}),
         # the measured merge model (RampSpec.merge = "measured", 2026-10-05):
         # present only when a ramp uses it, so every other run's meta.json
         # keeps exactly its keys
