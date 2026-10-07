@@ -31,6 +31,18 @@ WP-98): the criteria table carries the ``no_collisions`` row of
 ``meta.json`` (PASS / FAIL / NOT RECORDED), and a run set that fails it opens
 with a model-integrity banner under the title.
 
+**Locks** (2026-10-07, docs/I94_COLLAPSE_DIAGNOSIS.md): the Model integrity
+section also states which runs locked — vehicles standing with no discharge
+past a point for at least :data:`validation.locks.LOCK_MIN_DURATION_S` while a
+queue builds behind it (:func:`validation.locks.detect_run_locks` on each micro
+run's ``edges.parquet`` and ``vehicles.parquet``, or the caller's
+``locks_by_run``) — with a table of every lock (run, head, section, onset,
+duration, trapped vehicles); the criteria table carries the ``no_locks`` row,
+a run set with a lock opens with its own model-integrity banner and gets a
+limitations bullet, and the client summary's confidence table says whether
+the runs are free of locks. A run without either file is "not recorded",
+never lock-free.
+
 Every metric, figure and criterion describes the same measurement window:
 each run's recorded period minus its configured warm-up
 (:func:`validation.metrics.warmup_from_meta`) and, when the caller passes
@@ -129,6 +141,14 @@ from validation.battery import (
 )
 from validation.criteria import CriteriaProfile, CriteriaResult, evaluate, zero_collisions
 from validation.fields import SpeedField, speed_field
+from validation.locks import (
+    LOCK_MIN_DURATION_S,
+    SHARE_CI_LEVEL,
+    RunLocks,
+    detect_run_locks,
+    lock_flags,
+    lock_summary,
+)
 from validation.metrics import (
     CI,
     CI_LEVEL,
@@ -1256,7 +1276,124 @@ def _position_text(row: Mapping[str, Any]) -> str:
     return f"{float(lo):.1f}–{float(hi):.1f}"
 
 
-def _integrity_context(micro_runs: list[_RunInfo], run_set: Path) -> dict[str, Any]:
+def _count_text(value: object) -> str:
+    """A vehicle count for the template ('—' when not recorded)."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return _fmt(None)
+    return str(int(value))
+
+
+def _lock_context(locks: Mapping[str, Any] | None) -> dict[str, Any]:
+    """The Model integrity section's lock line, table, banner and limitations.
+
+    Args:
+        locks: :func:`validation.locks.lock_summary` over the micro runs
+            (labelled by their directory under the run set), or None when no
+            run is recorded.
+
+    Returns:
+        ``{lock_line, lock_rows, lock_note, lock_banner, lock_limitations}``;
+        every number in them is formatted from the summary.
+    """
+    minutes = _fmt(LOCK_MIN_DURATION_S / _SECONDS_PER_MINUTE, 3)
+    if locks is None:
+        return {
+            "lock_line": (
+                "not recorded — no run in this set has the files the lock detector reads "
+                "(edges.parquet, vehicles.parquet)."
+            ),
+            "lock_rows": [],
+            "lock_note": None,
+            "lock_banner": None,
+            "lock_limitations": [
+                "No run in this set has the files the lock detector reads, so a simulation "
+                "free of permanent standstills is not established."
+            ],
+        }
+    share = locks["share_locked"]
+    n_locked, n_recorded = int(locks["n_runs_locked"]), int(locks["n_runs_recorded"])
+    not_recorded = [str(n) for n in locks["runs_not_recorded"]]
+    line = (
+        f"{n_locked} of {n_recorded} run(s) locked ({_fmt(_PERCENT * float(share['value']), 3)} %; "
+        f"{_fmt(SHARE_CI_LEVEL * _PERCENT, 3)} % Clopper–Pearson interval "
+        f"{_fmt(_PERCENT * float(share['lo95']), 3)}–{_fmt(_PERCENT * float(share['hi95']), 3)} %). "
+        f"A lock is a queue standing with no discharge past a point for at least {minutes} "
+        "min"
+    )
+    if not_recorded:
+        line += f"; not recorded for {len(not_recorded)} run(s) ({', '.join(not_recorded)})"
+    line += "."
+    rows: list[dict[str, str]] = []
+    for run in locks["runs_locked"]:
+        for lock in run["locks"]:
+            onset = float(lock["onset_s"])
+            rows.append(
+                {
+                    "run": str(run["run"]),
+                    "x": f"{float(lock['x_m']):.1f}",
+                    "section": str(lock["section"])
+                    + ("" if lock["kind"] is None else f" ({lock['kind']})"),
+                    "onset": ("≤ " if lock["onset_is_upper_bound"] else "") + f"{onset:.0f}",
+                    "duration": (
+                        "≥ " if lock["persists_to_end"] or lock["onset_is_upper_bound"] else ""
+                    )
+                    + _fmt(float(lock["duration_s"]) / _SECONDS_PER_MINUTE, 3),
+                    "end": "yes" if lock["persists_to_end"] else "no",
+                    "trapped": _count_text(lock["n_trapped_in_network"]),
+                    "never": _count_text(lock["n_never_departed_upstream"]),
+                }
+            )
+    note = (
+        "Onset is when the head started standing (simulation time); ≤ marks an upper bound "
+        "read at the run's end, ≥ a duration cut short by the run's end. Trapped: vehicles "
+        "still in the network at the end, upstream of the head and bound past it. Never "
+        "departed: vehicles of origins at or upstream of the head that never entered the "
+        "network, any ordinary backlog of those origins included."
+        if rows
+        else None
+    )
+    banner: str | None = None
+    limitations: list[str] = []
+    if n_locked > 0:
+        banner = (
+            f"MODEL INTEGRITY FAILURE — {n_locked} of {n_recorded} run(s) locked (a permanent "
+            "standstill); the no_locks acceptance criterion fails. Every metric of those runs "
+            "includes the vehicles trapped behind the lock: see Model integrity and Limitations."
+        )
+        places = "; ".join(
+            f"{run['run']} at "
+            + ", ".join(
+                f"{lk['section']} from {('≤ ' if lk['onset_is_upper_bound'] else '')}"
+                f"{float(lk['onset_s']):.0f} s"
+                for lk in run["locks"]
+            )
+            for run in locks["runs_locked"]
+        )
+        limitations.append(
+            f"This run set contains {n_locked} locked run(s) of {n_recorded} ({places}). A "
+            "lock is a model defect, not a traffic outcome: the vehicles trapped behind it never "
+            "finish, so the travel times of those runs are censored and their flows past the lock "
+            "fall to zero, and every metric and interval above includes them; see Model "
+            "integrity."
+        )
+    if not_recorded:
+        limitations.append(
+            f"Locks were not recorded for {len(not_recorded)} of {locks['n_runs']} run(s) "
+            f"({', '.join(not_recorded)}); a simulation free of permanent standstills is not "
+            "established for them."
+        )
+    return {
+        "lock_line": line,
+        "lock_rows": rows,
+        "lock_note": note,
+        "lock_banner": banner,
+        "lock_limitations": limitations,
+    }
+
+
+def _integrity_context(
+    micro_runs: list[_RunInfo], run_set: Path, locks: Mapping[str, Any] | None = None
+) -> dict[str, Any]:
     """The Model integrity section and its limitations bullets.
 
     Collisions are pooled by :func:`validation.battery.collision_summary`
@@ -1268,17 +1405,26 @@ def _integrity_context(micro_runs: list[_RunInfo], run_set: Path) -> dict[str, A
     and says so in the limitations too; a run set with collisions gets a
     limitations bullet naming the count, the runs and the lanes.
 
+    Locks come from ``locks`` (:func:`_lock_context`): their line, table,
+    banner and limitations bullets follow the collisions'.
+
     Args:
         micro_runs: The run set's microscopic runs.
         run_set: The run-set root (run labels are paths relative to it).
+        locks: :func:`validation.locks.lock_summary` over the micro runs, or
+            None when no run is recorded.
 
     Returns:
         ``{collision_line, collision_runs, forced_lines, locations,
-        location_note, limitations, banner}`` for the template; every number
-        in them is formatted from the two summaries. ``banner`` is the
-        model-integrity failure line under the title when any run records a
-        collision (the ``no_collisions`` criterion fails), else None.
+        location_note, limitations, banner, lock_line, lock_rows, lock_note,
+        lock_banner}`` for the template; every number in them is formatted
+        from the summaries. ``banner`` is the model-integrity failure line
+        under the title when any run records a collision (the
+        ``no_collisions`` criterion fails), else None; ``lock_banner`` the
+        same for a locked run (``no_locks``).
     """
+    lock = _lock_context(locks)
+    lock_limitations = lock.pop("lock_limitations")
     names = [str(r.path.relative_to(run_set)) for r in micro_runs]
     metas = [r.meta for r in micro_runs]
     summary = collision_summary(metas, labels=names)
@@ -1307,9 +1453,11 @@ def _integrity_context(micro_runs: list[_RunInfo], run_set: Path) -> dict[str, A
             "location_note": None,
             "limitations": [
                 "No run in this set records a collision count, so a collision-free "
-                "simulation is not established."
+                "simulation is not established.",
+                *lock_limitations,
             ],
             "banner": None,
+            **lock,
         }
 
     total = int(summary["total"])
@@ -1396,8 +1544,9 @@ def _integrity_context(micro_runs: list[_RunInfo], run_set: Path) -> dict[str, A
             for r in rows
         ],
         "location_note": location_note,
-        "limitations": limitations,
+        "limitations": [*limitations, *lock_limitations],
         "banner": banner,
+        **lock,
     }
 
 
@@ -1713,11 +1862,47 @@ def _recommendation(baseline: _Group, group: _Group, ci_pct: str) -> str:
     )
 
 
+def _lock_confidence(locks: Mapping[str, Any] | None) -> dict[str, str]:
+    """The client summary's confidence row on locks (from the run set, not the gate)."""
+    statement = "No permanent standstill (gridlock) in any run"
+    if locks is None:
+        return {
+            "statement": statement,
+            "confident": CONFIDENT_UNKNOWN,
+            "basis": "no run in this set has the files the lock detector reads",
+        }
+    n_locked, n_recorded = int(locks["n_runs_locked"]), int(locks["n_runs_recorded"])
+    minutes = _fmt(LOCK_MIN_DURATION_S / _SECONDS_PER_MINUTE, 3)
+    if n_locked > 0:
+        places = ", ".join(f"{row['section']} ({row['n_runs']})" for row in locks["by_section"])
+        return {
+            "statement": statement,
+            "confident": CONFIDENT_NO,
+            "basis": f"{n_locked} of {n_recorded} run(s) locked, at {places}: a queue stood with "
+            f"no discharge for {minutes} min or more and its vehicles never finished (see Model "
+            "integrity)",
+        }
+    if locks["runs_not_recorded"]:
+        return {
+            "statement": statement,
+            "confident": CONFIDENT_UNKNOWN,
+            "basis": f"no lock in {n_recorded} recorded run(s), but "
+            f"{len(locks['runs_not_recorded'])} run(s) carry no lock record",
+        }
+    return {
+        "statement": statement,
+        "confident": CONFIDENT_YES,
+        "basis": f"no run of {n_recorded} had a queue standing with no discharge for {minutes} "
+        "min or more",
+    }
+
+
 def _client_summary(
     gate: GateResult | None,
     groups: list[_Group],
     baseline: _Group | None,
     observed: ObservedProvenance | None,
+    locks: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """The client summary section's context (module docstring).
 
@@ -1729,6 +1914,9 @@ def _client_summary(
         groups: Every configuration group, baseline first.
         baseline: The single baseline group, or None.
         observed: The observed-data provenance, if any.
+        locks: :func:`validation.locks.lock_summary` over the run set's micro
+            runs (None: not recorded); its confidence row follows the gate's
+            collision row.
 
     Returns:
         ``{gate_line, check_lines, confidence, strategy_statement,
@@ -1790,6 +1978,7 @@ def _client_summary(
         _confidence_row("Where and when the slowdowns form (bottlenecks, C6)", gate, "C6"),
         _confidence_row("Stop-and-go wave speed (C4)", gate, "C4", allow_na=True),
         _confidence_row("No simulated collisions (C5)", gate, "C5"),
+        _lock_confidence(locks),
         {
             "statement": FUEL_ESTIMATE_TEXT[:1].upper() + FUEL_ESTIMATE_TEXT[1:],
             "confident": CONFIDENT_NO,
@@ -2007,6 +2196,7 @@ def generate_report(
     figure_runs: Sequence[str | Path] | None = ...,
     gate: GateResult | None = ...,
     scored_end_s: float | None = ...,
+    locks_by_run: Mapping[str | Path, RunLocks] | None = ...,
 ) -> Path: ...
 
 
@@ -2034,6 +2224,7 @@ def generate_report(
     figure_runs: Sequence[str | Path] | None = ...,
     gate: GateResult | None = ...,
     scored_end_s: float | None = ...,
+    locks_by_run: Mapping[str | Path, RunLocks] | None = ...,
 ) -> tuple[Path, Path]: ...
 
 
@@ -2060,6 +2251,7 @@ def generate_report(
     figure_runs: Sequence[str | Path] | None = None,
     gate: GateResult | None = None,
     scored_end_s: float | None = None,
+    locks_by_run: Mapping[str | Path, RunLocks] | None = None,
 ) -> Path | tuple[Path, Path]:
     """Generate a markdown (optionally PDF) validation report for a run set.
 
@@ -2161,6 +2353,11 @@ def generate_report(
             ``None`` (the default) scores to each run's end. The caller
             vouches that ``metrics_by_run`` and ``wave_readings_by_run`` were
             measured on the same window.
+        locks_by_run: Each run's locks when the caller already detected them
+            (:func:`validation.locks.detect_run_locks`), keyed like
+            ``metrics_by_run``; every other micro run is read from its own
+            ``edges.parquet`` and ``vehicles.parquet``. Locks are detected
+            on the whole run, whatever ``scored_end_s``.
 
     Returns:
         Path to the written markdown report; with ``pdf=True`` the tuple
@@ -2229,6 +2426,14 @@ def generate_report(
     else:
         wave_speed = math.nan
     smallest = min(groups, key=lambda g: len(set(g.seeds)))
+    known_locks = {_run_key(k): v for k, v in (locks_by_run or {}).items()}
+    lock_records: list[RunLocks] = [
+        known_locks.get(_run_key(r.path)) or detect_run_locks(r.path, meta=r.meta)
+        for r in micro_runs
+    ]
+    locks = lock_summary(
+        lock_records, labels=[str(r.path.relative_to(run_set)) for r in micro_runs]
+    )
     criteria_results = evaluate(
         p,
         geh_values=geh_values,
@@ -2244,6 +2449,7 @@ def generate_report(
         observations_supplied=observed is not None,
         # Model integrity (WP-98): every micro run of the set, every group.
         collision_counts=collision_counts([r.meta for r in micro_runs]),
+        lock_flags=lock_flags(lock_records),
     )
     criteria_note = _wave_criterion_note(
         reference=reference,
@@ -2270,7 +2476,7 @@ def generate_report(
         and np.size(segment_speeds_sim) > 0
         else None
     )
-    client = _client_summary(gate, groups, baseline, observed)
+    client = _client_summary(gate, groups, baseline, observed, locks)
     # A failed gate withholds the strategy configurations' results, their
     # contour panels included: only the baseline's contours are rendered.
     withheld = client["withheld"] is not None and baseline is not None
@@ -2354,7 +2560,7 @@ def generate_report(
         measurement_note=_measurement_note(micro_runs, measure_span, span is None),
         insertion_note=_insertion_note(micro_runs),
         weave_exit_notes=_weave_exit_notes(micro_runs),
-        integrity=_integrity_context(micro_runs, run_set),
+        integrity=_integrity_context(micro_runs, run_set, locks),
         calibrations=calibrations,
         observed=(
             _observed_rows(observed, p.wave_speed_band_kmh) if observed is not None else None

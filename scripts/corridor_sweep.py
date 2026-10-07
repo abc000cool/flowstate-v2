@@ -25,6 +25,18 @@ every run of the cell records zero, false on any collision, null when not
 recorded — a run without ``meta.json`` or without the counter); the summary
 carries the same flag over every run of every complete cell.
 
+So is zero locks (2026-10-07, docs/I94_COLLAPSE_DIAGNOSIS.md): each run's
+locks (:func:`validation.locks.detect_run_locks`, read in the worker from the
+run's ``edges.parquet`` before it is dropped and its ``vehicles.parquet``) are
+stored in its ``metrics.json`` as ``locks``; each cell carries ``locks``
+(:func:`validation.locks.lock_summary` over its seeds; null when no seed is
+recorded) and ``zero_locks`` (true only when every seed is recorded and none
+locked, false on any lock, null otherwise); the summary carries
+``zero_locks`` over every run of every complete cell. A run whose
+``metrics.json`` predates the key is read from its tables when its
+``meta.json`` is kept (the run-end reader only, the space-time table having
+been dropped), else not recorded.
+
 Waiting counts (WP-105, docs/FRISCO_PROTOCOL.md §8.2): each run's
 ``metrics.json`` also carries ``validation.metrics.WaitingMetrics`` — travel
 time and total delay from each vehicle's PLANNED departure, so time in the
@@ -106,6 +118,10 @@ FIELDS = (
 
 #: Key of a run's ``metrics.json`` that records its metric arguments (module docstring).
 RUN_METRICS_ARGS_KEY = "metrics_args"
+
+#: Key of a run's ``metrics.json`` that records its locks (module docstring;
+#: ``validation.locks.RunLocks.to_dict``).
+RUN_LOCKS_KEY = "locks"
 
 
 def metrics_args_record(metrics_args: Mapping[str, Any]) -> dict[str, Any]:
@@ -242,6 +258,10 @@ def _worker(
         record = {**asdict(m), **asdict(w)}
         # the window it was scored on, so a resume can refuse to mix windows
         record[RUN_METRICS_ARGS_KEY] = metrics_args_record(metrics_args)
+        # the run's locks (2026-10-07), read while edges.parquet is still there
+        from validation.locks import detect_run_locks
+
+        record[RUN_LOCKS_KEY] = detect_run_locks(paths.run_dir).to_dict()
         (paths.run_dir / "metrics.json").write_text(json.dumps(record, indent=2))
         if not keep:
             paths.trajectories.unlink(missing_ok=True)
@@ -442,6 +462,33 @@ def collision_line(summary: dict[str, Any]) -> str:
     return f"collisions: {status} — " + "; ".join(parts or ["no run"])
 
 
+def lock_line(summary: dict[str, Any]) -> str:
+    """One console line for the sweep's ``zero_locks`` requirement (2026-10-07)."""
+    flag = summary.get("zero_locks")
+    cells = summary["cells"]
+    n_runs = sum(len(summary["seeds"]) for _ in cells)
+    if flag is True:
+        return f"locks: PASS — none in all {n_runs} run(s)"
+    failing = [
+        f"{cell} ({e['locks']['n_runs_locked']}: seeds "
+        + ", ".join(str(r["run"]) for r in e["locks"]["runs_locked"])
+        + ")"
+        for cell, e in cells.items()
+        if e["zero_locks"] is False
+    ]
+    missing = sum(
+        len(summary["seeds"]) if e["locks"] is None else len(e["locks"]["runs_not_recorded"])
+        for e in cells.values()
+    )
+    parts = []
+    if failing:
+        parts.append("locked runs in " + ", ".join(failing))
+    if missing:
+        parts.append(f"not recorded for {missing} of {n_runs} run(s)")
+    status = "FAIL" if flag is False else "NOT RECORDED"
+    return f"locks: {status} — " + "; ".join(parts or ["no run"])
+
+
 def _fmt_ci(c: dict[str, Any], digits: int = 1, scale: float = 1.0) -> str:
     """``mean [lo, hi] (n)`` of one :func:`_ci` entry for the console; ``—`` when empty."""
     if c["n"] == 0:
@@ -553,18 +600,21 @@ def analyze(root: Path, summary_path: Path, *, allow_partial: bool) -> dict[str,
     from scipy import stats
 
     from validation.battery import collision_count
-    from validation.criteria import zero_collisions
+    from validation.criteria import zero_collisions, zero_locks
+    from validation.locks import RunLocks, detect_run_locks, lock_flags, lock_summary
 
     manifest = json.loads((root / "MANIFEST.json").read_text())
     seeds = [int(s) for s in manifest["seeds"]]
     per_cell: dict[str, dict[int, dict[str, float]]] = {}
     metas: dict[str, list[dict[str, Any]]] = {}
     collisions: dict[str, dict[int, int | None]] = {}
+    locks: dict[str, dict[int, RunLocks | None]] = {}
     missing: list[tuple[str, int]] = []
     for cell, chash in manifest["cells"].items():
         per_cell[cell] = {}
         metas[cell] = []
         collisions[cell] = {}
+        locks[cell] = {}
         for seed in seeds:
             p = root / cell / chash / str(seed) / "metrics.json"
             if not p.is_file():
@@ -574,10 +624,16 @@ def analyze(root: Path, summary_path: Path, *, allow_partial: bool) -> dict[str,
             per_cell[cell][seed] = {f: float(m[f]) for f in FIELDS if f in m and m[f] is not None}
             meta_path = p.with_name("meta.json")
             collisions[cell][seed] = None
+            stored_locks = m.get(RUN_LOCKS_KEY)
+            locks[cell][seed] = (
+                RunLocks.from_dict(stored_locks) if isinstance(stored_locks, dict) else None
+            )
             if meta_path.is_file():
                 meta = json.loads(meta_path.read_text())
                 metas[cell].append(meta)
                 collisions[cell][seed] = collision_count(meta)
+                if locks[cell][seed] is None:
+                    locks[cell][seed] = detect_run_locks(p.parent, meta=meta)
     incomplete = sorted({c for c, _ in missing})
     if missing and not allow_partial:
         raise SystemExit(
@@ -632,6 +688,10 @@ def analyze(root: Path, summary_path: Path, *, allow_partial: bool) -> dict[str,
         # Model integrity (WP-98): the cell's collisions and its pass/fail flag.
         entry["collisions"] = collision_block(collisions[cell])
         entry["zero_collisions"] = zero_collisions(list(collisions[cell].values()))
+        # Locks (2026-10-07): the cell's locked seeds and its pass/fail flag.
+        cell_locks = [locks[cell].get(seed) for seed in seeds]
+        entry["locks"] = lock_summary(cell_locks, labels=seeds)
+        entry["zero_locks"] = zero_locks(lock_flags(cell_locks))
         cells_out[cell] = entry
     summary = {
         "experiment": manifest["experiment"],
@@ -647,6 +707,9 @@ def analyze(root: Path, summary_path: Path, *, allow_partial: bool) -> dict[str,
         # over every run of every complete cell: true / false / null
         "zero_collisions": zero_collisions(
             [c for cell in cells_out for c in collisions[cell].values()]
+        ),
+        "zero_locks": zero_locks(
+            lock_flags([locks[cell].get(seed) for cell in cells_out for seed in seeds])
         ),
     }
     (root / "analysis.json").write_text(json.dumps(summary, indent=2))
@@ -703,6 +766,7 @@ def main() -> None:
         s = analyze(root, args.summary, allow_partial=args.allow_partial)
         print(f"analysed {len(s['cells'])} cells; incomplete {s['incomplete_cells']}")
         print(collision_line(s))
+        print(lock_line(s))
         print_diagnostics(s)
         _comparison_or_exit(args.comparison, root, s)
         return
@@ -817,6 +881,7 @@ def main() -> None:
     s = analyze(root, args.summary, allow_partial=True)
     print(f"summary → {args.summary}; incomplete cells: {s['incomplete_cells']}")
     print(collision_line(s))
+    print(lock_line(s))
     print_diagnostics(s)
     _comparison_or_exit(args.comparison, root, s)
 

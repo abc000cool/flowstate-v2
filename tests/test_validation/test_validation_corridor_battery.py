@@ -189,6 +189,17 @@ def test_corridor_battery_end_to_end(tmp_path: Path) -> None:
     assert artifact["waiting"]["runs_not_recorded"] == []
     assert artifact["waiting"]["ci"]["n_demand_veh"]["mean"] == expected["n_demand_veh"]
 
+    # Locks (2026-10-07): both readers ran on the real replicate's tables, the
+    # record is stored in its metrics.json and its per_seed row, and a free-flow
+    # smoke corridor does not lock.
+    assert stored["locks"] == seed_row["locks"]
+    assert seed_row["locks"]["sources"] == ["edges", "vehicles"]
+    assert seed_row["locks"]["locked"] is False and seed_row["locks"]["n_locks"] == 0
+    assert artifact["locks"]["n_runs_recorded"] == 1 and artifact["locks"]["n_runs_locked"] == 0
+    assert artifact["zero_locks"] is True
+    (lock_row,) = [r for r in artifact["criteria"] if r["name"] == "no_locks"]
+    assert lock_row["evaluated"] is True and lock_row["passed"] is True
+
     report = (report_dir / "report.md").read_text()
     assert "### Observed data" in report
     assert "synthetic" in report

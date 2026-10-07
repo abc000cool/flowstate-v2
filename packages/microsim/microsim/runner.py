@@ -2607,6 +2607,23 @@ def _weave_entrant_giveup_m(prm: Mapping[str, float]) -> float | None:
     return float(value) if value is not None and value > 0.0 else None
 
 
+#: Tolerance of amendment W1b's dwell comparison [s]: simulated times are sums
+#: of the step length, so a dwell of a whole number of steps is reached on the
+#: step that completes it, not one step later through a rounding residue.
+_WEAVE_DWELL_EPS_S: Final[float] = 1e-6
+
+
+def _weave_entrant_giveup_dwell_s(prm: Mapping[str, float]) -> float | None:
+    """The entering give-up's dwell (amendment W1b, ``entrant_giveup_dwell_s``) [s].
+
+    ``None`` when W1 gives up at once: the key unset (no default,
+    ``flowstate_core.config.WEAVE_OPTIONAL_KEYS``) or ``0``. The schema refuses
+    a positive dwell without ``entrant_giveup_m``.
+    """
+    value = prm.get("entrant_giveup_dwell_s")
+    return float(value) if value is not None and value > 0.0 else None
+
+
 def _weave_step(
     mod: Any,
     tc: Any,
@@ -2744,6 +2761,18 @@ def _weave_step(
     exit-bound vehicle behind it stops (seed 4 of the T.H.52 section test:
     nine, for 50 s). Off, nothing of it runs and nothing is written.
 
+    **The dwell** (2026-10-07, amendment W1b of docs/WEAVE_LOSS_DIAGNOSIS.md
+    §10; ``entrant_giveup_dwell_s``, a key of ``WEAVE_OPTIONAL_KEYS``, unset =
+    W1 at once). With it, the entering give-up waits: each such entrant's
+    clock (``halt_since`` in its state) starts on its first step halted
+    within ``entrant_giveup_m`` of the end and resets on any step it is at or
+    above the halting speed or farther back — uninterrupted standstill at the
+    lane's end, whatever was requested meanwhile — and the entrant takes the
+    exit only on a step on which the clock has run ``entrant_giveup_dwell_s``
+    and W1's own condition holds. A lock at a weaving gore stands for hours
+    (docs/I94_COLLAPSE_DIAGNOSIS.md); the section test's ordinary stands, all
+    self-clearing, at most 50.5 s. Unset, nothing of it runs.
+
     **The exiters' early move** (2026-09-24, block 3, WP-62;
     :func:`_weave_exit_prepare_step`, ``exit_prepare``, off by default).
     The vacate rule's mirror: a vehicle bound for the paired exit in a lane
@@ -2817,6 +2846,8 @@ def _weave_step(
     # amendment W1 (the entering give-up; None = off) and the entrants it
     # rerouted to the exit, never driven again
     entrant_giveup_m = _weave_entrant_giveup_m(prm)
+    # amendment W1b (its dwell; None = W1 gives up at once)
+    entrant_dwell_s = _weave_entrant_giveup_dwell_s(prm) if entrant_giveup_m is not None else None
     took_exit: Collection[str] = ws.get("took_exit", ())
     pending: dict[str, int] = {}
     # entering vehicles still on the ramp within lookahead_m of the section:
@@ -3041,12 +3072,26 @@ def _weave_step(
             ws["n_missed"] += 1
             ws["n_missed_exit"] += 1
             continue
+        if d > 0 and entrant_dwell_s is not None and entrant_giveup_m is not None:
+            # amendment W1b's clock: uninterrupted standstill within
+            # entrant_giveup_m of the auxiliary lane's end (a requested change
+            # that executes ends the stand anyway); reset on any other step
+            if remaining <= entrant_giveup_m and v_ego < HALTING_SPEED_MS:
+                if st.get("halt_since") is None:
+                    st["halt_since"] = t
+            else:
+                st["halt_since"] = None
         if (
             d > 0
             and entrant_giveup_m is not None
             and remaining <= entrant_giveup_m
             and v_ego < HALTING_SPEED_MS
             and not (accepted or forced_ok)
+            # W1b: only once the entrant has stood there for the dwell
+            and (
+                entrant_dwell_s is None
+                or t - st["halt_since"] >= entrant_dwell_s - _WEAVE_DWELL_EPS_S
+            )
         ):
             # amendment W1, the entering give-up: an entrant halted within
             # entrant_giveup_m of the auxiliary lane's end with no change to
@@ -3176,7 +3221,9 @@ def _weave_meta(ws: dict[str, Any], n_departed_by_route: dict[str, int]) -> dict
     only when ``entrant_giveup_m`` is on, right after ``n_missed_exit``) the
     entrants the runner itself rerouted to the paired exit at the auxiliary
     lane's end, halted still owing their change with no more than
-    ``entrant_giveup_m`` of section ahead — also a subset of ``n_missed``;
+    ``entrant_giveup_m`` of section ahead (with ``entrant_giveup_dwell_s``,
+    amendment W1b, only after standing there that long) — also a subset of
+    ``n_missed``;
     ``n_exit_prepared`` (WP-62, the exiters' early
     move) the vehicles bound for the paired exit that the rule asked, inside
     the vacate window, into the lane feeding section lane 1 and that were

@@ -50,8 +50,14 @@ Subcommands:
 ``grid``, ``th52`` and ``ceiling`` take ``--weave-set KEY=VALUE`` (repeatable,
 ``--model weave`` only): the key is set in the ``weave_params`` of every weave
 block of every run, e.g. ``--weave-set entrant_giveup_m=5`` for amendment W1
-(docs/WEAVE_LOSS_DIAGNOSIS.md §6.2). The runs' config hashes then differ from
-the committed fixtures'; nothing committed is changed.
+(docs/WEAVE_LOSS_DIAGNOSIS.md §6.2), or ``--weave-set entrant_giveup_m=5
+--weave-set entrant_giveup_dwell_s=60`` for W1b (§10). The runs' config hashes
+then differ from the committed fixtures'; nothing committed is changed.
+
+``grid`` also takes ``--fleet-from`` (every fixture's fleet replaced by a
+scenario's, as ``th52 --fleet-from``; a fixture and its ``_fleet`` twin then
+run the same config, which is run once and listed in ``skipped_same_config``)
+and ``--seeds`` (these seeds for every selected fixture instead of the grid's).
 
 ``th52`` takes ``--ramp-to-ramp-share S`` (either model): ``WeaveSpec.
 ramp_to_ramp_share`` set to ``S`` on every weave block — the share of the
@@ -396,15 +402,33 @@ def run_summary(paths: Any, wall_s: float) -> dict[str, Any]:
     }
 
 
+def fixture_config(
+    name: str,
+    seed: int,
+    model: str,
+    weave_set: dict[str, float] | None = None,
+    fleet_from: Path | None = None,
+) -> Any:
+    """A named fixture's config as ``run_one`` runs it: its fleet replaced by
+    ``fleet_from``'s (``--fleet-from``), on ``model``, with ``weave_set``."""
+    cfg, extra = fixture(name, seed)
+    cfg = with_fleet(cfg, None, fleet_from)
+    return with_weave_params(to_model(cfg, model, extra), weave_set or {})
+
+
 def run_one(
-    name: str, seed: int, model: str, work: Path, weave_set: dict[str, float] | None = None
+    name: str,
+    seed: int,
+    model: str,
+    work: Path,
+    weave_set: dict[str, float] | None = None,
+    fleet_from: Path | None = None,
 ) -> tuple[Any, dict[str, Any]]:
-    """Run one fixture under one model (``weave_set``: see ``--weave-set``); returns its
-    paths and summary."""
+    """Run one fixture under one model (``weave_set``: see ``--weave-set``; ``fleet_from``:
+    see ``--fleet-from``); returns its paths and summary."""
     from microsim import run_micro
 
-    cfg, extra = fixture(name, seed)
-    cfg = with_weave_params(to_model(cfg, model, extra), weave_set or {})
+    cfg = fixture_config(name, seed, model, weave_set, fleet_from)
     t0 = time.perf_counter()
     paths = run_micro(cfg, seed, work / f"{name}_{model}")
     return paths, {"fixture": name, "model": model, **run_summary(paths, time.perf_counter() - t0)}
@@ -1007,6 +1031,20 @@ def main(argv: list[str] | None = None) -> None:
             )
         if name == "grid":
             p.add_argument("--only", default="", help="comma-separated fixture names")
+            p.add_argument(
+                "--seeds",
+                default="",
+                help="run these seeds (e.g. 3-22) instead of each fixture's grid seeds",
+            )
+            p.add_argument(
+                "--fleet-from",
+                type=Path,
+                default=None,
+                help=(
+                    "replace every fixture's fleet block with this scenario's; a config "
+                    "that then hashes as an earlier one is run once"
+                ),
+            )
     args = ap.parse_args(argv)
     if args.cmd in ("station-flows", "colliding-pairs"):
         if args.cmd == "station-flows":
@@ -1055,18 +1093,39 @@ def main(argv: list[str] | None = None) -> None:
                 weave_set,
             )
         elif args.cmd == "grid":
+            from flowstate_core.config import config_hash
+
             only = {s for s in args.only.split(",") if s}
+            seeds_override = _seeds(args.seeds) if args.seeds else None
             rows = []
-            for name, seeds in GRID:
+            # with --fleet-from a fixture and its ``_fleet`` twin can become the
+            # same config: each config hash is run once
+            seen: dict[str, str] = {}
+            skipped: list[dict[str, Any]] = []
+            for name, grid_seeds in GRID:
                 if only and name not in only:
                     continue
-                for seed in seeds:
-                    paths, row = run_one(name, seed, args.model, work, weave_set)
+                for seed in seeds_override or grid_seeds:
+                    if args.fleet_from is not None:
+                        h = config_hash(
+                            fixture_config(name, seed, args.model, weave_set, args.fleet_from)
+                        )
+                        if h in seen:
+                            skipped.append({"fixture": name, "seed": seed, "same_as": seen[h]})
+                            continue
+                        seen[h] = f"{name}:{seed}"
+                    paths, row = run_one(name, seed, args.model, work, weave_set, args.fleet_from)
                     rows.append(row)
                     if not args.keep:
                         shutil.rmtree(paths.run_dir, ignore_errors=True)
                     print(json.dumps(row), flush=True)
-            result = {"model": args.model, "weave_set": weave_set, "rows": rows}
+            result = {
+                "model": args.model,
+                "weave_set": weave_set,
+                "fleet_from": None if args.fleet_from is None else str(args.fleet_from),
+                "rows": rows,
+                **({"skipped_same_config": skipped} if args.fleet_from is not None else {}),
+            }
         else:
             from microsim import run_micro
 

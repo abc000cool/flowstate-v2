@@ -1,0 +1,33 @@
+# p9 (proposed, docs/WEAVE_LOSS_DIAGNOSIS.md §10.6 and §10.11; opt-in; not in the default list). Amendment W1b's
+#     corridor round: the I-94 four-hour battery under the reference configuration with the calibrated drivers
+#     (scenarios/${MNDOT}_weave_dc.yaml, name ${MNDOT}_weave_xlsfg_dc, hash db9fbab5fc6e; step 3's 20 seeds, spawned
+#     from its seed 42) and the same scenario with entrant_giveup_m 5 and entrant_giveup_dwell_s 60 added to both
+#     weaves' weave_params (exit_prepare 1 kept), both run here on one code tree; then C1-C5b, the reference's
+#     reproduction of step 3 and the end-of-run front row of every replicate
+#     (artifacts/weave_loss_2026-10-07/w1b/harness/corridor_w1b.py; meta.json and vehicles.parquet only, never
+#     trajectories) -> artifacts/weave_w1b_corridor.json. Run trees under runs/mndot_*_p9/baseline, so make_archive's
+#     runs/mndot_*/*/*/*/{meta.json,vehicles.parquet} brings every replicate's files back. Needs no data set (launch
+#     with --data-set none): the scenario, observations and populations are tracked. Cost: two batteries of 20 at
+#     $PROCS on n2-standard-32, one after the other (step 3's took 1,599 s), about 55-60 min, plus 10-15 min of boot
+#     and setup: about 70-75 min billed at about $1.55/h, about $1.9; --cap-min 150 bounds it at about $3.9.
+#       scripts/gcp/launch_i24_pipeline.sh --vm flowstate-p9 --machine n2-standard-32 --bucket gs://<bucket>/p9 \
+#         --self-delete --via-bucket --data-set none --cap-min 150 --pipeline-args '--stages "p9_i94_w1b"'
+P9_W1B=scenarios/${MNDOT}_weave_dc_w1b.yaml
+if echo " $STAGES " | grep -q " p9_i94_w1b "; then
+  stage p9_i94_w1b bash -c "set -e; \
+    sed -e 's#^name: ${MNDOT}_weave_xlsfg_dc\$#name: ${MNDOT}_weave_xlsfg_dc_w1b#' \
+        -e 's#weave_params: {exit_prepare: 1.0}#weave_params: {exit_prepare: 1.0, entrant_giveup_m: 5.0, entrant_giveup_dwell_s: 60.0}#' \
+        scenarios/${MNDOT}_weave_dc.yaml > $P9_W1B; \
+    [ \$(grep -c 'entrant_giveup_dwell_s: 60.0' $P9_W1B) -eq 2 ]; \
+    for S in ${MNDOT}_weave_dc ${MNDOT}_weave_dc_w1b; do \
+      N=\$(sed -n 's/^name: //p' scenarios/\$S.yaml | head -1); \
+      $RUN scripts/corridor_battery.py --scenario scenarios/\$S.yaml --observations data/mndot/$MNDOT/observations.json \
+        --replicates $REPS --procs $PROCS --out runs/\${N}_p9/baseline --artifact artifacts/validation_\${N}_p9.json \
+        --report-dir docs/reports/\${N}_p9 --criteria-profile fhwa_tat3_2004; \
+    done; \
+    $RUN artifacts/weave_loss_2026-10-07/w1b/harness/corridor_w1b.py \
+      --ref artifacts/validation_${MNDOT}_weave_xlsfg_dc_p9.json \
+      --w1b artifacts/validation_${MNDOT}_weave_xlsfg_dc_w1b_p9.json \
+      --committed-ref artifacts/validation_${MNDOT}_weave_xlsfg_dc.json \
+      --out artifacts/weave_w1b_corridor.json" || say "p9_i94_w1b failed; continuing"
+fi

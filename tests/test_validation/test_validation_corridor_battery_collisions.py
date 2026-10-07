@@ -235,7 +235,10 @@ def test_the_keys_are_additive_and_every_existing_value_is_unchanged(tmp_path: P
     key by key; the only new keys are ``collisions``, ``zero_collisions``
     (WP-98) and each seed's ``n_collisions``, besides the waiting keys of
     WP-109 (top-level and per-seed ``waiting``, null here: no waiting list
-    is passed; tests/test_validation/test_validation_battery_waiting.py).
+    is passed; tests/test_validation/test_validation_battery_waiting.py) and
+    the lock keys of 2026-10-07 (top-level ``locks`` and ``zero_locks``,
+    per-seed ``locks``, null here: no lock records are passed;
+    tests/test_validation/test_validation_locks.py).
     """
     without = _strict(_build(tmp_path / "none", None))
     unrecorded = _strict(_build(tmp_path / "old", _metas(with_counter=False)))
@@ -245,11 +248,15 @@ def test_the_keys_are_additive_and_every_existing_value_is_unchanged(tmp_path: P
             "collisions",
             "zero_collisions",
             "waiting",
+            "locks",
+            "zero_locks",
         }
         assert artifact["waiting"] is None
+        assert artifact["locks"] is None and artifact["zero_locks"] is None
         for row in artifact["per_seed"]:
-            assert set(row) == PRE_WP94_SEED_KEYS | {"n_collisions", "waiting"}
+            assert set(row) == PRE_WP94_SEED_KEYS | {"n_collisions", "waiting", "locks"}
             assert row["waiting"] is None
+            assert row["locks"] is None
     for key in PRE_WP94_KEYS - {"created_at", "per_seed"}:
         reference = json.dumps(without[key], indent=2, allow_nan=False)
         assert json.dumps(unrecorded[key], indent=2, allow_nan=False) == reference, key
@@ -406,7 +413,14 @@ def test_criteria_only_reads_collisions_from_the_stored_metas(
         "zero_collisions",
         "report_path",
         "waiting",
+        "locks",
+        "zero_locks",
     }
+    # the stored replicates have neither edges.parquet nor vehicles.parquet:
+    # locks not recorded, never "no lock" (2026-10-07)
+    assert artifact["locks"] is None and artifact["zero_locks"] is None
+    assert [row["locks"]["locked"] for row in artifact["per_seed"]] == [None, None]
+    assert "no_locks           NOT RECORDED" in console
     # the stored replicates carry no demand ledger: waiting absent, never 0 (WP-109)
     assert artifact["waiting"] is None and old["waiting"] is None
     assert [row["waiting"] for row in artifact["per_seed"]] == [None, None]

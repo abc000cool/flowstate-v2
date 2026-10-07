@@ -6,6 +6,9 @@
 {% if integrity.banner %}
 > **{{ integrity.banner }}**
 {% endif %}
+{% if integrity.lock_banner %}
+> **{{ integrity.lock_banner }}**
+{% endif %}
 {% if created_at %}
 Generated: {{ created_at }}
 {% endif %}
@@ -121,13 +124,17 @@ not calibrated claims.
 
 What the runs' metadata records about the simulation itself misbehaving
 (docs/CONTRACTS.md). A collision in a car-following simulation is a model
-defect, not a traffic outcome. A run whose metadata carries no counter is
-reported as not recorded, never as zero.
+defect, not a traffic outcome, and so is a lock: vehicles standing with no
+discharge past a point while a queue builds behind it, read from each run's
+space-time table and vehicle table (validation.locks). A run whose metadata
+carries no counter, or that has neither table, is reported as not recorded,
+never as zero.
 
 - Collisions: {{ integrity.collision_line }}
 {% if integrity.collision_runs %}
 - Runs with collisions: {{ integrity.collision_runs }}
 {% endif %}
+- Locks: {{ integrity.lock_line }}
 {% for line in integrity.forced_lines %}
 - {{ line }}
 {% endfor %}
@@ -142,6 +149,16 @@ reported as not recorded, never as zero.
 {% if integrity.location_note %}
 
 {{ integrity.location_note }}
+{% endif %}
+{% if integrity.lock_rows %}
+
+| Run | Head x [m] | Section | Onset [s] | Duration [min] | To the run's end | Trapped in network | Never departed upstream |
+|---|---|---|---|---|---|---|---|
+{% for lk in integrity.lock_rows %}
+| {{ lk.run }} | {{ lk.x }} | {{ lk.section }} | {{ lk.onset }} | {{ lk.duration }} | {{ lk.end }} | {{ lk.trapped }} | {{ lk.never }} |
+{% endfor %}
+
+{{ integrity.lock_note }}
 {% endif %}
 
 ## Acceptance criteria
@@ -159,7 +176,8 @@ marked not recorded is never a pass either: some run in the set carries no
 record of what the row checks, and a missing record is not a zero. The
 no_collisions row is a FlowState model-integrity requirement, not an FHWA
 criterion: every run must record its SUMO collision counter, and the total
-must be zero.
+must be zero. So is the no_locks row: every run must carry a lock record, and
+no run may lock.
 {% if criteria_note %}
 
 {{ criteria_note }}

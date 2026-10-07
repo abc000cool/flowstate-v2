@@ -67,7 +67,7 @@ shown by these files.
 - **The 6th Street defect: no evidence either way.** Two of the three four-hour locks are at Ruth St, 4 km
   upstream of the defect. The netfix run at the collapsed seed did not lock, but it is a different random
   realisation, not the same event with the map fixed.
-- **Batteries do not report a lock.**
+- **Batteries did not report a lock** (a detector does since 2026-10-07, §10).
   - Nothing in the battery artifact names one. The verdict reads "backlog: 4 %", no ramp is flagged as starved,
     and the "no lock" rule written for W1's corridor round passes every lock seen here.
   - The three locked replicates are the three worst for failed station-hours. Removing them for comparison
@@ -400,7 +400,8 @@ What the table shows:
 - Whether to run `_dc_cal_netfix` should therefore rest on the fix being the correction of an input defect,
   which docs/I94_LANE_SHARES.md already argues, not on this rule. That decision is the owner's.
 
-**Reading rule until locks are detected.** For any I-94 battery or probe:
+**Reading rule until locks are detected.** (Superseded for batteries, reports and sweeps by the detector of §10;
+still the rule for probes and for artifacts written before it.) For any I-94 battery or probe:
 
 - read the per-replicate departed shares and the weave counters (`n_unfinished`, `n_changer_eased`) before the
   means;
@@ -489,7 +490,8 @@ stage p5b_i94_collapse_map bash -c "set -e; \
 
 *Proposal only. Each part needs a dated amendment and the protocol's checks; nothing here is adopted.*
 
-1. **Detect and report locks (reporting only, no change to the physics). This is the first step.**
+1. **Detect and report locks (reporting only, no change to the physics). This is the first step.** Done
+   2026-10-07 (§10); W1's C4 has not been replaced, which is an amendment and the owner's.
    - **What counts as a lock**, read from files every replicate already writes:
      - at the run's end, a through-bound entrant at rest within 1 m of an auxiliary lane's end and no vehicle
        between that gore and the next entrance (`vehicles.parquet`, as in Table 4); or
@@ -576,3 +578,48 @@ All reads are with `uv run --no-sync python` (json, pandas, scipy); no simulatio
   - `results.{as_built,netfix}.k1.0_kr0.1.scores.common.discharge_veh_h_by_seed.S97` in
     `artifacts/i94_netfix_probe.json`.
   - Error = |mean − 4,490.5| / 4,490.5 over the seeds kept.
+
+## 10. Detector (2026-10-07)
+
+Item 1 of §7 is implemented as `validation.locks` (docs/CONTRACTS.md, "Locks", 2026-10-07). Reporting only: no
+runner, scenario, hash or golden changed, and nothing was simulated.
+
+- **Definition.** A run locks when vehicles stand with zero discharge past a point for at least 10 minutes while
+  vehicles are queued upstream of it.
+- **Two readers, both on files every replicate keeps.**
+  - The space-time reader takes `edges.parquet` (15 s × 100 m Edie bins). A cell stands when its density is at
+    least 20 veh/km and its flow at most 18 veh/h. A cell standing for 10 minutes is locked. The head is the most
+    downstream locked cell whose downstream neighbour is not locked when it starts.
+  - The run-end reader is §2's front-row method on `vehicles.parquet`: a front vehicle with an empty road ahead and
+    a queue behind, and no vehicle from upstream seen past it for 10 minutes before the end. It gives an upper bound
+    on the onset and a lower bound on the duration.
+- **What each run records.** Locked or not, and per lock:
+  - onset and duration;
+  - head `x`, edge, and the weave, merge or diverge whose gore is within 250 m downstream;
+  - vehicles trapped in the network (upstream, bound past the head);
+  - vehicles never departed from origins upstream.
+- **Where it is reported.**
+  - `no_locks` is a criteria row of every run set (PASS / FAIL / NOT RECORDED).
+  - The battery artifact gains `per_seed[i].locks`, `locks` and `zero_locks`; the sweep summary gains the same per
+    cell.
+  - The report's Model integrity section, banner and limitations name every lock, and the client summary's
+    confidence table states whether any run locked.
+- **Re-detection on step 3 [computed].** The run-end reader on the 20 `vehicles.parquet` of `db9fbab5fc6e`
+  (no `edges.parquet` was archived) finds exactly the three locks of §2 and no other:
+
+  | seed | section | head x [m] | last discharge (onset ≤) | duration ≥ | trapped in network | never departed upstream |
+  |---|---|---|---|---|---|---|
+  | 677105600768189526 | T.H.52 weave (`on-ramp 769818012`) | 10,731.57 | 11,848.5 s (08:47.5) | 42.5 min | 3,049 | 3,294 |
+  | 3011106312394044631 | Ruth St weave (`on-ramp 745524613`) | 5,316.59 | 11,252.0 s (08:37.5) | 52.5 min | 1,928 | 3,398 |
+  | 8026499204807041784 | Ruth St weave (`on-ramp 745524613`) | 5,316.56 | 13,585.0 s (09:16.4) | 13.6 min | 1,593 | 382 |
+
+  Battery-level: 3 of 20 locked, 15 % (Clopper–Pearson 95 % 3.2–37.9 %). The last-discharge times are Table 4's
+  last crossings (t = 0 at 05:30).
+- **The space-time reader on real runs [computed].** On the 25 I-24 runs with `edges.parquet` in `runs/`, it finds
+  locks in exactly the three sublane probes docs/I24_VALIDATION.md records as locking (82–93 min standing) and none
+  in the other 22.
+- **Limits.**
+  - The space-time reader pools lanes, so a lock of one lane beside moving lanes is seen only by the run-end
+    reader, and only if it lasts to the end.
+  - The run-end reader cannot see a second lock upstream of a first while vehicles stand in the first's queue.
+  - Neither reader has been run on an I-94 battery with `edges.parquet`; the next battery records both.

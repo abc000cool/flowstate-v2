@@ -9,7 +9,8 @@ backward wave speed a given detector reads on its field, whether the run
 actually put its planned demand on the network at all
 (:func:`insertion_stats`), and whether the model itself misbehaved
 (:func:`collision_summary`, :func:`forced_change_summary`, and the pass /
-fail / not-recorded flag :func:`collision_free`). They live here so
+fail / not-recorded flag :func:`collision_free`; locks, :mod:`validation.locks`
+and the flag :func:`lock_free`). They live here so
 the two callers cannot drift
 apart — the failure mode CLAUDE.md §0.1 is about, where a number in a report
 and the same number in an artifact were computed by two copies of the code.
@@ -20,7 +21,8 @@ Everything in this module reads a replicate directory as written by
 
 :func:`analyse_replicate` is the whole per-replicate measurement (metrics,
 observed scores, the profile detector's wave speed, insertion, and the
-waiting measures of the demand ledger, :func:`replicate_waiting`) and writes
+waiting measures of the demand ledger, :func:`replicate_waiting`, and the run's
+locks, :func:`validation.locks.detect_run_locks`) and writes
 the two per-seed files the battery re-scores from; :func:`analyse_replicates`
 runs it over a run set in a spawn process pool. It lives here rather than in
 the script because a spawn worker must be importable in the child, and the
@@ -55,8 +57,9 @@ from typing import Any, Final
 import numpy as np
 import pandas as pd
 
-from validation.criteria import CriteriaProfile, zero_collisions
+from validation.criteria import CriteriaProfile, zero_collisions, zero_locks
 from validation.fields import speed_field
+from validation.locks import RunLocks, detect_run_locks, lock_flags
 from validation.metrics import (
     JOURNEYS_FILE,
     WAITING_FIELDS,
@@ -647,6 +650,26 @@ def collision_free(metas: Sequence[Mapping[str, Any]]) -> bool | None:
     return zero_collisions(collision_counts(metas))
 
 
+def lock_free(records: Sequence[RunLocks | None]) -> bool | None:
+    """Whether a run set is lock-free (2026-10-07, docs/I94_COLLAPSE_DIAGNOSIS.md).
+
+    :func:`validation.criteria.zero_locks` over
+    :func:`validation.locks.lock_flags`: False when any run locked, True only
+    when every run is recorded and none locked, None (not recorded, never
+    True) otherwise — a run with neither ``edges.parquet`` nor
+    ``vehicles.parquet``, or no run at all. The corridor battery artifact's
+    ``zero_locks`` flag.
+
+    Args:
+        records: One :class:`validation.locks.RunLocks` per run (None: not
+            recorded).
+
+    Returns:
+        True, False or None.
+    """
+    return zero_locks(lock_flags(records))
+
+
 def lane_edge(lane: str) -> str:
     """The edge id of a SUMO lane id: the id without its ``_<index>`` suffix.
 
@@ -1103,6 +1126,8 @@ class ReplicateAnalysis:
         waiting: Travel time and delay including waiting
             (:func:`replicate_waiting`); None when the replicate carries no
             demand ledger — absent, never zero.
+        locks: The run's locks (:func:`validation.locks.detect_run_locks`;
+            2026-10-07); None only for an analysis built without them.
     """
 
     metrics: Metrics
@@ -1110,6 +1135,7 @@ class ReplicateAnalysis:
     wave_speed_kmh: float
     insertion: InsertionStats
     waiting: WaitingMetrics | None = None
+    locks: RunLocks | None = None
 
 
 def replicate_waiting(
@@ -1221,8 +1247,11 @@ def analyse_replicate(
     Writes :data:`METRICS_FILE` (metrics, the criterion wave speed and its
     detector, ``x_ref``/``span``, insertion, and ``waiting`` — the
     :func:`replicate_waiting` measures, ``null`` without a demand ledger,
-    added 2026-10-04 after every other key — and, only when given, the
-    ``scored_end_s`` every measurement was cut at) and :data:`SCORES_FILE` (the
+    added 2026-10-04 after every other key — then ``locks``, the run's
+    :class:`validation.locks.RunLocks` read from its ``edges.parquet`` and
+    ``vehicles.parquet`` (added 2026-10-07; the whole run, never cut at a
+    scored end: a lock is a model failure wherever it falls) — and, only
+    when given, the ``scored_end_s`` every measurement was cut at) and :data:`SCORES_FILE` (the
     :class:`validation.observed.ObservedScores`) into ``run_dir``, so a
     finished battery can be re-scored (:func:`load_replicate_analysis`)
     without re-simulating. The trajectory is read once
@@ -1257,8 +1286,10 @@ def analyse_replicate(
         path, profile.wave_detector, trajectories=frame, scored_end_s=scored_end_s
     )
     del frame
-    insertion = insertion_stats(load_meta(path))
+    meta = load_meta(path)
+    insertion = insertion_stats(meta)
     waiting = replicate_waiting(path, scored_end_s)
+    locks = detect_run_locks(path, meta=meta)
     record: dict[str, Any] = {
         "metrics": asdict(metrics),
         "criterion_wave_speed_kmh": wave_speed,
@@ -1267,6 +1298,7 @@ def analyse_replicate(
         "span_m": list(span),
         "insertion": insertion.to_dict(),
         "waiting": None if waiting is None else asdict(waiting),
+        "locks": locks.to_dict(),
     }
     if scored_end_s is not None:
         record["scored_end_s"] = float(scored_end_s)
@@ -1280,6 +1312,7 @@ def analyse_replicate(
         wave_speed_kmh=wave_speed,
         insertion=insertion,
         waiting=waiting,
+        locks=locks,
     )
 
 
@@ -1295,7 +1328,11 @@ def load_replicate_analysis(
     from the stored ``waiting`` block; a ``metrics.json`` written before it
     existed has no such key, and the measures are then computed from the
     replicate's demand ledger (:func:`replicate_waiting`; ``journeys.parquet``
-    is never pruned), None without one.
+    is never pruned), None without one. The locks likewise come from the
+    stored ``locks`` block, else from the replicate's ``edges.parquet`` and
+    ``vehicles.parquet`` (:func:`validation.locks.detect_run_locks`; neither
+    is pruned, though an archive may keep only the latter — the record's
+    ``sources`` say which was read).
 
     The stored files describe one scored window: a ``scored_end_s`` other
     than the one they were written with (absent = ``None``) is refused, since
@@ -1338,12 +1375,20 @@ def load_replicate_analysis(
         if "waiting" in stored
         else replicate_waiting(path, scored_end_s)
     )
+    meta = load_meta(path)
+    stored_locks = stored.get("locks")
+    locks = (
+        RunLocks.from_dict(stored_locks)
+        if isinstance(stored_locks, dict)
+        else detect_run_locks(path, meta=meta)
+    )
     return ReplicateAnalysis(
         metrics=Metrics(**raw),
         scores=scores,
         wave_speed_kmh=math.nan if wave is None else float(wave),
-        insertion=insertion_stats(load_meta(path)),
+        insertion=insertion_stats(meta),
         waiting=waiting,
+        locks=locks,
     )
 
 

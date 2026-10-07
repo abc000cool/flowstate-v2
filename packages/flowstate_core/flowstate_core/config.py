@@ -308,7 +308,23 @@ derivations and measurements; reproduce results made with them with release
 #: vehicle behind it. The pre-registered opt-in value is 5 m (one vehicle
 #: length, as ``exit_giveup_m``). Unset or ``0`` is off. Not a fitted value;
 #: not set by any committed scenario (adoption is a separate decision).
-WEAVE_OPTIONAL_KEYS: Final[frozenset[str]] = frozenset({"entrant_giveup_m"})
+#:
+#: ``entrant_giveup_dwell_s`` (2026-10-07, amendment W1b of
+#: docs/WEAVE_LOSS_DIAGNOSIS.md §10, opt-in): the entering give-up waits for a
+#: dwell. With it set, an entrant takes the paired exit only once it has stood
+#: halted (below 0.1 m/s) within ``entrant_giveup_m`` of the auxiliary lane's
+#: end without a break for at least this long — the clock starts on its first
+#: halted step there and resets on any step it is at or above the halting speed
+#: or farther back — and W1's own condition holds that step (no accepted or
+#: guard-passing forced change). Meant for the permanent lock at a weaving gore
+#: (docs/I94_COLLAPSE_DIAGNOSIS.md), not the ordinary stands that clear by
+#: themselves (at most 50.5 s on the T.H.52 section test's reference). The
+#: pre-registered opt-in value is 60 s. Needs ``entrant_giveup_m`` > 0 (refused
+#: otherwise); unset or ``0`` leaves W1's immediate give-up. Not a fitted
+#: value; not set by any committed scenario.
+WEAVE_OPTIONAL_KEYS: Final[frozenset[str]] = frozenset(
+    {"entrant_giveup_m", "entrant_giveup_dwell_s"}
+)
 WEAVE_KEYS = frozenset(WEAVE_DEFAULTS) | WEAVE_OPTIONAL_KEYS
 
 #: The merge switches deleted on 2026-10-06 (docs/MERGE_MODEL.md, amendment
@@ -418,6 +434,14 @@ class WeaveSpec(BaseModel):
             raise ValueError(f"unknown weave_params keys: {sorted(unknown)}")
         if self.weave_params.get("entrant_giveup_m", 0.0) < 0.0:
             raise ValueError("weave_params entrant_giveup_m must be >= 0 (0 or unset = off)")
+        dwell = self.weave_params.get("entrant_giveup_dwell_s", 0.0)
+        if dwell < 0.0:
+            raise ValueError("weave_params entrant_giveup_dwell_s must be >= 0 (0 or unset = off)")
+        if dwell > 0.0 and self.weave_params.get("entrant_giveup_m", 0.0) <= 0.0:
+            raise ValueError(
+                "weave_params entrant_giveup_dwell_s needs entrant_giveup_m > 0 "
+                "(the dwell delays the entering give-up, amendment W1b)"
+            )
         return self
 
 

@@ -63,6 +63,21 @@ criterion, and its row says so. A NOT RECORDED row has ``evaluated=False``
 and a ``detail`` starting with :data:`NOT_RECORDED`; :attr:`CriteriaResult.
 status` names the four outcomes.
 
+**Model integrity: no locks** (2026-10-07, docs/I94_COLLAPSE_DIAGNOSIS.md
+§7). Every profile's results end, after ``no_collisions``, with a
+``no_locks`` row, evaluated from the per-run lock records of
+:mod:`validation.locks` (``RunLocks.locked``: True when vehicles stood with
+no discharge past a point for at least
+:data:`validation.locks.LOCK_MIN_DURATION_S` with a queue behind it):
+PASS only when every run is recorded and none locked; FAIL when any run
+locked; NOT RECORDED when no run locked but some run carries neither file the
+detector reads (``edges.parquet``, ``vehicles.parquet``) or no records were
+supplied (:func:`zero_locks`). A permanent standstill in a simulation without
+teleporting is a model defect (no release rule reaches the vehicle at its
+front), not a traffic outcome; every metric of a locked run includes the
+vehicles trapped behind it. It is a FlowState internal standard, not an FHWA
+or DOT criterion, and its row says so.
+
 The wave-speed row's number depends on the detector that produced it, so
 every profile names its detector (``wave_detector``, a
 :class:`validation.waves.WaveDetector`) and the evaluated row records that
@@ -86,6 +101,7 @@ from dataclasses import dataclass, field
 from typing import Final, Literal
 
 from flowstate_core.constants import WAVE_SPEED_BAND_KMH
+from validation.locks import LOCK_MIN_DURATION_S
 from validation.waves import STACK_DETECTOR, WaveDetector
 
 #: Penetrations of the CLAUDE.md §7.1 sensitivity grid (fractions).
@@ -103,6 +119,15 @@ NO_COLLISIONS_STANDARD: Final[str] = (
     "FlowState internal standard (CLAUDE.md §3.3; owner decision 2026-10-04), "
     "not an FHWA or DOT criterion"
 )
+#: Name of the second model-integrity row every profile's results carry.
+NO_LOCKS: Final[str] = "no_locks"
+#: Provenance of the ``no_locks`` row, written into its ``detail``.
+NO_LOCKS_STANDARD: Final[str] = (
+    "FlowState internal standard (CLAUDE.md §0.1; docs/I94_COLLAPSE_DIAGNOSIS.md §7, "
+    "2026-10-07), not an FHWA or DOT criterion"
+)
+#: Seconds per minute (the ``no_locks`` threshold is stated in minutes).
+_S_PER_MIN: Final[float] = 60.0
 
 #: The outcome of one row: PASS / FAIL when evaluated; NOT RECORDED when an
 #: input some run should have recorded is missing; NOT EVALUATED otherwise.
@@ -117,7 +142,9 @@ _FLOWSTATE_ROWS = (
     "§3.2.1; min_seeds = 20 and the penetration {1,2,5,10,15,20}% x compliance "
     "{25,50,80,100}% grid are CLAUDE.md §0.6/§7.1 internal standards; so is the "
     "no_collisions model-integrity row (zero SUMO collisions in every run, each run "
-    "recording the counter; CLAUDE.md §3.3 and the owner decision of 2026-10-04), "
+    "recording the counter; CLAUDE.md §3.3 and the owner decision of 2026-10-04) and "
+    "the no_locks row (no run locked: no queue standing without discharge for the "
+    "validation.locks duration; docs/I94_COLLAPSE_DIAGNOSIS.md, 2026-10-07), both "
     "present in every profile. None of "
     "these is prescribed by the cited DOT/FHWA documents. The wave-speed row is "
     "measured with the profile's wave_detector (validation.waves.WAVE_DETECTORS; "
@@ -444,6 +471,88 @@ def _collision_row(counts: Sequence[int | None] | None) -> CriteriaResult:
     )
 
 
+def zero_locks(flags: Sequence[bool | None]) -> bool | None:
+    """Whether a run set is lock-free, from its per-run lock flags.
+
+    Args:
+        flags: One entry per run: whether it locked
+            (``validation.locks.RunLocks.locked``), or None when the run
+            carries neither file the detector reads.
+
+    Returns:
+        False when any run locked (whatever the others record); otherwise
+        None when the set is empty or any run is not recorded (not recorded
+        is not "no lock"); True only when every run is recorded and none
+        locked.
+    """
+    if any(f is True for f in flags):
+        return False
+    if not flags or any(f is None for f in flags):
+        return None
+    return True
+
+
+def _lock_row(flags: Sequence[bool | None] | None) -> CriteriaResult:
+    """The ``no_locks`` row (module docstring, "Model integrity: no locks").
+
+    Args:
+        flags: Per-run lock flags (None for a run not recorded), or None
+            when the caller supplied none.
+
+    Returns:
+        The row: FAIL (``value`` the number of locked runs), PASS (``value``
+        0) or NOT RECORDED (``value`` None).
+    """
+    text = (
+        f"no run locked (no queue standing without discharge for "
+        f"{LOCK_MIN_DURATION_S / _S_PER_MIN:g} min or more), every run recorded"
+    )
+    if flags is None:
+        return CriteriaResult(
+            name=NO_LOCKS,
+            value=None,
+            threshold=text,
+            passed=False,
+            evaluated=False,
+            detail=f"{NOT_RECORDED}: no per-run lock records supplied; " + NO_LOCKS_STANDARD,
+        )
+    recorded = [f for f in flags if f is not None]
+    n_missing = len(flags) - len(recorded)
+    n_locked = sum(1 for f in recorded if f)
+    flag = zero_locks(flags)
+    if flag is None:
+        why = (
+            "no runs supplied"
+            if not flags
+            else f"{n_missing} of {len(flags)} run(s) carry no lock record "
+            "(neither edges.parquet nor vehicles.parquet)"
+        )
+        return CriteriaResult(
+            name=NO_LOCKS,
+            value=None,
+            threshold=text,
+            passed=False,
+            evaluated=False,
+            detail=f"{NOT_RECORDED}: {why}; {NO_LOCKS_STANDARD}",
+        )
+    if flag:
+        detail = f"no lock in {len(flags)} run(s); {NO_LOCKS_STANDARD}"
+    else:
+        detail = (
+            f"{n_locked} of {len(recorded)} recorded run(s) locked"
+            + (f"; {n_missing} run(s) not recorded" if n_missing else "")
+            + f"; {NO_LOCKS_STANDARD}"
+        )
+    return CriteriaResult(
+        name=NO_LOCKS,
+        value=float(n_locked),
+        threshold=text,
+        passed=flag,
+        evaluated=True,
+        detail=detail,
+    )
+
+
 def _not_evaluated(
     name: str, threshold: str, *, observations_supplied: bool = False
 ) -> CriteriaResult:
@@ -499,6 +608,7 @@ def evaluate(
     sweep_grid: Sequence[tuple[float, float]] | None = None,
     observations_supplied: bool = False,
     collision_counts: Sequence[int | None] | None = None,
+    lock_flags: Sequence[bool | None] | None = None,
 ) -> list[CriteriaResult]:
     """Evaluate acceptance criteria against measured values.
 
@@ -539,6 +649,13 @@ def evaluate(
             ``no_collisions`` row every profile carries (last): PASS only
             when every run records zero, FAIL on any collision, otherwise
             NOT RECORDED (also when ``None`` is passed: no counts supplied).
+        lock_flags: One entry per run of the set: whether it locked
+            (``validation.locks.RunLocks.locked``), or None when the run is
+            not recorded (``validation.locks.lock_flags``). Feeds the
+            ``no_locks`` row every profile carries (after ``no_collisions``,
+            last): PASS only when every run is recorded and none locked,
+            FAIL when any run locked, otherwise NOT RECORDED (also when
+            ``None`` is passed: no records supplied).
 
     Returns:
         One :class:`CriteriaResult` per profile check, in table order.
@@ -713,6 +830,7 @@ def evaluate(
                 )
             )
 
-    # Model integrity, in every profile (2026-10-04, WP-98).
+    # Model integrity, in every profile (2026-10-04, WP-98; locks 2026-10-07).
     rows.append(_collision_row(collision_counts))
+    rows.append(_lock_row(lock_flags))
     return rows

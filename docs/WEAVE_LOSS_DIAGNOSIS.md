@@ -49,6 +49,17 @@ Labels:
     exit, the mirror of the existing exit give-up.
     - **Implemented and evaluated the same day (§8).** It passes F1, F2 and
       F4 and fails F3 and F5. So the key stays off.
+    - **Amendment W1b (§10): the same give-up, but only after a 60-s stand.**
+      It is aimed at the permanent lock of docs/I94_COLLAPSE_DIAGNOSIS.md.
+      - It was pre-registered, implemented opt-in (off is byte-identical) and
+        passed every fixture criterion.
+      - It released the one fixture lock found: Ruth St, seed 15, with the
+        calibrated drivers. Without it the lock stood 16 minutes, to the end
+        of the run.
+      - It also ended five ordinary Ruth St stands of 61.5–68.5 s, at
+        0.09–0.14 % of entrance departures.
+      - Adoption needs the corridor round (§10.11, written, not launched) and
+        the owner's decision. The key stays off.
 
 ## 1. Setup and provenance
 
@@ -959,3 +970,561 @@ estimate is 125 m (95 % interval 107–154 m, 858 entering changes at the Hickor
 ≥ 20 m/s), which rounds to the model's 120 m. The `lookahead_m` route to the missing ~450 veh/h is closed by
 measurement. The remaining named input is the ramp-to-ramp crossing share at T.H.52 (an assumed proportional
 split); bounding it from data is the next step.
+
+## 10. Amendment W1b: a lock release after a dwell (pre-registered 2026-10-07 05:42 CDT)
+
+*Written before any W1b code existed and before any W1b or reference run of
+this round. Evidence used: the committed W1 artifacts
+(`artifacts/weave_loss_2026-10-07/w1/`) and docs/I94_COLLAPSE_DIAGNOSIS.md.
+The results are appended below this registration and do not change it.*
+
+### 10.1 Why W1b
+
+- **The lock.** docs/I94_COLLAPSE_DIAGNOSIS.md found that every I-94 collapse
+  read so far is a permanent standstill at a weaving gore. Its front vehicle
+  is a through-bound entrant at rest 0.05–0.08 m from the end of the
+  auxiliary lane, and nothing releases it. It occurred in 3 of 20 four-hour
+  replicates with the calibrated drivers.
+- **W1 removes that vehicle, but too often.** W1 reroutes an entrant to the
+  exit at the first step it is halted at the lane's end with no change to
+  request. On the fixtures that also caught ordinary stands that clear by
+  themselves, so it failed F3 and F5 on frequency (§8.5).
+- **W1b fires only on long stands.** It keeps W1's action and adds a dwell:
+  the entrant must have stood at the lane's end for at least T_dwell. A lock
+  stands for hours. The fixture's ordinary stands, all of which cleared by
+  themselves, last at most about 50 s. So the rule is meant to change nothing
+  in normal operation and to release every lock.
+
+### 10.2 The rule
+
+- **New key.** `entrant_giveup_dwell_s` [s], a second member of
+  `WEAVE_OPTIONAL_KEYS`. It has no default and must be ≥ 0. Unset or 0 leaves
+  W1 exactly as it is. A positive value needs `entrant_giveup_m` > 0, and the
+  config is refused otherwise, so the key can never be silently inert.
+- **Dwell clock.** It runs per entrant under the weave's control that still
+  owes its change from the auxiliary lane into lane 1.
+  - It starts at the first step on which the entrant is halted (below
+    `HALTING_SPEED_MS`, 0.1 m/s) within `entrant_giveup_m` of the auxiliary
+    lane's end (the exit gore).
+  - It resets on any step on which the entrant is at or above the halting
+    speed, or farther than `entrant_giveup_m` from the end.
+  - It measures uninterrupted standstill at the lane's end. That is the
+    quantity T_dwell is chosen from (10.3), read from trajectories, so it is
+    not stopped by a step on which a change was requested. A requested change
+    that executes ends the stand anyway.
+- **Release.** The entrant takes the paired exit on a step on which:
+  - the clock has run for at least `entrant_giveup_dwell_s` (t − start ≥
+    T_dwell); and
+  - W1's own condition holds that step: halted, within `entrant_giveup_m` of
+    the end, with neither an accepted nor a guard-passing forced change. An
+    entrant that can request its change on that step tries the change, not
+    the exit.
+- **Action and records.** Exactly W1's:
+  - `vehicle.changeTarget` to the off-ramp's last edge, the lane-change mode
+    restored, handed back, never taken under control again;
+  - counted in `n_missed` and `n_entrant_took_exit`;
+  - marked `gave_up` in `vehicles.parquet`.
+
+  No new counter. The dwell is recorded in `meta.json["weave_sections"][i]
+  ["params"]`.
+- **Off is byte-identical.** With the dwell key unset, nothing of it runs and
+  nothing is written.
+- **The W1b setting.** `entrant_giveup_m` 5 (W1's value) with
+  `entrant_giveup_dwell_s` 60.
+- **Not included: an exit-side release** for an exiter halted at the front of
+  a through lane 5–11 m short of the gore, beyond `exit_giveup_m`.
+  - The diagnosis does find one at lane 1's front in every lock (Table 4).
+    But it reads that exiter as waiting for a lane that never moves, and it
+    proposes no exit-side rule until the trajectories show that the exiter
+    stays stuck after the auxiliary lane moves (§7.3 there).
+  - The fixture lock definition below (10.4) includes through-lane fronts.
+    So if W1b releases an entrant and the lock persists with an exiter at
+    the front, that shows up as a lock in the W1b arm, with the front vehicle
+    named.
+
+### 10.3 T_dwell = 60 s, and its basis
+
+- **The fixture's ordinary stands** [artifact, `w1/th52_ref_post.json`]. These
+  are the T.H.52 section test with the calibrated drivers, seeds 3–22, and
+  W1's reference arm. A stand is `strand.py`'s definition: the front of lane 0
+  within 15 m of its end, below 0.5 m/s, a through-bound entrant.
+  - The longest single stand per seed, in seconds, sorted: 0, 0, 5.0, 6.0,
+    6.0, 7.5, 8.0, 9.0, 10.0, 10.5, 13.5, 15.5, 15.5, 17.0, 18.0, 20.0, 20.5,
+    29.0, 33.5, **50.5** (seed 4).
+  - Every one of them cleared by itself: no lock, and lowest zone minute
+    ≥ 6.6 m/s.
+  - `strand.py`'s definition is wider than the rule's (15 m and 0.5 m/s
+    against 5 m and 0.1 m/s). So a stand by the rule's definition is no
+    longer than these.
+- **The locks.** The front entrant stands from the lock's onset to the end of
+  the run: about 1.2–1.9 h in the three four-hour replicates (last vehicle
+  through the gore at about 08:37–09:16, runs end at 10:30).
+- **The choice.** Any T_dwell between about 51 s and an hour separates the two.
+  60 s is the smallest whole minute above every ordinary stand on record,
+  with about 10 s of margin over 50.5 s.
+  - A shorter dwell would release ordinary stands. The 20–30 s range
+    suggested when this round was set up would have acted at 2 to 5 of the 20
+    reference seeds.
+  - A longer dwell lets the lock spread further before it is released. The
+    auxiliary lane stops first and the through lanes stop over minutes as
+    exiters become their fronts (the diagnosis's §2).
+  - 60 s is not fitted to any outcome. Its only input is the reference stands
+    above.
+- **Its limit.** The basis is 20 seeds × 20 min of one fixture. A rarer
+  ordinary stand longer than 60 s would be released. F3b/F5b count such
+  releases on the fixtures, and C5b counts them on the corridor.
+
+### 10.4 Evaluation sets and definitions
+
+**Arms.** Each set is run twice at the same seeds:
+- reference: no key;
+- W1b: `--weave-set entrant_giveup_m=5 --weave-set entrant_giveup_dwell_s=60`.
+
+Trajectories are kept for the readers. macOS.
+
+**Sets:**
+
+| set | what | runs per arm |
+|---|---|---|
+| S1 | The T.H.52 section test with the calibrated drivers, seeds 3–22: `merge_model_selfcheck.py th52 --model weave --fleet-from scenarios/mndot_i94_wb_stpaul_weave_dc.yaml` (W1's F1–F4 set) | 20 |
+| S2 | W1's 37-run grid with the fixtures' own fleets: `merge_model_selfcheck.py grid --model weave` (W1's F5 set) | 37 |
+| S3 | The calibrated drivers on every grid fixture with a weave block, through a new `grid --fleet-from` option. Ruth St fixtures at seeds 3–22; the others at the grid's seeds. A run whose config, after its fleet is replaced, hashes the same as another run's in the set is run once (the `_fleet` twins) | ≈ 75 |
+
+**Definitions:**
+- **Gore.** The end of the weave section's last edge on the corridor axis
+  (1,134.09 m on the T.H.52 fixture, as in `strand.py`).
+- **Entrant.** A vehicle from the weave's on-ramp not planned for the paired
+  exit.
+- **Stand (the rule's definition).** An entrant in section lane 0 with
+  v < 0.1 m/s and x ≥ gore − 5 m on consecutive 0.5-s samples. Its length is
+  last sample − first sample.
+- **Lock (fixture form of I94_COLLAPSE_DIAGNOSIS §7.1).** After the 120-s
+  warm-up, some vehicle is, for at least 120 s without a break:
+  - the front vehicle of a section lane (any lane);
+  - within 15 m of the gore;
+  - below 0.1 m/s.
+
+  Why these values:
+  - 120 s is twice T_dwell and more than twice the longest ordinary stand.
+  - 15 m reaches lane 1's front exiter in all three corridor locks
+    (5.0–10.8 m short).
+
+  `run_summary`'s lock flag is reported beside it, as in §8.4.
+- **Lock-prone run.** A run of S1–S3 whose reference arm has a lock.
+- **Releases.** `n_entrant_took_exit` in the W1b arm.
+
+### 10.5 Acceptance criteria, fixed now
+
+If any criterion fails, the key stays off and the failure is reported. No
+criterion is re-thresholded.
+
+| # | criterion | relation to §6.2 |
+|---|---|---|
+| B0 | The rule waits for the dwell. (a) Every entrant the rule reroutes, in every W1b run, had a stand ending at its `gave_up_s` of ≥ 59.5 s (60 s less one sample). (b) No stand in any W1b run lasts longer than 61 s | new; replaces F2 |
+| B1 | Inert until it fires. Every W1b run in which the rule never fires is identical to its reference: sha256 of every Parquet file; `meta.json` without wall time, `config_hash` and the weave `params` | new |
+| F1b | S1: exit-end flow not lower. Paired W1b − reference, 95 % upper bound ≥ 0 | replaces F1 |
+| F3b | Entrants taking the exit ≤ 1 % of the weave entrance's departures, pooled over seeds. S1 over its 20 seeds. In S2 and S3, pooled per weave section over the set's runs of it: Ruth St, T.H.52 (every `th52_*` fixture), T.H.61, the moderate and golden fixtures | replaces F3 and F5's per-run cap |
+| F4 | S1: zero collisions; −9 m/s² vehicle-steps ≤ reference + 2; given-up exits ≤ reference | unchanged |
+| F5b | S2 and S3: zero collisions. No W1b run has a lock, or a `run_summary` lock flag at a weave section, unless its reference has one | F5 without its frequency cap (now F3b) |
+| L1 | Zero locks in the W1b arm on every lock-prone run. If no reference run locks, L1 is **not testable on the fixtures** and is reported as such | new |
+
+**Reasons for each change:**
+
+- **F1 to F1b.** W1b is built not to act below 60 s, and the reference stands
+  on S1 are all shorter. So no flow gain is expected there, and a criterion
+  that asks for one would test the wrong thing. The question for S1 is
+  whether W1b costs anything.
+- **F2 to B0.** W1b deliberately leaves stands under 60 s alone, so halving
+  stranded time (F2) is not its aim. B0 checks instead that it acts after the
+  dwell, and only then. Stranded time per run is still reported.
+- **F3 and F5's per-run cap to F3b, pooled over seeds.**
+  - On a Ruth St fixture whose entrance departs 73 vehicles, one release is
+    1.37 %. A per-run cap of 1 % therefore forbids any release at all on such
+    a section, which is where two of the three corridor locks formed.
+  - Pooling over seeds measures the rate the cap was meant to bound. With 20
+    seeds of S1, 1 % is about 78 entrants.
+  - The pooled cap is no looser in intent. For W1b, each release also
+    requires a minute's standstill.
+- **F5's "no lock" to F5b plus L1.** W1's reference grid already carried a lock flag
+  at a weave section (`ruth_entr_fleet` s5, `run_summary`'s unfinished-share
+  rule). Only a lock that W1b creates counts against it (F5b). A lock it
+  fails to release counts in L1.
+
+**Predictions, registered, not criteria:**
+- **S1.** No reference stand reaches 60 s. So the rule never fires, every W1b
+  run equals its reference, and B1, F1b, F3b and F4 hold trivially.
+- **S2/S3.** Few or no releases. Ruth St's stands are unmeasured, and any
+  releases are expected there.
+- **L1.** The fixtures may contain no lock at all. W1 found no lock by the
+  diagnosis's definition on S1 and had only `run_summary`'s weaker flag on
+  S2.
+
+**What passing means.** Passing every fixture criterion does not adopt W1b.
+Its purpose, releasing a lock, can be shown only where locks occur. If the
+fixtures have none, that is the corridor (10.6), and adoption is the owner's
+decision.
+
+### 10.6 Corridor criteria, fixed now (cloud; run only on the owner's decision)
+
+**The runs.** Two arms in one stage, paired seed by seed on step 3's 20 seeds:
+- **Reference.** `scenarios/mndot_i94_wb_stpaul_weave_dc.yaml` (hash
+  `db9fbab5fc6e`).
+- **W1b.** The same scenario with `entrant_giveup_m: 5.0` and
+  `entrant_giveup_dwell_s: 60.0` added to both weaves' `weave_params`
+  (`exit_prepare: 1.0` kept).
+- **Reproduction check.** The reference arm is re-run so that both arms use
+  the same code. It is checked against step 3's committed per-seed departed
+  shares.
+
+| # | criterion |
+|---|---|
+| C1 | S790 06:30–07:30 not lower: paired 95 % upper bound ≥ 0 |
+| C2 | Departed share not lower: paired upper bound ≥ 0 |
+| C3 | Zero collisions |
+| C4b | **Zero locks** at T.H.52 and Ruth St over the 20 W1b replicates. The reference count is reported beside it (3 of 20 if it reproduces step 3). Replaces C4, which passes every lock seen (I94_COLLAPSE_DIAGNOSIS §5). The definition is the diagnosis's Table 4 reading, extended to any lane front. A section is locked at the run's end when no vehicle stands between its gore and the next entrance downstream (or the corridor's end), and a vehicle stands at rest at the front of a section lane within 15 m of the gore. Read from each replicate's `vehicles.parquet` (vehicles not arrived, last sample at the run's end) |
+| C5b | Entrants taking the exit ≤ 1 % of that weave entrance's departures, pooled over the 20 seeds, at T.H.52 and at Ruth St (`n_entrant_took_exit` over `ramps[k].n_departed`, from each `meta.json`) |
+
+**Clarification of B1 (2026-10-07 05:43 CDT).** Written before any W1b code
+or run, after re-reading W1's implementation.
+- **What else B1's `meta.json` comparison drops.** Besides wall time,
+  `config_hash` and the weave `params`, it drops:
+  - `weave_sections[i].n_entrant_took_exit`. W1's code writes this counter
+    whenever `entrant_giveup_m` is set, so in a W1b run that never fires it
+    reads 0 and the reference has no such key.
+  - The run-directory path strings, which contain the config hash.
+- **Which weave `params`.** Both copies:
+  `meta["config"]…["weave"]["weave_params"]` and
+  `weave_sections[i]["params"]`.
+- **Nothing else is excluded.**
+
+### 10.7 What was implemented (2026-10-07, after the registration)
+
+- **Config** (`flowstate_core.config`).
+  - `entrant_giveup_dwell_s` is the second member of `WEAVE_OPTIONAL_KEYS`.
+  - A negative value is refused, and so is a positive value without
+    `entrant_giveup_m` > 0.
+  - It is not in `WEAVE_DEFAULTS`, so `tests/golden/config_defaults.json` is
+    unchanged.
+- **Runner** (`microsim.runner._weave_step`, new `_weave_entrant_giveup_dwell_s`).
+  - Each controlled entrant's state carries `halt_since`, the clock of §10.2.
+    It is kept only when the dwell is on.
+  - W1's release condition gains `t − halt_since ≥ T_dwell`, with a 10⁻⁶ s
+    tolerance (`_WEAVE_DWELL_EPS_S`), so a dwell of a whole number of steps
+    fires on the step that completes it.
+  - Nothing else changed: the same action, counters and records as W1.
+- **Script** (`scripts/merge_model_selfcheck.py`). `grid` gains `--fleet-from`
+  and `--seeds`, which S3 needed. Within one call, a config that hashes as an
+  earlier one is run once and listed in `skipped_same_config`. Without the two
+  options the grid runs as before; S2's reference reproduces W1's
+  `grid_ref.json` field for field (§10.9).
+- **Tests.** `TestWeaveEntrantGiveupDwell` in
+  `tests/test_microsim/test_microsim_merge_managed_meter.py`. On the fake
+  harness it checks:
+  - the stand is kept at 59.5 s and released at 60 s;
+  - rolling, or standing 6 m back, resets the clock;
+  - after the dwell, an entrant that can change changes, and its clock runs
+    through the requests;
+  - unset or 0 is W1, with no clock kept;
+  - the schema.
+
+  One SUMO test on the T.H.52 section with the calibrated drivers, seed 4:
+  - a 10-s dwell (a mechanism check) releases entrants only after 10 s of
+    standstill, read from the trajectories;
+  - a dwell of 0 is byte-identical to W1 alone.
+- **Harness.** `artifacts/weave_loss_2026-10-07/w1b/harness/`:
+  - `post.py` reads each run: stands, releases, lane-front locks, B1 digests;
+  - `eval.py` evaluates the criteria;
+  - `releases.py` compares each release with the same entrant in the
+    reference;
+  - `corridor_w1b.py` is the corridor readout of §10.6.
+
+### 10.8 Off is byte-identical [run]
+
+**Method.** As §8.2:
+- Two `git archive HEAD` trees (`84a272e`), the second with only `config.py`
+  and `runner.py` copied in.
+- W1's `harness/cmp.py` was run in each tree through `harness/py.sh` (each
+  tree's packages first on `sys.path`), with the case configs from the HEAD
+  tree.
+- W1's `harness/hashes.py` hashed the committed scenarios.
+
+**Result** (`w1b/identity_head.json`, `w1b/identity_change.json`,
+`w1b/scenario_hashes_*.json`):
+- **37 of 37 cases identical:**
+  - the 12 micro goldens;
+  - the T.H.52, Ruth St, McKnight Rd, T.H.61 and golden weave fixtures;
+  - the T.H.52 section with the calibrated drivers, seeds 3–5;
+  - the measured model.
+
+  "Identical" means the sha256 of every Parquet file, `meta.json` without
+  wall time, the metrics and the config hash.
+- **Against W1's record of the same 37 cases** (taken at `daf8826`): every
+  Parquet file is identical too. Only the config hashes and `meta.json`
+  differ, through the fixtures' absolute OSM paths.
+- **All 42 committed scenarios hash the same in both trees**, and
+  `WEAVE_DEFAULTS` is unchanged. The 33 scenarios of W1's record keep W1's
+  hashes.
+- **Tests.**
+  - `pytest -m "not slow" tests/test_microsim tests/test_flowstate_core`:
+    762 passed, 13 xfailed, 2 xpassed. All of these marks are pre-existing and
+    non-strict.
+  - `ruff check`, `ruff format --check` and `mypy packages/flowstate_core`:
+    clean.
+
+### 10.9 Results [run]
+
+All runs: macOS, eclipse-sumo 1.27.1, at most two SUMO processes at once. The
+rows are in `artifacts/weave_loss_2026-10-07/w1b/`:
+- `s*_ref.json`, `s*_w1b.json`: the self-check rows;
+- `*_post.json`: `post.py`;
+- `criteria.json`, `releases.json`.
+
+**Both reference arms reproduce W1's.**
+- S1's reference matches `w1/th52_ref.json` in every field but the config
+  hash at all 20 seeds (280 fields), and `strand.py`'s stranded time matches
+  `w1/th52_ref_post.json`.
+- S2's reference matches `w1/grid_ref.json` in all 407 fields.
+
+**Per set** (reference → W1b; "stand" is the rule's definition of §10.4):
+
+| | S1: T.H.52 section, 20 runs | S2: grid, fixture fleets, 37 runs | S3: grid weaves, calibrated drivers, 75 runs |
+|---|---|---|---|
+| runs in which the rule fired | 0 | 1 (`ruth_exit_fleet_271` s5) | 5 (Ruth St) |
+| entrants released | 0 | 2 | 5 |
+| runs identical to the reference | 20 of 20 | 36 of 36 not fired | 70 of 70 not fired |
+| longest stand [s] | 49.0 → 49.0 | 68.5 → 60.0 | **971.5** → 60.0 |
+| reference stands ≥ 60 s | none | 68.5 (s5) | 61.5, 62.5, 64.0, 67.5, **971.5** |
+| locks (§10.4) | 0 → 0 | 0 → 0 | **1 run** (`ruth_exit_fleet_271` s15) → 0 |
+| `run_summary` lock flags | 0 → 0 | `merge_golden` s3, `ruth_entr_fleet` s5 → the same two | `ruth_exit_fleet_271` s15 → none |
+| vehicles departed | 31,652 → 31,652 | 48,081 → 48,081 | 93,497 → 93,838 |
+| exits given up | 66 → 66 | 78 → 74 | 445 → 437 |
+| collisions | 0 → 0 | 0 → 0 | 0 → 0 |
+| −9 m/s² vehicle-steps | 2 → 2 | 20 → 20 | 17 → 16 |
+| exit-end flow, veh/h (mean) | 4,360.8 → 4,360.8 | | |
+| stranded time (`strand.py`), s per section-run | 18.9 → 18.9 | 18.5 → 18.9 | 73.3 → 61.5 |
+
+**The fixture lock.** `ruth_exit_fleet_271` at seed 15 with the calibrated drivers.
+
+*Reference:*
+- **The front row is the diagnosis's lock state.** A through-bound entrant
+  (v00953) stands 0.08 m from the auxiliary lane's end from 228.5 s to the
+  end of the run (971.5 s).
+  - Lane 1's front exiter stands 180 s from 234.5 s. A second lane-1 exiter
+    stands 555.5 s from 644.5 s.
+  - At the end: lane 1's front is an exiter 10.78 m short of the gore, lanes
+    2 and 3 have exiters 29.2 m and 81.6 m short, and nothing is past the
+    gore.
+
+  This is the picture of Table 4 in docs/I94_COLLAPSE_DIAGNOSIS.md.
+- **It forms over minutes.** Gore crossings per minute run 22–36 until
+  minute 11, then 11, then **0 from minute 12 to the end**.
+- **What it costs.** The entrance departs 47 of 73, the run 673 of 1,014
+  vehicles, and 28 controlled vehicles are unfinished.
+
+*W1b:*
+- **The release.** The same entrant is released at 288.5 s, after exactly
+  60 s.
+- **The lane-1 exiter** had stood 57.5 s. It gets into the auxiliary lane
+  3.5 s later, so no exit-side release was needed.
+- **Discharge.** The gore discharges 29–44 vehicles a minute to the end.
+- **What it saves.** The entrance departs 73 of 73 and the run 1,014 of
+  1,014. Nothing is unfinished, given-up exits fall 9 → 4, and there is no
+  collision.
+
+The other 74 runs of S3 and all of S1–S2 have no lock.
+
+**Every release** (`releases.json`). "Reference" is the same entrant in the
+reference run. Each run is identical to its reference up to its first release
+(B1's mechanism), so the reference stand is comparable only for a run's first
+release.
+
+| set | fixture | seed | released at [s] | its stand [s] | the reference stand | given-up exits ref → W1b | lowest zone minute [m/s] ref → W1b |
+|---|---|---|---|---|---|---|---|
+| S2 | `ruth_exit_fleet_271` | 5 | 408.5 | 60.0 | 68.5 s, then changed into lane 1 at the gore | 14 → 10 | 5.9 → 5.2 |
+| S2 | `ruth_exit_fleet_271` | 5 | 919.0 | 60.0 | (after the first release; not comparable) | | |
+| S3 | `ruth_exit_fleet_271` | 15 | 288.5 | 60.0 | **971.5 s, to the run's end (the lock)** | 9 → 4 | 0.0 → 4.8 |
+| S3 | `ruth_exit_fleet_271` | 16 | 140.5 | 60.0 | 67.5 s, then changed | 12 → 8 | 7.3 → 6.9 |
+| S3 | `ruth_exit_fleet_271` | 17 | 360.0 | 60.0 | 62.5 s, then changed | 14 → 10 | 4.6 → 4.8 |
+| S3 | `ruth_exit_fleet_271` | 6 | 1002.0 | 60.0 | 64.0 s, then changed | 13 → 13 | 7.5 → 7.7 |
+| S3 | `ruth_exit` | 6 | 1001.5 | 60.0 | 61.5 s, then changed | 7 → **12** | 7.9 → **4.7** |
+
+**What the releases show:**
+- **One is the lock and five are ordinary stands.** Of the six first
+  releases, one ends the lock. The other five end stands that would have
+  cleared by themselves 1.5–8.5 s later. Their entrants finally changed into
+  lane 1 at a standstill at the gore.
+- **T_dwell's basis did not cover Ruth St.** 60 s was chosen above every
+  ordinary stand of the T.H.52 section test (§10.3). Ruth St's ordinary stands
+  reach 61.5–68.5 s with either fleet. So T_dwell does not separate ordinary
+  waits from locks there: the rule acts on the tail of ordinary waits as
+  well.
+- **This cost stays within the pre-registered caps** (F3b): 0.09–0.14 % of
+  entrance departures, pooled. Its direction is mixed: given-up exits fall
+  in three of those runs and rise 7 → 12 in one (`ruth_exit` s6).
+
+### 10.10 Verdict, criterion by criterion (as pre-registered in §10.5)
+
+| # | criterion | result | verdict |
+|---|---|---|---|
+| B0 | (a) every release after a stand ≥ 59.5 s; (b) no stand > 61 s in a W1b run | 7 releases, every stand exactly 60.0 s; longest W1b stand 60.0 s | **pass** |
+| B1 | every W1b run without a release identical to its reference | 126 of 126 (S1 20, S2 36, S3 70) | **pass** |
+| F1b | S1 exit-end flow, paired 95 % upper bound ≥ 0 | +0.0 [0.0, 0.0]: the rule never fired on S1 | **pass** |
+| F3b | entrants taking the exit ≤ 1 %, pooled over seeds per weave section | S1 0 of 7,744; S2 Ruth St 2 of 1,425 (0.14 %), others 0; S3 Ruth St 5 of 5,480 (0.09 %), others 0 | **pass** |
+| F4 | S1: 0 collisions; −9 m/s² ≤ reference + 2; given-up exits ≤ reference | 0; 2 against 2; 66 against 66 | **pass** |
+| F5b | S2, S3: zero collisions; no lock or lock flag the reference lacks | 0 and 0; none new | **pass** |
+| L1 | zero locks in W1b on every lock-prone run | testable: one lock-prone run (S3 `ruth_exit_fleet_271` s15), unlocked under W1b | **pass** |
+
+**Outcome.** Every fixture criterion passes, and the predictions for S1 held:
+no release, and every run identical to its reference.
+
+**What this does not settle.** By §10.5 this does not adopt W1b:
+- **L1 rests on one lock.** One lock-prone run in 132 fixture runs, so the
+  fixtures show the mechanism, not a rate.
+- **Ordinary waits are not untouched on Ruth St.** The aim that ordinary
+  waits pass untouched holds on T.H.52 but not on Ruth St (§10.9). The cost
+  is within the registered caps.
+
+The corridor round (§10.6, §10.11) and the owner's decision remain. The key
+stays off in every committed scenario.
+
+### 10.11 The corridor round (cloud; written, not launched)
+
+**What it tests.** It measures W1b on the corridor where the locks were seen
+(3 of 20 four-hour replicates), against the criteria fixed in §10.6.
+
+**The fixture check of its lock reader.** `corridor_w1b.py`'s lock reader
+applies C4b's end-of-run front-row rule. On the 60 Ruth St runs of S3's
+reference it finds exactly one lock, the seed-15 lock above, with the
+picture of Table 4, and no false positive.
+
+**Reading C4b.** `vehicles.parquet` holds positions, not speeds. So, as in the
+diagnosis's own Table 4, "at rest" is read from the empty reach past the
+gore. This is how C4b will be read; it is fixed before any corridor run.
+
+**The reader's corridor check.** Step 3's per-replicate files are not on this
+machine, so the reader has not seen the corridor locks. The stage's own
+reference arm checks it: if that arm reproduces step 3 (`reproduction.identical`),
+the reader must report the three known locks (…189526 at T.H.52, …044631
+and …041784 at Ruth St). If it does not, C4b is reported as unread.
+
+**The battery's own detector.** Since this registration another session has
+added `validation.locks` (docs/I94_COLLAPSE_DIAGNOSIS.md §10; uncommitted at
+the time of writing). Its run-end reader finds exactly those three locks in
+step 3's files, and batteries will carry `per_seed[i].locks` and
+`zero_locks`.
+- If the stage runs on a tree that has it, its per-seed records are reported
+  beside C4b.
+- C4b's verdict stays `corridor_w1b.py`'s reading, as registered.
+- A disagreement between the two readers is reported, not resolved in
+  either's favour.
+
+**Proposed stage text** for `scripts/gcp/pipeline_i24.sh`, after p8 (also in
+`w1b/harness/stage_p9_proposed.sh.txt`):
+
+```sh
+# p9 (proposed, docs/WEAVE_LOSS_DIAGNOSIS.md §10.6 and §10.11; opt-in; not in the default list). Amendment W1b's
+#     corridor round: the I-94 four-hour battery under the reference configuration with the calibrated drivers
+#     (scenarios/${MNDOT}_weave_dc.yaml, name ${MNDOT}_weave_xlsfg_dc, hash db9fbab5fc6e; step 3's 20 seeds, spawned
+#     from its seed 42) and the same scenario with entrant_giveup_m 5 and entrant_giveup_dwell_s 60 added to both
+#     weaves' weave_params (exit_prepare 1 kept), both run here on one code tree; then C1-C5b, the reference's
+#     reproduction of step 3 and the end-of-run front row of every replicate
+#     (artifacts/weave_loss_2026-10-07/w1b/harness/corridor_w1b.py; meta.json and vehicles.parquet only, never
+#     trajectories) -> artifacts/weave_w1b_corridor.json. Run trees under runs/mndot_*_p9/baseline, so make_archive's
+#     runs/mndot_*/*/*/*/{meta.json,vehicles.parquet} brings every replicate's files back. Needs no data set (launch
+#     with --data-set none): the scenario, observations and populations are tracked.
+P9_W1B=scenarios/${MNDOT}_weave_dc_w1b.yaml
+if echo " $STAGES " | grep -q " p9_i94_w1b "; then
+  stage p9_i94_w1b bash -c "set -e; \
+    sed -e 's#^name: ${MNDOT}_weave_xlsfg_dc\$#name: ${MNDOT}_weave_xlsfg_dc_w1b#' \
+        -e 's#weave_params: {exit_prepare: 1.0}#weave_params: {exit_prepare: 1.0, entrant_giveup_m: 5.0, entrant_giveup_dwell_s: 60.0}#' \
+        scenarios/${MNDOT}_weave_dc.yaml > $P9_W1B; \
+    [ \$(grep -c 'entrant_giveup_dwell_s: 60.0' $P9_W1B) -eq 2 ]; \
+    for S in ${MNDOT}_weave_dc ${MNDOT}_weave_dc_w1b; do \
+      N=\$(sed -n 's/^name: //p' scenarios/\$S.yaml | head -1); \
+      $RUN scripts/corridor_battery.py --scenario scenarios/\$S.yaml --observations data/mndot/$MNDOT/observations.json \
+        --replicates $REPS --procs $PROCS --out runs/\${N}_p9/baseline --artifact artifacts/validation_\${N}_p9.json \
+        --report-dir docs/reports/\${N}_p9 --criteria-profile fhwa_tat3_2004; \
+    done; \
+    $RUN artifacts/weave_loss_2026-10-07/w1b/harness/corridor_w1b.py \
+      --ref artifacts/validation_${MNDOT}_weave_xlsfg_dc_p9.json \
+      --w1b artifacts/validation_${MNDOT}_weave_xlsfg_dc_w1b_p9.json \
+      --committed-ref artifacts/validation_${MNDOT}_weave_xlsfg_dc.json \
+      --out artifacts/weave_w1b_corridor.json" || say "p9_i94_w1b failed; continuing"
+fi
+```
+
+**Launch** (after the stage is committed and pushed: the owner's call):
+
+```sh
+scripts/gcp/launch_i24_pipeline.sh --vm flowstate-p9 --machine n2-standard-32 --bucket gs://<bucket>/p9 \
+  --self-delete --via-bucket --data-set none --cap-min 150 --pipeline-args '--stages "p9_i94_w1b"'
+```
+
+**Cost [estimate].**
+- Two batteries of 20 four-hour runs, one after the other, on n2-standard-32.
+  Step 3's took 1,599 s at 30 processes, so about 55–60 min for the two.
+- Plus 10–15 min of boot and setup through the bucket, and a minute for the
+  readout.
+- Total: about 70–75 min billed at about $1.55/h, **about $1.9**. The
+  150-minute cap bounds it at about $3.9.
+- Re-running the reference costs about $0.7 of that. It is kept for two
+  reasons:
+  - Pairing needs one code tree. Step 3's artifact was built at 06:20 UTC on
+    2026-10-07, and at least three later commits touch the runner (`d7fc807`,
+    `fadcfe7`, `decdccc`; `4957527` too if the VM ran an older tree). Each is
+    recorded as byte-identical when off, which the re-run checks.
+  - Its three known locks are what checks C4b's reader.
+
+**What would change the reading.**
+- If the W1b arm still locks, `corridor_w1b.py` names each lock's front row.
+  An exiter at the front with the auxiliary lane moving would be the case for
+  an exit-side release, which §10.2 deferred.
+- C5b counts the ordinary stands W1b also ends (§10.9). On the corridor they
+  include Ruth St's.
+
+### 10.12 Limits
+
+- **Fixtures, macOS.** The corridor rounds on Linux decide.
+- **One fixture lock.** L1's pass rests on a single locked run. The
+  frequency of locks on the fixtures is not estimated, and nothing here says
+  how often W1b would have to act on the corridor.
+- **T_dwell was chosen from one section.** Its basis (T.H.52's stands) does
+  not cover Ruth St's ordinary stands, which run up to 68.5 s (§10.9).
+  - A dwell chosen from Ruth St's stands too (about 70 s or more) would have
+    left those five stands alone and would still have released the lock,
+    which had stood 971.5 s.
+  - That value was not registered and was not run. Any change of T_dwell is
+    a new amendment with its own criteria.
+- **Release ≠ realism.** Whether drivers in the field take the exit after a
+  minute at the end of an exit-only lane is not measured. W1b is a release of
+  a model state that has no field counterpart: a permanent standstill.
+
+### 10.13 Reproduce
+
+From the repository root, with `$W` a scratch directory. Pass the
+`--weave-set` flags literally: zsh does not split a variable holding them.
+
+```sh
+DC=scenarios/mndot_i94_wb_stpaul_weave_dc.yaml
+P=merge_model_selfcheck.py
+uv run --no-sync python scripts/$P th52 --model weave --fleet-from $DC --seeds 3-22 --keep --work-dir $W/s1_ref --out $W/s1_ref.json
+uv run --no-sync python scripts/$P th52 --model weave --fleet-from $DC --seeds 3-22 \
+    --weave-set entrant_giveup_m=5 --weave-set entrant_giveup_dwell_s=60 --keep --work-dir $W/s1_w1b --out $W/s1_w1b.json
+uv run --no-sync python scripts/$P grid --model weave --keep --work-dir $W/s2_ref --out $W/s2_ref.json
+uv run --no-sync python scripts/$P grid --model weave \
+    --weave-set entrant_giveup_m=5 --weave-set entrant_giveup_dwell_s=60 --keep --work-dir $W/s2_w1b --out $W/s2_w1b.json
+RUTH=ruth_entr,ruth_exit,ruth_entr_fleet,ruth_exit_fleet,ruth_exit_fleet_271
+REST=th52_corridor_demand,th52_capacity,th52_upstream,th52_upstream_fleet,weave_moderate,weave_golden,th52_corridor,th61
+uv run --no-sync python scripts/$P grid --model weave --fleet-from $DC --only $RUTH --seeds 3-22 --keep --work-dir $W/s3a_ref --out $W/s3a_ref.json
+uv run --no-sync python scripts/$P grid --model weave --fleet-from $DC --only $REST --keep --work-dir $W/s3b_ref --out $W/s3b_ref.json
+#   ... and the same two with the two --weave-set flags into s3a_w1b / s3b_w1b
+H=artifacts/weave_loss_2026-10-07/w1b/harness
+for s in s1_ref s1_w1b s2_ref s2_w1b s3a_ref s3a_w1b s3b_ref s3b_w1b; do
+  uv run --no-sync python $H/post.py $W/$s $W/${s}_post.json; done
+uv run --no-sync python $H/eval.py $W        # B0, B1, F1b, F3b, F4, F5b, L1 -> $W/criteria.json
+uv run --no-sync python $H/releases.py $W    # every release beside its reference -> $W/releases.json
+```
+
+**Identity runs.** As §8.7, with W1's `harness/cmp.py` and `harness/hashes.py`
+on the trees `git archive HEAD` (`84a272e`) and that tree with `config.py`
+and `runner.py` copied in.

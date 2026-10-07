@@ -59,6 +59,24 @@ and the artifact a top-level ``zero_collisions`` beside ``collisions``
 (:func:`validation.battery.collision_free`: true, false, or null when not
 recorded).
 
+**Locks.** A permanent standstill — vehicles standing with no discharge past
+a point for at least 10 minutes while a queue builds behind it — is a model
+defect too, and 3 of the 20 seeds of the I-94 WB step-3 battery ended in one
+without any summary naming it (docs/I94_COLLAPSE_DIAGNOSIS.md). Each seed's
+locks (:func:`validation.locks.detect_run_locks`: the space-time reader on its
+``edges.parquet``, the run-end reader on its ``vehicles.parquet``; stored in
+its ``metrics.json`` as ``locks``) are in its ``per_seed`` row (onset,
+location and section, duration, trapped vehicles),
+:func:`validation.locks.lock_summary` pools them into the artifact's
+``locks`` block (locked runs with seeds, sections and onsets, the locked share
+with its Clopper–Pearson interval; null when no seed is recorded), and one
+``locks`` line is printed beside the collisions line. Zero locks is a
+pass/fail requirement: the criteria carry the ``no_locks`` row (PASS only
+when every seed is recorded and none locked, FAIL on any lock, otherwise NOT
+RECORDED) and the artifact a top-level ``zero_locks`` after
+``zero_collisions`` (:func:`validation.battery.lock_free`). Added
+2026-10-07, additively.
+
 **Phases.** ``simulate`` (the SUMO pool, ``--procs``), ``score`` (per-replicate
 metrics, observed scores and wave speed, :func:`validation.battery.analyse_replicates`
 in a second spawn pool of ``--score-procs`` workers — one trajectory frame per
@@ -176,6 +194,7 @@ from validation.battery import (
     json_safe,
     load_meta,
     load_replicate_analysis,
+    lock_free,
     mean_finite,
     measurement_window,
     score_pool_size,
@@ -184,6 +203,7 @@ from validation.battery import (
     weave_exit_summary,
 )
 from validation.criteria import CriteriaProfile, CriteriaResult, evaluate, get_profile
+from validation.locks import RunLocks, detect_run_locks, lock_flags, lock_summary
 from validation.metrics import Metrics, WaitingMetrics, aggregate, ci, geh_pass_fraction
 from validation.observed import ObservedCorridor, ObservedScores, pool_link_hours, pool_scores
 from validation.report import generate_report
@@ -513,6 +533,7 @@ def build_artifact(
     metas: Sequence[Mapping[str, Any]] | None = None,
     waiting_list: Sequence[WaitingMetrics | None] | None = None,
     scored_end_s: float | None = None,
+    lock_records: Sequence[RunLocks | None] | None = None,
 ) -> dict[str, Any]:
     """Assemble the validation artifact for one corridor battery.
 
@@ -539,6 +560,14 @@ def build_artifact(
     (:func:`validation.battery.waiting_summary` labelled by seed; null when no
     seed records the ledger). Without ``waiting_list`` both are null.
 
+    ``lock_records`` (one :class:`validation.locks.RunLocks` per seed, in seed
+    order; 2026-10-07) adds, additively, ``per_seed[i]["locks"]`` (the seed's
+    record, null when not given) and, after ``zero_collisions``, the ``locks``
+    block (:func:`validation.locks.lock_summary` labelled by seed; null when no
+    seed is recorded) and ``zero_locks`` (:func:`validation.battery.lock_free`:
+    true only when every seed is recorded and none locked, false on any lock,
+    null otherwise). Without ``lock_records`` all three are null.
+
     ``scored_end_s`` (``--scored-end-s``) adds, additively, a top-level
     ``scored_end_s`` after ``x_offset_m`` and a note saying the cool-down after
     it was simulated but not scored; without it neither is written.
@@ -559,6 +588,9 @@ def build_artifact(
     seed_waiting: list[WaitingMetrics | None] = (
         [None] * len(seeds) if waiting_list is None else list(waiting_list)
     )
+    seed_locks: list[RunLocks | None] = (
+        [None] * len(seeds) if lock_records is None else list(lock_records)
+    )
     per_seed = [
         {
             "seed": seed,
@@ -575,8 +607,9 @@ def build_artifact(
             "link_hours": (None if s.link_hours is None else [r.to_dict() for r in s.link_hours]),
             "n_collisions": None if meta is None else collision_count(meta),
             "waiting": None if wait is None else asdict(wait),
+            "locks": None if lk is None else lk.to_dict(),
         }
-        for seed, run_dir, s, wave, m, ins, meta, wait in zip(
+        for seed, run_dir, s, wave, m, ins, meta, wait, lk in zip(
             seeds,
             dirs,
             scores_list,
@@ -585,6 +618,7 @@ def build_artifact(
             insertion_list,
             seed_metas,
             seed_waiting,
+            seed_locks,
             strict=True,
         )
     ]
@@ -620,6 +654,10 @@ def build_artifact(
         "collisions": collisions,
         # The pass/fail requirement (WP-98): true / false / null (not recorded).
         "zero_collisions": None if metas is None else collision_free(metas),
+        # Permanent standstills (2026-10-07): locked runs with seeds, sections
+        # and onsets, and the zero-locks requirement (true / false / null).
+        "locks": (None if lock_records is None else lock_summary(lock_records, labels=list(seeds))),
+        "zero_locks": None if lock_records is None else lock_free(lock_records),
         "geh": {
             "pooled_values": [round(g, 4) for g in pooled_geh],
             "n_comparisons": len(pooled_geh),
@@ -702,6 +740,17 @@ def build_artifact(
             "The insertion block counts the vehicles the runs actually put on the "
             "network against their demand plan; a mean departed fraction well under 1 "
             "means the metrics above describe less demand than was configured.",
+            *(
+                [
+                    "The locks block counts the seeds that locked (validation.locks: "
+                    "vehicles standing with no discharge past a point for the lock "
+                    "duration while a queue builds behind it); every metric, criterion "
+                    "and interval above includes those seeds, whose vehicles trapped "
+                    "behind the lock never finish."
+                ]
+                if lock_records is not None
+                else []
+            ),
             *(
                 [
                     "The weave_exits block counts, per weaving section, the exit-bound "
@@ -801,6 +850,30 @@ def collision_line(collisions: dict[str, Any] | None) -> str:
     top = collisions["locations"][:1]
     if top:
         text += f"; most on lane {top[0]['lane']} ({top[0]['n']} logged)"
+    return label + text
+
+
+def lock_line(locks: dict[str, Any] | None) -> str:
+    """The console line for the artifact's ``locks`` block (beside the collisions line)."""
+    label = f"    {'locks':<18} "
+    if locks is None:
+        return label + "not recorded (no replicate has edges.parquet or vehicles.parquet)"
+    share = locks["share_locked"]
+    text = (
+        f"{locks['n_runs_locked']} of {locks['n_runs_recorded']} replicate(s) locked "
+        f"({100.0 * share['value']:.0f} %, 95 % CI {100.0 * share['lo95']:.0f}–"
+        f"{100.0 * share['hi95']:.0f} %)"
+    )
+    if locks["runs_not_recorded"]:
+        text += f"; not recorded for {len(locks['runs_not_recorded'])} replicate(s)"
+    places = [
+        f"{row['section']} ({row['n_runs']}, onset {row['onset_s_min']:.0f}"
+        + (f"–{row['onset_s_max']:.0f}" if row["onset_s_max"] != row["onset_s_min"] else "")
+        + " s)"
+        for row in locks["by_section"]
+    ]
+    if places:
+        text += "; at " + ", ".join(places)
     return label + text
 
 
@@ -1123,6 +1196,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     # same weave and collision counters as a fresh battery.
     metas = [load_meta(run_dir) for run_dir in dirs]
     weave_exits = weave_exit_summary(metas)
+    # Each replicate's locks: stored by the scoring (or re-read from a stored
+    # metrics.json); an analysis without them is detected from the run files.
+    lock_records: list[RunLocks | None] = [
+        a.locks if a.locks is not None else detect_run_locks(run_dir, meta=meta)
+        for a, run_dir, meta in zip(analyses, dirs, metas, strict=True)
+    ]
 
     with phase("ring", timings):
         ring = ring_block(args.ring_seeds, out_root / "ring")
@@ -1150,6 +1229,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         ring_dampening=None if ring is None else bool(ring["dampening"]["passed"]),
         n_seeds=len(seeds),
         collision_counts=collision_counts(metas),
+        lock_flags=lock_flags(lock_records),
     )
 
     report_dir = Path(args.report_dir)
@@ -1185,6 +1265,9 @@ def main(argv: Sequence[str] | None = None) -> int:
                 figure_runs=[dirs[0]],
                 gate=gate,
                 scored_end_s=args.scored_end_s,
+                locks_by_run={
+                    d: r for d, r in zip(dirs, lock_records, strict=True) if r is not None
+                },
             )
             report_path = result[0] if isinstance(result, tuple) else result
         else:
@@ -1215,6 +1298,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         metas=metas,
         waiting_list=waiting_list,
         scored_end_s=args.scored_end_s,
+        lock_records=lock_records,
     )
     artifact["report_path"] = None if report_path is None else str(report_path)
     if gate is not None:
@@ -1246,6 +1330,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     for section in weave_exits["sections"]:
         print(weave_exit_line(section, weave_exits["threshold_share"]), flush=True)
     print(collision_line(artifact["collisions"]), flush=True)
+    print(lock_line(artifact["locks"]), flush=True)
     print(waiting_line(artifact["waiting"]), flush=True)
     for row in criteria_rows:
         print(f"    {row.name:<18} {row.status:<14} {row.value}  ({row.threshold})", flush=True)

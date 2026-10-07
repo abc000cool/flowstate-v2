@@ -378,20 +378,24 @@ def test_tree_without_meta_reports_zero_and_keeps_existing_keys(tmp_path: Path) 
         expected_keys = ["aggregate", "grid", "config_hash"]
         if cell != "baseline":
             expected_keys.append("vs_baseline_paired")
-        expected_keys += ["diagnostics", "collisions", "zero_collisions"]
+        expected_keys += ["diagnostics", "collisions", "zero_collisions", "locks", "zero_locks"]
         assert list(entry) == expected_keys, cell
         # no meta: not recorded, never zero (WP-98)
         assert entry["collisions"]["total"] is None and entry["zero_collisions"] is None
         assert entry["collisions"]["runs_not_recorded"] == SEEDS
+        # no stored record and no table: locks not recorded, never "no lock"
+        assert entry["locks"] is None and entry["zero_locks"] is None
     assert s_without["zero_collisions"] is None
+    assert s_without["zero_locks"] is None
 
-    # Everything but ``diagnostics`` and the collision keys (both read the
-    # metas) is independent of whether a meta exists.
+    # Everything but ``diagnostics`` and the collision and lock keys (they read
+    # the metas) is independent of whether a meta exists.
     for s in (s_with, s_without):
         for entry in s["cells"].values():
-            for key in ("diagnostics", "collisions", "zero_collisions"):
+            for key in ("diagnostics", "collisions", "zero_collisions", "locks", "zero_locks"):
                 del entry[key]
         del s["zero_collisions"]
+        del s["zero_locks"]
     s_with["experiment"] = s_without["experiment"]
     assert s_with == s_without
     assert list(s_without) == [
@@ -501,3 +505,72 @@ def test_collision_flag_pass_fail_not_recorded(tmp_path: Path) -> None:
     stored = json.loads((tmp_path / "missing.json").read_text())
     assert stored["zero_collisions"] is None
     assert stored["cells"]["baseline"]["collisions"]["runs_not_recorded"] == [11]
+
+
+def _with_locks(root: Path, locked: dict[tuple[str, int], bool | None]) -> None:
+    """Store a lock record in runs' ``metrics.json``; None removes it (and the meta)."""
+    from validation.locks import SOURCE_VEHICLES, RunLocks
+    from validation.locks import Lock as _Lock
+
+    lock = _Lock(
+        x_m=5316.6,
+        x_lo_m=5316.6,
+        x_hi_m=5316.6,
+        edge="999007700",
+        section=None,
+        onset_s=11252.0,
+        onset_is_upper_bound=True,
+        release_s=None,
+        duration_s=3148.0,
+        duration_is_lower_bound=True,
+        queue_m=None,
+        n_trapped_in_network=1928,
+        n_never_departed_upstream=3398,
+        detected_by=(SOURCE_VEHICLES,),
+    )
+    for (cell, seed), is_locked in locked.items():
+        d = root / cell / CELLS[cell] / str(seed)
+        m = json.loads((d / "metrics.json").read_text())
+        if is_locked is None:
+            m.pop(sweep.RUN_LOCKS_KEY, None)
+            (d / "meta.json").unlink(missing_ok=True)
+        else:
+            record = RunLocks((SOURCE_VEHICLES,), 14400.0, (lock,) if is_locked else ())
+            m[sweep.RUN_LOCKS_KEY] = record.to_dict()
+        (d / "metrics.json").write_text(json.dumps(m))
+
+
+def test_lock_flag_pass_fail_not_recorded(tmp_path: Path) -> None:
+    """Each cell and the sweep carry ``locks`` and ``zero_locks`` (2026-10-07):
+    true only when every run is recorded and none locked, false on any lock,
+    null otherwise; the stored per-run record is read back."""
+    root = tmp_path / "sweep"
+    _build_tree(root, with_meta=True)
+    clean = {(cell, seed): False for cell in CELLS for seed in SEEDS}
+
+    _with_locks(root, clean)
+    s = sweep.analyze(root, tmp_path / "pass.json", allow_partial=False)
+    assert s["zero_locks"] is True
+    for entry in s["cells"].values():
+        assert entry["zero_locks"] is True and entry["locks"]["n_runs_locked"] == 0
+    assert sweep.lock_line(s) == "locks: PASS — none in all 6 run(s)"
+
+    _with_locks(root, {("strategy_alinea", 22): True})
+    s = sweep.analyze(root, tmp_path / "fail.json", allow_partial=False)
+    assert s["zero_locks"] is False
+    assert s["cells"]["baseline"]["zero_locks"] is True
+    cell = s["cells"]["strategy_alinea"]
+    assert cell["zero_locks"] is False
+    assert cell["locks"]["n_runs_locked"] == 1
+    assert cell["locks"]["runs_locked"][0]["run"] == 22
+    assert cell["locks"]["by_section"][0]["section"] == "x 5317 m"
+    assert sweep.lock_line(s) == "locks: FAIL — locked runs in strategy_alinea (1: seeds 22)"
+
+    _with_locks(root, {**clean, ("baseline", 11): None})
+    s = sweep.analyze(root, tmp_path / "missing.json", allow_partial=False)
+    assert s["zero_locks"] is None
+    base = s["cells"]["baseline"]
+    assert base["zero_locks"] is None and base["locks"]["runs_not_recorded"] == [11]
+    assert sweep.lock_line(s) == "locks: NOT RECORDED — not recorded for 1 of 6 run(s)"
+    stored = json.loads((tmp_path / "missing.json").read_text())
+    assert stored["zero_locks"] is None

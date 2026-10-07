@@ -3404,6 +3404,172 @@ class TestWeaveEntrantGiveup:
             assert a == b, name
 
 
+class TestWeaveEntrantGiveupDwell:
+    """Amendment W1b (docs/WEAVE_LOSS_DIAGNOSIS.md §10;
+    ``entrant_giveup_dwell_s``, no default, unset = W1 at once): the entering
+    give-up waits until the entrant has stood halted within
+    ``entrant_giveup_m`` of the auxiliary lane's end, without a break, for the
+    dwell — and W1's own condition holds on that step."""
+
+    _stranded = staticmethod(TestWeaveEntrantGiveup._stranded)
+
+    def test_the_stranded_entrant_waits_for_the_dwell(self):
+        """59.5 s of standstill: kept and deferred; at 60 s: takes the exit,
+        exactly as W1 does (rerouted, handed back, counted)."""
+        from microsim.runner import _weave_meta, _weave_step
+
+        ws, veh, mod, res = self._stranded(entrant_giveup_m=5.0, entrant_giveup_dwell_s=60.0)
+        t = 10.0
+        while t < 70.0:
+            _weave_step(mod, _tc, ws, res, t)
+            t += 0.5
+        assert ws["n_entrant_took_exit"] == 0 and ws["n_missed"] == 0
+        assert ws["veh"]["n"]["halt_since"] == 10.0
+        assert ws["n_forced_deferred"] == 120
+        assert not [c for c in veh.calls if c[0] == "target"]
+        _weave_step(mod, _tc, ws, res, 70.0)
+        assert ("target", "n", "x2") in veh.calls
+        assert veh.lc_modes["n"] == 1621 and "n" not in ws["veh"]
+        assert ws["n_entrant_took_exit"] == 1 and ws["n_missed"] == 1
+        assert ws["took_exit"] == {"n"} and ws["gave_up"] == {"n"}
+        meta = _weave_meta(ws, {"on0": 1})
+        assert meta["n_entrant_took_exit"] == 1
+        assert meta["params"]["entrant_giveup_dwell_s"] == 60.0
+
+    def test_rolling_or_standing_farther_back_resets_the_clock(self):
+        """The clock measures uninterrupted standstill at the lane's end: a
+        step at or above the halting speed, or more than ``entrant_giveup_m``
+        back, starts it again."""
+        from microsim.runner import _weave_step
+
+        ws, veh, mod, res = self._stranded(entrant_giveup_m=5.0, entrant_giveup_dwell_s=2.0)
+        for t in (0.0, 0.5, 1.0, 1.5):
+            _weave_step(mod, _tc, ws, res, t)
+        assert ws["veh"]["n"]["halt_since"] == 0.0 and ws["n_entrant_took_exit"] == 0
+        res["n"] = _res("b", 0, 99.5, 0.2)  # creeping: not halted
+        _weave_step(mod, _tc, ws, res, 2.0)
+        assert ws["veh"]["n"]["halt_since"] is None and ws["n_entrant_took_exit"] == 0
+        res["n"] = _res("b", 0, 99.5, 0.0)
+        for t in (2.5, 3.0, 3.5, 4.0):
+            _weave_step(mod, _tc, ws, res, t)
+        assert ws["veh"]["n"]["halt_since"] == 2.5 and ws["n_entrant_took_exit"] == 0
+        res["n"] = _res("b", 0, 94.0, 0.0)  # halted 6 m before the end
+        res["l"] = _res("b", 1, 92.5, 0.0)
+        _weave_step(mod, _tc, ws, res, 4.5)
+        assert ws["veh"]["n"]["halt_since"] is None and ws["n_entrant_took_exit"] == 0
+        res["n"] = _res("b", 0, 99.5, 0.0)
+        res["l"] = _res("b", 1, 98.0, 0.0)
+        for t in (5.0, 5.5, 6.0, 6.5):
+            _weave_step(mod, _tc, ws, res, t)
+        assert ws["n_entrant_took_exit"] == 0
+        _weave_step(mod, _tc, ws, res, 7.0)
+        assert ws["n_entrant_took_exit"] == 1 and ("target", "n", "x2") in veh.calls
+
+    def test_after_the_dwell_an_entrant_that_can_change_changes(self):
+        """Lane 1 clear beside it: its change is requested every step and it is
+        never given up, however long it stands (the fake does not execute the
+        change); the clock keeps running through the requests."""
+        from microsim.runner import _weave_step
+
+        ws = _weave_state(force_after_s=0.0, entrant_giveup_m=5.0, entrant_giveup_dwell_s=1.0)
+        veh = _WeaveVehicle({"n": 0.0})
+        mod = _WeaveMod(veh)
+        for t in (0.0, 0.5, 1.0, 1.5, 2.0, 2.5):
+            _weave_step(mod, _tc, ws, {"n": _res("b", 0, 99.5, 0.0)}, t)
+        assert len([c for c in veh.calls if c[0] == "change"]) == 6
+        assert not [c for c in veh.calls if c[0] == "target"]
+        assert ws["veh"]["n"]["halt_since"] == 0.0 and ws["n_entrant_took_exit"] == 0
+
+    def test_unset_or_zero_dwell_is_w1(self):
+        """Unset or 0: W1 gives up on the first halted step, and an entrant
+        kept under control carries no clock."""
+        from microsim.runner import _weave_step
+
+        for params in ({}, {"entrant_giveup_dwell_s": 0.0}):
+            ws, _veh, mod, res = self._stranded(entrant_giveup_m=5.0, **params)
+            _weave_step(mod, _tc, ws, res, 0.0)
+            assert ws["n_entrant_took_exit"] == 1, params
+            ws, _veh, mod, res = self._stranded(entrant_giveup_m=5.0, **params)
+            res["n"] = _res("b", 0, 94.0, 0.0)  # halted 6 m before the end: kept
+            res["l"] = _res("b", 1, 92.5, 0.0)
+            _weave_step(mod, _tc, ws, res, 0.0)
+            assert "halt_since" not in ws["veh"]["n"], params
+
+    def test_schema(self):
+        """A second key with no default: accepted with ``entrant_giveup_m``,
+        absent from ``WEAVE_DEFAULTS``; negative refused; a positive dwell
+        without the give-up distance refused; it changes the config hash."""
+        from flowstate_core.config import WEAVE_KEYS, WEAVE_OPTIONAL_KEYS, WeaveSpec
+
+        assert {"entrant_giveup_m", "entrant_giveup_dwell_s"} == WEAVE_OPTIONAL_KEYS
+        assert WEAVE_OPTIONAL_KEYS <= WEAVE_KEYS
+        assert "entrant_giveup_dwell_s" not in WEAVE_DEFAULTS
+        both = {"entrant_giveup_m": 5.0, "entrant_giveup_dwell_s": 60.0}
+        assert WeaveSpec(exit_ramp="x", weave_params=both).weave_params == both
+        WeaveSpec(exit_ramp="x", weave_params={"entrant_giveup_dwell_s": 0.0})
+        with pytest.raises(ValueError, match="entrant_giveup_dwell_s must be >= 0"):
+            WeaveSpec(
+                exit_ramp="x",
+                weave_params={"entrant_giveup_m": 5.0, "entrant_giveup_dwell_s": -1.0},
+            )
+        for params in (
+            {"entrant_giveup_dwell_s": 60.0},
+            {"entrant_giveup_m": 0.0, "entrant_giveup_dwell_s": 60.0},
+        ):
+            with pytest.raises(ValueError, match="needs entrant_giveup_m > 0"):
+                WeaveSpec(exit_ramp="x", weave_params=params)
+        raw = _th52_corridor_config(3).model_dump(mode="json")
+        raw["network"]["ramps"][0]["weave"]["weave_params"] = {"entrant_giveup_m": 5.0}
+        w1 = config_hash(ScenarioConfig.model_validate(raw))
+        raw["network"]["ramps"][0]["weave"]["weave_params"] = both
+        assert config_hash(ScenarioConfig.model_validate(raw)) != w1
+
+    def test_on_the_th52_fixture_the_release_follows_the_dwell(self, tmp_path):
+        """SUMO, the T.H.52 section with the calibrated drivers, seed 4 (an
+        entrant stood at the auxiliary lane's end from about 101.5 s for about
+        50 s, docs/WEAVE_LOSS_DIAGNOSIS.md §3.8). A short dwell (10 s, a
+        mechanism check, not W1b's 60 s) releases entrants only after each
+        stood halted within 5 m of the end for 10 s, read off the
+        trajectories; a dwell of 0 writes byte-identical outputs to W1 alone."""
+        import hashlib
+
+        th52_dc = TestWeaveEntrantGiveup._th52_dc
+        paths = run_micro(
+            th52_dc(4, {"entrant_giveup_m": 5.0, "entrant_giveup_dwell_s": 10.0}),
+            4,
+            tmp_path / "dwell10",
+        )
+        meta = json.loads(paths.meta.read_text())
+        (z,) = meta["weave_sections"]
+        veh = pd.read_parquet(paths.run_dir / "vehicles.parquet")
+        rerouted = veh[veh.gave_up & veh.route.str.startswith("on0")]
+        assert z["n_entrant_took_exit"] == len(rerouted) >= 1
+        assert (rerouted.destination_final == "th52 exit").all()
+        assert meta["n_collisions"] == 0
+        gore = next(r for r in meta["ramps"] if r["name"] == "th52")["attach_end_x_m"]
+        df = pd.read_parquet(paths.trajectories, columns=["t", "veh_id", "x", "lane", "v"])
+        for vid, t_rel in zip(rerouted.veh_id, rerouted.gave_up_s, strict=True):
+            g = df[(df.veh_id == vid) & (df.t <= t_rel)].sort_values("t")
+            standing = (g.lane == 0) & (g.v < 0.1) & (g.x >= gore - 5.0)
+            # the uninterrupted stand that ends at the release
+            run = standing[::-1].cumprod()
+            first_t = g.t[::-1][run.astype(bool)].min()
+            assert t_rel - first_t >= 10.0 - 1e-6, (vid, t_rel, first_t)
+        digests = []
+        for tag, params in (
+            ("w1", {"entrant_giveup_m": 5.0}),
+            ("w1_dwell0", {"entrant_giveup_m": 5.0, "entrant_giveup_dwell_s": 0.0}),
+        ):
+            pth = run_micro(th52_dc(4, params), 4, tmp_path / tag)
+            digests.append(
+                {
+                    n: hashlib.sha256((pth.run_dir / n).read_bytes()).hexdigest()
+                    for n in ("trajectories.parquet", "vehicles.parquet", "edges.parquet")
+                }
+            )
+        assert digests[0] == digests[1]
+
+
 class TestRampToRampShareRun:
     """``WeaveSpec.ramp_to_ramp_share`` through the runner (2026-10-07,
     docs/TH52_CROSSING_SHARE.md): the T.H.52 section fixture (seed 4) at the

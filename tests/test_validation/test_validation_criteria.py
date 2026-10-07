@@ -9,6 +9,7 @@ from flowstate_core.constants import WAVE_SPEED_BAND_KMH
 from validation.criteria import (
     CRITERIA_PROFILES,
     NO_COLLISIONS,
+    NO_LOCKS,
     NOT_RECORDED,
     REQUIRED_COMPLIANCES,
     REQUIRED_PENETRATIONS,
@@ -17,7 +18,9 @@ from validation.criteria import (
     evaluate,
     get_profile,
     zero_collisions,
+    zero_locks,
 )
+from validation.locks import LOCK_MIN_DURATION_S
 
 
 def _row(rows, name):
@@ -47,6 +50,7 @@ class TestDefaults:
             "n_seeds",
             "sensitivity_grid",
             "no_collisions",
+            "no_locks",
         }
         for r in rows:
             assert not r.evaluated
@@ -318,9 +322,10 @@ class TestNoCollisions:
         assert "no per-run collision counts supplied" in _row(evaluate(), NO_COLLISIONS).detail
 
     def test_every_profile_carries_the_row_last_and_says_so(self):
+        # last but for no_locks, the second model-integrity row (2026-10-07)
         for p in CRITERIA_PROFILES.values():
             rows = evaluate(p, collision_counts=[0])
-            assert rows[-1].name == NO_COLLISIONS and rows[-1].passed
+            assert rows[-2].name == NO_COLLISIONS and rows[-2].passed
             assert "no_collisions" in p.source
         # a profile that drops every optional row still carries it
         bare = CriteriaProfile(
@@ -330,7 +335,7 @@ class TestNoCollisions:
             require_ring_dampening=False,
             require_sensitivity_grid=False,
         )
-        assert [r.name for r in evaluate(bare)][-1] == NO_COLLISIONS
+        assert [r.name for r in evaluate(bare)][-2:] == [NO_COLLISIONS, NO_LOCKS]
 
     def test_status_names_the_four_outcomes(self):
         def row(evaluated: bool, passed: bool, detail: str = "") -> CriteriaResult:
@@ -340,3 +345,51 @@ class TestNoCollisions:
         assert row(True, False).status == "FAIL"
         assert row(False, False, "not evaluated: input not supplied").status == "NOT EVALUATED"
         assert row(False, False, f"{NOT_RECORDED}: no runs supplied").status == "NOT RECORDED"
+
+
+class TestNoLocks:
+    """The second model-integrity row (2026-10-07, docs/I94_COLLAPSE_DIAGNOSIS.md):
+    no run locked, every run carrying a lock record (validation.locks)."""
+
+    def test_flag_branches(self):
+        assert zero_locks([False, False]) is True
+        assert zero_locks([False, True]) is False
+        # a lock fails the set whatever the other runs record
+        assert zero_locks([None, True]) is False
+        # not recorded is never a pass
+        assert zero_locks([False, None]) is None
+        assert zero_locks([None]) is None
+        assert zero_locks([]) is None
+
+    def test_pass_only_when_every_run_is_recorded_and_none_locked(self):
+        row = _row(evaluate(lock_flags=[False, False, False]), NO_LOCKS)
+        assert row.evaluated and row.passed and row.status == "PASS"
+        assert row.value == 0.0
+        assert row.detail.startswith("no lock in 3 run(s); FlowState internal standard")
+        assert "not an FHWA" in row.detail
+        minutes = f"{LOCK_MIN_DURATION_S / 60.0:g} min"
+        assert minutes in row.threshold
+
+    def test_any_lock_fails_and_counts_the_locked_runs(self):
+        row = _row(evaluate(lock_flags=[True, False, True, None]), NO_LOCKS)
+        assert row.evaluated and not row.passed and row.status == "FAIL"
+        assert row.value == 2.0
+        assert row.detail.startswith("2 of 3 recorded run(s) locked; 1 run(s) not recorded")
+
+    def test_a_run_without_a_record_is_not_recorded(self):
+        row = _row(evaluate(lock_flags=[False, None]), NO_LOCKS)
+        assert not row.evaluated and not row.passed and row.value is None
+        assert row.status == "NOT RECORDED"
+        assert row.detail.startswith(f"{NOT_RECORDED}: 1 of 2 run(s) carry no lock record")
+
+    def test_no_records_and_no_runs_are_not_recorded(self):
+        for flags in (None, []):
+            row = _row(evaluate(lock_flags=flags), NO_LOCKS)
+            assert row.status == "NOT RECORDED" and row.value is None and not row.passed
+        assert "no per-run lock records supplied" in _row(evaluate(), NO_LOCKS).detail
+
+    def test_every_profile_carries_the_row_last_and_says_so(self):
+        for p in CRITERIA_PROFILES.values():
+            rows = evaluate(p, collision_counts=[0], lock_flags=[False])
+            assert rows[-1].name == NO_LOCKS and rows[-1].passed
+            assert "no_locks" in p.source
