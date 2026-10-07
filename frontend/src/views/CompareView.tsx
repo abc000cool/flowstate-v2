@@ -22,7 +22,13 @@
  *
  * Every panel renders loading → error → empty → content; a failed read is a
  * persistent danger callout with Retry. Nothing is polled: a run that is not
- * finished says so and offers a reload. */
+ * finished says so and offers a reload. When the API goes away or comes back
+ * (the shell's offline fallback flips), everything is read again from the
+ * backend now answering: what the other one answered is dropped, never shown
+ * under the new one's banner.
+ *
+ * Seeds are the API's decimal strings (`api/types` `Seed`): a 64-bit seed is
+ * shown, compared and asked for digit for digit, never through a number. */
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Link, useLocation, useSearchParams } from 'react-router-dom';
@@ -32,6 +38,7 @@ import {
   getRunMetrics,
   getSweep,
   isMockActive,
+  isMockEnv,
   listRuns,
   listScenarios,
 } from '../api/client';
@@ -42,6 +49,7 @@ import type {
   RunMetrics,
   RunSummary,
   ScenarioSummary,
+  Seed,
   SweepDetail,
 } from '../api/types';
 import { SeededBadge, StatusChip, TierBadge } from '../components/bits';
@@ -79,6 +87,7 @@ import {
   resolveRunSetup,
   runOptionLabel,
   runScenarioName,
+  sameDemandRealisation,
   sharedSeed,
   sideStat,
   type CompareSide,
@@ -86,6 +95,7 @@ import {
 } from '../lib/compare';
 import { DEMO_HASH_LABEL, DEMO_ROW_TITLE } from '../lib/demo';
 import { failureReason, formatNumber } from '../lib/format';
+import { useOfflineFallback } from '../lib/hooks';
 import { metricDef, NO_OBSERVATIONS_LABEL, NO_OBSERVATIONS_TITLE } from '../lib/metrics';
 import {
   hasRunFilters,
@@ -124,7 +134,8 @@ const DIFFERENCE_NOTE =
 interface KeyedReads<T> {
   data: Record<string, T>;
   errors: Record<string, unknown>;
-  /** Forget a failure, so the key is read again. */
+  /** Forget a failure and read the key again: exactly one read, started here,
+   * also when an earlier answer is still kept (a failed Reload keeps it). */
   retry: (key: string) => void;
   /** Read the key again, keeping what is on screen until the answer lands. */
   reload: (key: string) => void;
@@ -141,35 +152,62 @@ function without<T>(o: Record<string, T>, key: string): Record<string, T> {
 
 /** Each key read once and kept by key, so an answer for a run that is no
  * longer selected lands harmlessly under its own key and never on the run
- * now on screen. */
+ * now on screen.
+ *
+ * What is kept is kept per backend. The client answers reads from the
+ * in-browser demo backend while the API is unreachable (`isMockActive`,
+ * decided per call), so when that flips — the API went away or came back —
+ * every answer and failure read from the other backend is dropped and the
+ * keys are read again, and an answer still in flight from it is discarded
+ * when it lands: a demo run, its metrics or a demo-era "not found" never
+ * stays on screen under the live service (or the reverse). */
 function useKeyedReads<T>(
   keys: string[],
   read: (key: string) => Promise<T>,
   label: string,
 ): KeyedReads<T> {
+  const demo = useOfflineFallback() || isMockEnv();
   const [data, setData] = useState<Record<string, T>>({});
   const [errors, setErrors] = useState<Record<string, unknown>>({});
-  const inFlight = useRef(new Set<string>());
+  const [readFromDemo, setReadFromDemo] = useState(demo);
+  if (readFromDemo !== demo) {
+    // the backend changed since these were read: forget them before they
+    // render under the new one (state reset during render, React re-renders
+    // at once)
+    setReadFromDemo(demo);
+    setData({});
+    setErrors({});
+  }
+  /** The read in flight per key, and whether it went to the demo backend. */
+  const inFlight = useRef(new Map<string, { demo: boolean }>());
   const readRef = useRef(read);
   readRef.current = read;
 
   const fetchKey = useCallback(
     (key: string): void => {
-      if (inFlight.current.has(key)) return;
-      inFlight.current.add(key);
+      const fromDemo = isMockActive();
+      if (inFlight.current.get(key)?.demo === fromDemo) return;
+      const token = { demo: fromDemo };
+      inFlight.current.set(key, token);
       readRef
         .current(key)
         .then(
           (v) => {
+            // answered by the backend that is no longer the one in use: drop
+            // it, the key is read again from the current one
+            if (isMockActive() !== fromDemo) return;
             setData((d) => ({ ...d, [key]: v }));
             setErrors((e) => without(e, key));
           },
           (err: unknown) => {
+            if (isMockActive() !== fromDemo) return;
             toastError(err, label);
             setErrors((e) => ({ ...e, [key]: err }));
           },
         )
-        .finally(() => inFlight.current.delete(key));
+        .finally(() => {
+          if (inFlight.current.get(key) === token) inFlight.current.delete(key);
+        });
     },
     [label],
   );
@@ -182,7 +220,18 @@ function useKeyedReads<T>(
     }
   }, [wanted, data, errors, fetchKey]);
 
-  const retry = useCallback((key: string) => setErrors((e) => without(e, key)), []);
+  // Start the read here rather than leave it to the effect: after a failed
+  // Reload the old answer is still kept, and the effect reads only keys with
+  // neither an answer nor an error, so clearing the error alone read nothing.
+  // The read is marked in flight before the error clears, so the effect's
+  // pass over a key with no answer finds it in flight: one request.
+  const retry = useCallback(
+    (key: string): void => {
+      fetchKey(key);
+      setErrors((e) => without(e, key));
+    },
+    [fetchKey],
+  );
   return { data, errors, retry, reload: fetchKey };
 }
 
@@ -199,12 +248,14 @@ const readRun = async (id: string): Promise<RunRead> => {
   return { run, demo };
 };
 
-const heatKey = (id: string, field: HeatField, seed: number | null): string =>
+/** A field's read key. The seed stays the API's decimal string (`Seed`), and
+ * goes back into the request exactly as it came. */
+const heatKey = (id: string, field: HeatField, seed: Seed | null): string =>
   `${id}|${field}|${seed ?? ''}`;
 
 const readHeatmap = (key: string): Promise<Heatmap> => {
   const [id, field, seed] = key.split('|');
-  return getRunHeatmap(id, field as HeatField, seed === '' ? undefined : Number(seed));
+  return getRunHeatmap(id, field as HeatField, seed === '' ? undefined : seed);
 };
 
 /* --------------------------- small pieces ---------------------------- */
@@ -306,29 +357,43 @@ export function CompareView(): JSX.Element {
 
   /* ---- the runs to pick from, and the scenario names ---- */
 
+  // Both lists are read again whenever the API goes away or comes back: the
+  // client then answers from the other backend, and rows read from the old
+  // one would stay on screen under the new one's banner. Only the newest read
+  // of each lands, so a slow answer from before the flip cannot undo it.
+  const offline = useOfflineFallback();
+  const listSeq = useRef(0);
   const [list, setList] = useState<RunSummary[] | null>(null);
   const [listDemo, setListDemo] = useState(false);
   const [listError, setListError] = useState<unknown>(null);
   const loadList = useCallback(async () => {
+    const seq = ++listSeq.current;
     const demo = isMockActive();
     try {
       const rows = await listRuns();
+      if (seq !== listSeq.current) return;
       setList(rows);
       setListDemo(demo);
       setListError(null);
     } catch (err) {
+      if (seq !== listSeq.current) return;
       toastError(err, 'runs');
       setListError(err);
     }
   }, []);
 
+  const scenariosSeq = useRef(0);
   const [scenarios, setScenarios] = useState<ScenarioSummary[] | null>(null);
   const [scenariosFailed, setScenariosFailed] = useState(false);
   const loadScenarios = useCallback(async () => {
+    const seq = ++scenariosSeq.current;
     try {
-      setScenarios(await listScenarios());
+      const rows = await listScenarios();
+      if (seq !== scenariosSeq.current) return;
+      setScenarios(rows);
       setScenariosFailed(false);
     } catch {
+      if (seq !== scenariosSeq.current) return;
       // names fall back to ids, and setups say the scenario is unknown
       setScenariosFailed(true);
     }
@@ -337,7 +402,7 @@ export function CompareView(): JSX.Element {
   useEffect(() => {
     void loadList();
     void loadScenarios();
-  }, [loadList, loadScenarios]);
+  }, [loadList, loadScenarios, offline]);
 
   const scenarioById = useMemo(() => {
     const m = new Map<string, ScenarioSummary>();
@@ -399,7 +464,13 @@ export function CompareView(): JSX.Element {
   };
   const sa = sideOf('a');
   const sb = sideOf('b');
-  const notes = sa && sb ? compareNotes(sa, sb) : [];
+  const notes =
+    sa && sb
+      ? compareNotes(sa, sb, {
+          a: metrics.data[sa.run.run_id]?.aggregate,
+          b: metrics.data[sb.run.run_id]?.aggregate,
+        })
+      : [];
   const warnings = notes.filter((n) => n.tone === 'warning');
   const infos = notes.filter((n) => n.tone === 'info');
 
@@ -1084,9 +1155,11 @@ function FieldsPanel({
           </p>
           {seedA !== undefined && seedB !== undefined && (
             <p className="heatmap-caption compare-seed-note">
-              {seedA === seedB
-                ? `Both fields are seed ${seedA}: one replicate each, the same demand realisation in both runs, not a mean over the replicates.`
-                : `A shows seed ${seedA} and B seed ${seedB}: the runs share no seed, so the fields differ by demand noise as well as by configuration. Each is one replicate, not a mean.`}
+              {seedA !== seedB
+                ? `A shows seed ${seedA} and B seed ${seedB}: the runs share no seed, so the fields differ by demand noise as well as by configuration. Each is one replicate, not a mean.`
+                : sameDemandRealisation(a, b)
+                  ? `Both fields are seed ${seedA}: one replicate each, the same demand realisation in both runs, not a mean over the replicates.`
+                  : `Both fields are seed ${seedA}: one replicate each, not a mean.`}
             </p>
           )}
         </div>

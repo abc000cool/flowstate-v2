@@ -9,12 +9,42 @@ the run's hash is the hash of the *effective* config.
 
 from __future__ import annotations
 
-from typing import Any, Literal, Self
+from typing import Annotated, Any, Literal, Self
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    PlainSerializer,
+    WithJsonSchema,
+    model_validator,
+)
 
 from flowstate_core.config import MacroOptions
 from flowstate_core.strategies import Strategy, needs_target
+
+# ---------------------------------------------------------------------------
+# Replicate seeds
+# ---------------------------------------------------------------------------
+
+#: A replicate RNG seed, sent as a decimal string.
+#:
+#: Replicate seeds are 64-bit: :func:`flowstate_core.rng.spawn_seeds` draws them
+#: below ``2**63`` (``spawn_seeds(42, 1) == [6914975401685141156]``), far past
+#: the ``2**53`` a JSON number keeps exactly in a browser. ``JSON.parse`` reads
+#: 6914975401685141156 as 6914975401685141000, so a dashboard handed the number
+#: shows a seed the run never used, and a ``?seed=`` request for it is a 404.
+#: Every response field holding a seed is therefore serialized as a decimal
+#: string in JSON (Python-mode dumps keep the int). On input a seed may be an
+#: int or a decimal string; both validate to the same exact int.
+Seed = Annotated[
+    int,
+    PlainSerializer(str, return_type=str, when_used="json"),
+    WithJsonSchema(
+        {"anyOf": [{"type": "integer"}, {"type": "string", "pattern": r"^[0-9]+$"}]},
+        mode="validation",
+    ),
+]
 
 # ---------------------------------------------------------------------------
 # Request size caps
@@ -166,7 +196,8 @@ class RunOut(BaseModel):
     config_hash: str
     seeded: bool
     progress: ProgressOut
-    seeds: list[int]
+    seeds: list[Seed]
+    """Replicate seeds in replicate order, as decimal strings (:data:`Seed`)."""
     error: str | None = None
     error_kind: str | None = None
     created_at: str
@@ -212,7 +243,8 @@ class CIOut(BaseModel):
 
 
 class ReplicateMetricsOut(BaseModel):
-    seed: int
+    seed: Seed
+    """The replicate's seed, as a decimal string (:data:`Seed`)."""
     metrics: dict[str, float | int | None]
 
 
@@ -345,7 +377,9 @@ class MergeDiagnosticsOut(BaseModel):
     behaved — never a corridor result.
     """
 
-    seed: int
+    seed: Seed
+    """The replicate the counters were read from, as a decimal string
+    (:data:`Seed`)."""
     ramp_meters: list[RampMeterDiagnosticsOut] = Field(default_factory=list)
     weave_sections: list[WeaveSectionDiagnosticsOut] = Field(default_factory=list)
 
@@ -459,7 +493,8 @@ class MetricsOut(BaseModel):
 class HeatmapOut(BaseModel):
     run_id: str
     config_hash: str
-    seed: int
+    seed: Seed
+    """The replicate this field is, as a decimal string (:data:`Seed`)."""
     field: Literal["speed", "density"]
     tier: Literal["micro", "macro"]
     t_bins: list[float]
@@ -729,7 +764,8 @@ class CalibrationParams(BaseModel, extra="forbid"):
     """
 
     # Shared
-    seed: int | None = Field(default=None, ge=0)
+    seed: Seed | None = Field(default=None, ge=0)
+    """Fit RNG seed; an int or a decimal string (:data:`Seed`)."""
     notes: str | None = Field(default=None, max_length=4000)
     # FD fit (``calibration.fd_fit.fit_triangular_fd``)
     loader: Literal["tidy", "pems", "detector_csv"] | None = None

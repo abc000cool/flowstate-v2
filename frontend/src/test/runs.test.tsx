@@ -51,7 +51,7 @@ const run = {
   config_hash: 'c0ffeec0ffee',
   seeded: false,
   progress: { completed_replicates: 2, total_replicates: 20 },
-  seeds: [1, 2],
+  seeds: ['1', '2'],
   error: null,
   error_kind: null,
   created_at: '2026-09-16T00:00:00',
@@ -243,6 +243,9 @@ describe('RunsView launcher when the scenario list answers late', () => {
   }
   /** What `GET /scenarios/preset` serves; a test may edit it between reads. */
   let presets: unknown[] = [];
+  /** The status `GET /scenarios/preset` answers with: 200 serves `presets`,
+   * anything else is an error (a cold server's 503, an older service's 404). */
+  let presetStatus = 200;
   /** Library reads (`GET /scenarios/preset`, `GET /scenarios`) not yet answered. */
   let held: (() => void)[] = [];
   let holding = true;
@@ -250,8 +253,8 @@ describe('RunsView launcher when the scenario list answers late', () => {
   /** A JSON answer whose body is read in one microtask. How many ticks the
    * runtime's own body parsing takes differs between Node versions, and here
    * it would decide where the answer lands relative to a keystroke. */
-  function promptJson(body: unknown): Response {
-    const res = json(body);
+  function promptJson(body: unknown, status = 200): Response {
+    const res = json(body, status);
     res.json = () => Promise.resolve(body);
     return res;
   }
@@ -267,6 +270,7 @@ describe('RunsView launcher when the scenario list answers late', () => {
     clearAuthFailure();
     calls.length = 0;
     presets = [ringPreset('ringhash0001', 600, 3)];
+    presetStatus = 200;
     held = [];
     holding = true;
     vi.stubGlobal(
@@ -278,11 +282,16 @@ describe('RunsView launcher when the scenario list answers late', () => {
         calls.push({ url, method, body });
         // the payload is taken when the answer is sent, so an edit made while
         // a read is held is what that read answers
-        const libraryRead = (payload: () => unknown): Promise<Response> =>
-          holding
-            ? new Promise((resolve) => held.push(() => resolve(promptJson(payload()))))
-            : Promise.resolve(promptJson(payload()));
-        if (url.endsWith('/scenarios/preset')) return libraryRead(() => presets);
+        const libraryRead = (payload: () => unknown, status = (): number => 200): Promise<Response> => {
+          const answer = (): Response => {
+            const s = status();
+            return s === 200 ? promptJson(payload()) : promptJson({ detail: `preset read ${s}` }, s);
+          };
+          return holding
+            ? new Promise((resolve) => held.push(() => resolve(answer())))
+            : Promise.resolve(answer());
+        };
+        if (url.endsWith('/scenarios/preset')) return libraryRead(() => presets, () => presetStatus);
         if (url.endsWith('/scenarios') && method === 'GET') return libraryRead(() => [scenario]);
         if (url.endsWith('/scenarios') && method === 'POST') {
           return Promise.resolve(json({ scenario_id: 'scn_ring', config_hash: 'ringhash0001' }, 201));
@@ -450,6 +459,107 @@ describe('RunsView launcher when the scenario list answers late', () => {
     });
     expect(select).toHaveDisplayValue('corridor_10km (preset)');
     expect(duration).toHaveValue(300);
+  }, 10000);
+
+  /** Hold the next library reads, flip the connection to start them, and
+   * answer them in one go (the reconnect re-read, in a fixed order). */
+  async function answerNextLibraryLoad(): Promise<void> {
+    holding = true;
+    act(() => setOfflineFallback(true));
+    act(() => setOfflineFallback(false));
+    await waitFor(() => expect(held.length).toBeGreaterThan(0), { timeout: 4000 });
+    await act(async () => {
+      openGate();
+      await new Promise((r) => setTimeout(r, 0));
+    });
+  }
+
+  it('does not settle on the first stored scenario when the first preset read fails', async () => {
+    presetStatus = 503;
+    render(
+      <MemoryRouter>
+        <RunsView />
+      </MemoryRouter>,
+    );
+    const select = screen.getByLabelText('Scenario');
+    fireEvent.change(screen.getByLabelText('Duration (s)'), { target: { value: '300' } });
+    await act(async () => {
+      openGate();
+      await new Promise((r) => setTimeout(r, 0));
+    });
+    // the stored list answered, the presets did not: the launcher shows what
+    // there is, for now
+    await waitFor(() => expect(select).toHaveDisplayValue('i24_replica'), { timeout: 4000 });
+    expect(within(select).queryByRole('option', { name: 'ring_sugiyama (preset)' })).toBeNull();
+
+    // a later read answers the presets: the launcher opens on the cheap ring
+    // after all (nobody picked), around the typed duration
+    presetStatus = 200;
+    await answerNextLibraryLoad();
+    await waitFor(() => expect(select).toHaveDisplayValue('ring_sugiyama (preset)'), {
+      timeout: 4000,
+    });
+    await waitFor(() => expect(screen.getByLabelText('Replicates')).toHaveValue(3));
+    expect(screen.getByLabelText('Duration (s)')).toHaveValue(300);
+  }, 10000);
+
+  it('keeps a picked preset when a later preset read fails', async () => {
+    openGate();
+    presets = [
+      ringPreset('ringhash0001', 600, 3),
+      {
+        ...(ringPreset('corrhash0001', 1200, 20) as object),
+        name: 'corridor_10km',
+        filename: 'corridor_10km.yaml',
+      },
+    ];
+    render(
+      <MemoryRouter>
+        <RunsView />
+      </MemoryRouter>,
+    );
+    const select = await screen.findByLabelText('Scenario');
+    await waitFor(() => expect(select).toHaveDisplayValue('ring_sugiyama (preset)'), {
+      timeout: 4000,
+    });
+    fireEvent.change(select, { target: { value: 'preset:corridor_10km.yaml' } });
+    const duration = screen.getByLabelText('Duration (s)');
+    await waitFor(() => expect(duration).toHaveValue(1200));
+    fireEvent.change(duration, { target: { value: '300' } });
+
+    // the next preset read fails (not a 404): the presets are as last shown
+    presetStatus = 503;
+    const before = calls.filter((c) => c.url.endsWith('/scenarios/preset')).length;
+    await answerNextLibraryLoad();
+    await waitFor(() =>
+      expect(calls.filter((c) => c.url.endsWith('/scenarios/preset')).length).toBeGreaterThan(before),
+    );
+    expect(select).toHaveDisplayValue('corridor_10km (preset)');
+    expect(within(select).getByRole('option', { name: 'ring_sugiyama (preset)' })).toBeInTheDocument();
+    expect(duration).toHaveValue(300);
+    expect(screen.getByLabelText('Replicates')).toHaveValue(20);
+  }, 10000);
+
+  it('takes only a 404 as "no presets", and settles on the stored scenario', async () => {
+    presetStatus = 404;
+    render(
+      <MemoryRouter>
+        <RunsView />
+      </MemoryRouter>,
+    );
+    const select = screen.getByLabelText('Scenario');
+    await act(async () => {
+      openGate();
+      await new Promise((r) => setTimeout(r, 0));
+    });
+    await waitFor(() => expect(select).toHaveDisplayValue('i24_replica'), { timeout: 4000 });
+    expect(within(select).getAllByRole('option')).toHaveLength(1);
+    // a service without the endpoint has no presets: the launcher is settled,
+    // and its slow refresh does not re-read the presets every 3 s
+    const reads = calls.filter((c) => c.url.endsWith('/scenarios/preset')).length;
+    await new Promise((r) => setTimeout(r, 3500));
+    expect(calls.filter((c) => c.url.endsWith('/scenarios/preset')).length).toBe(reads);
+    expect(select).toHaveDisplayValue('i24_replica');
   }, 10000);
 });
 

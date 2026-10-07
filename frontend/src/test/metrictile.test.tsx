@@ -53,9 +53,9 @@ describe('symmetric half-width', () => {
 
 describe('dot strip', () => {
   const points = [
-    { seed: 2001, value: 18.0 },
-    { seed: 2000, value: 17.2 },
-    { seed: 2002, value: 17.6 },
+    { seed: '2001', value: 18.0 },
+    { seed: '2000', value: 17.2 },
+    { seed: '2002', value: 17.6 },
   ];
 
   it('draws one dot per replicate and names each by its seed on focus', () => {
@@ -104,13 +104,13 @@ describe('dot strip', () => {
     expect(
       replicatePoints(
         [
-          { seed: 1, metrics: { wave_speed_kmh: 17 } },
-          { seed: 2, metrics: { wave_speed_kmh: null } },
-          { seed: 3, metrics: {} },
+          { seed: '1', metrics: { wave_speed_kmh: 17 } },
+          { seed: '2', metrics: { wave_speed_kmh: null } },
+          { seed: '3', metrics: {} },
         ],
         'wave_speed_kmh',
       ),
-    ).toEqual([{ seed: 1, value: 17 }]);
+    ).toEqual([{ seed: '1', value: 17 }]);
   });
 });
 

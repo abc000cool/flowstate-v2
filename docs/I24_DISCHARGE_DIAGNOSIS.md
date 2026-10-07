@@ -813,6 +813,18 @@ gating) are not computed: only the trajectories carry per-lane section crossings
 follow-up, not part of the stage. Cost on n2d-standard-16: about 2 h 30 min of stage time, about $1.9 billed;
 `--cap-min 300` bounds it at about $3.4 [estimate].
 
+**Correction, 2026-10-07 (third regression review), made before any p12 result was read.** A2's boundary-zone
+speed is now computed the way the schedule's 49.93 km/h was: for each replicate, the `edges.parquet` cells lying
+wholly in the zone are grouped into the schedule's 30-s windows from sim 600 s, each window's Edie speed is taken
+(sum of flow over sum of density), and the window speeds are averaged without weights. The first readout took one
+Edie speed over the whole 2-h window, which weights each window by its vehicle-time and so is not the quantity the
+schedule's mean measures. The criterion and its threshold are unchanged (B1's error smaller in magnitude than the
+reference's); the 2-h Edie value is still reported beside it (`edie_2h_reported`). Two more readout corrections from
+the same review: a missing replicate leaves A2 "not computed" instead of crashing the readout, and an arm with
+recorded problems blocks the adoption reading (`blocked_by_problems`, exit status 3). The p12 VM runs the earlier
+readout; the fixed `evaluate` is re-run locally on its archive and its output replaces the VM's
+`artifacts/boundary_b1_corridor.json`.
+
 ### 8.4 Measure the target before using it again
 
 A data-only cloud stage (no simulation): Edie flows (vehicle-distance per cell,

@@ -6,7 +6,7 @@
  * recorded" (never a zero), and a mismatched tier, scenario or config hash
  * must be said, not silently folded into B − A. */
 
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { clearAuthFailure, setOfflineFallback } from '../api/client';
@@ -21,7 +21,9 @@ import {
   describeSeeds,
   formatSigned,
   metricDifference,
+  nonzeroDifferences,
   resolveRunSetup,
+  sameDemandRealisation,
   sharedSeed,
   sideStat,
 } from '../lib/compare';
@@ -67,7 +69,8 @@ const RING = {
   },
 };
 
-const SEEDS = Array.from({ length: 20 }, (_, i) => 2000 + i);
+/** Replicate seeds as the API serialises them: decimal strings. */
+const SEEDS = Array.from({ length: 20 }, (_, i) => String(2000 + i));
 
 /** `RunOut` exactly as the API serialises it. */
 function runOut(id: string, over: Record<string, unknown> = {}): Record<string, unknown> {
@@ -103,7 +106,30 @@ const RUNS: Record<string, Record<string, unknown>> = {
   }),
   // finished, but its metrics read fails
   'run-err': runOut('run-err', { sweep_id: null, config_hash: 'e0e0e0e0e0e0' }),
+  // run-base's configuration run again (same hash, so the same seeds): once
+  // reproducing it exactly, once not
+  'run-twin': runOut('run-twin', { sweep_id: null, config_hash: 'b0b0b0b0b0b0' }),
+  'run-drift': runOut('run-drift', { sweep_id: null, config_hash: 'b0b0b0b0b0b0' }),
+  // 64-bit seeds as the API sends them (spawn_seeds(42, ·) is 6914975401685141156, …):
+  // past 2^53, so JSON.parse of a number would round each of them. A's two
+  // seeds are one double apart from nothing — Number() makes them equal.
+  'run-big-a': runOut('run-big-a', {
+    sweep_id: null,
+    config_hash: 'b16a00000001',
+    seeds: ['6914975401685141156', '6914975401685141157'],
+    progress: { completed_replicates: 2, total_replicates: 2 },
+  }),
+  // B ran A's first seed second, so B's field names it in the request
+  'run-big-b': runOut('run-big-b', {
+    sweep_id: null,
+    config_hash: 'b16b00000001',
+    seeds: ['134183728835869882', '6914975401685141156'],
+    progress: { completed_replicates: 2, total_replicates: 2 },
+  }),
 };
+
+/** Paths the stub answers 503 for (a store busy for a moment). */
+const failing = new Set<string>();
 
 function ci(mean: number, lo: number, hi: number, n = 20): AggregateStat {
   return { mean, lo95: lo, hi95: hi, n, underpowered: n < 20, reason: null };
@@ -172,9 +198,13 @@ const METRICS: Record<string, unknown> = {
   'run-p5': metricsOut('run-p5', AGG_P5),
   'run-macro': metricsOut('run-macro', AGG_BASE, 'macro'),
   'run-ring': metricsOut('run-ring', AGG_P5),
+  'run-twin': metricsOut('run-twin', AGG_BASE),
+  'run-drift': metricsOut('run-drift', { ...AGG_BASE, throughput_veh_h: ci(1702, 1652, 1752) }),
+  'run-big-a': metricsOut('run-big-a', AGG_BASE),
+  'run-big-b': metricsOut('run-big-b', AGG_P5),
 };
 
-function heatmapOut(id: string, field: string, seed: number): unknown {
+function heatmapOut(id: string, field: string, seed: string): unknown {
   return {
     run_id: id,
     config_hash: RUNS[id].config_hash,
@@ -263,6 +293,7 @@ beforeEach(() => {
   setOfflineFallback(false);
   clearAuthFailure();
   calls.length = 0;
+  failing.clear();
   // jsdom has no canvas: the plots keep their frames and draw nothing
   vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(null);
   vi.stubGlobal(
@@ -271,6 +302,7 @@ beforeEach(() => {
       const url = String(input);
       calls.push(url);
       const path = url.replace(/^.*\/api\/v1/, '');
+      if (failing.has(path)) return json({ detail: 'store busy' }, 503);
       if (path === '/scenarios') return json([CORRIDOR, RING]);
       if (path === '/runs') return json(Object.values(RUNS));
       if (path === '/sweeps/swp-1') return json(SWEEP);
@@ -285,7 +317,11 @@ beforeEach(() => {
           return json(METRICS[id]);
         }
         const q = new URLSearchParams(query ?? '');
-        const seed = q.has('seed') ? Number(q.get('seed')) : (run.seeds as number[])[0];
+        // the seed exactly as asked, like the API (no detour through a number)
+        const seed = q.get('seed') ?? (run.seeds as string[])[0];
+        if (!(run.seeds as string[]).includes(seed)) {
+          return json({ detail: `run '${id}' has no replicate for seed ${seed}` }, 404);
+        }
         return json(heatmapOut(id, q.get('field') ?? 'speed', seed));
       }
       return json({ detail: `unexpected ${url}` }, 404);
@@ -326,7 +362,10 @@ describe('CompareView (real API shapes)', () => {
     const plots = await screen.findAllByRole('img', { name: /^Space–time speed field/ }, { timeout: 4000 });
     expect(plots).toHaveLength(2);
     expect(screen.getAllByText('wave threshold 40 km/h (default)')).toHaveLength(1);
-    expect(screen.getByText(/Both fields are seed 2000/)).toBeInTheDocument();
+    // one scenario, both micro: the shared seed is one demand realisation
+    expect(screen.getByText(/Both fields are seed 2000/)).toHaveTextContent(
+      'Both fields are seed 2000: one replicate each, the same demand realisation in both runs, not a mean over the replicates.',
+    );
     expect(screen.getByRole('button', { name: 'Download CSV of run A' })).toBeEnabled();
     expect(screen.getByRole('button', { name: 'Download CSV of run B' })).toBeEnabled();
     // the runs share their first seed, so no seed is named in the request
@@ -485,6 +524,145 @@ describe('CompareView (real API shapes)', () => {
   });
 });
 
+describe('CompareView seeds, notes and re-reads', () => {
+  const heatmapCalls = (id: string): string[] =>
+    calls.filter((u) => u.includes(`/runs/${id}/heatmap`));
+
+  it('shows a 64-bit seed exactly, and asks for exactly that seed', async () => {
+    renderAt('/compare?a=run-big-a&b=run-big-b');
+    // the seed lists, digit for digit (consecutive by BigInt, not by double)
+    expect(
+      await within(pickerA()).findByText('2 · 6914975401685141156–6914975401685141157', {}, { timeout: 4000 }),
+    ).toBeInTheDocument();
+    expect(within(pickerB()).getByText('2')).toHaveAttribute(
+      'title',
+      '134183728835869882 · 6914975401685141156',
+    );
+
+    // both fields are the shared seed: A's default (its first), B's second
+    await screen.findAllByRole('img', { name: /^Space–time speed field/ }, { timeout: 4000 });
+    const heads = Array.from(document.querySelectorAll('.compare-heat-seed')).map((e) => e.textContent);
+    expect(heads).toEqual([
+      'seed 6914975401685141156 · replicate 1 of 2',
+      'seed 6914975401685141156 · replicate 2 of 2',
+    ]);
+    expect(screen.getByText(/^Both fields are seed 6914975401685141156:/)).toBeInTheDocument();
+
+    // A's field is its default replicate; B's is asked for by the exact string
+    expect(heatmapCalls('run-big-a').every((u) => !u.includes('seed='))).toBe(true);
+    expect(heatmapCalls('run-big-b')).toEqual([
+      expect.stringMatching(/\/runs\/run-big-b\/heatmap\?field=speed&seed=6914975401685141156$/),
+    ]);
+    // never the rounded double (6914975401685141000 as JSON.parse prints it)
+    expect(calls.some((u) => /69149754016851410{3}|6914975401685141504/.test(u))).toBe(false);
+  });
+
+  it('lists a 64-bit seed exactly on Run detail', async () => {
+    renderAt('/runs/run-big-a');
+    fireEvent.click(await screen.findByRole('button', { name: 'Seeds: 2' }, { timeout: 4000 }));
+    expect(screen.getByText('6914975401685141156 · 6914975401685141157')).toBeInTheDocument();
+    // its field is the first replicate, named by the seed the API sent
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /Download CSV/ })).toHaveAttribute(
+        'title',
+        expect.stringContaining('(seed 6914975401685141156)'),
+      ),
+    );
+  });
+
+  it('says the same config hash should give exactly zero, and warns when it does not', async () => {
+    renderAt('/compare?a=run-base&b=run-twin');
+    const same = await screen.findByText(/^Same config hash \(b0b0…b0b0\)\./, {}, { timeout: 4000 });
+    await metricRow('throughput_veh_h');
+    expect(same).toHaveTextContent(
+      'The same configuration ran on the same replicate seeds, so B − A should be exactly zero; ' +
+        'a nonzero difference is not sampling noise',
+    );
+    expect(same).not.toHaveTextContent(/replicate noise/);
+    // every B − A is zero: an info note, not a warning
+    expect(same.closest('[data-note]')).toHaveAttribute('data-note', 'hash-same');
+    expect(screen.queryByText('What else differs between A and B')).toBeNull();
+  });
+
+  it('turns the same-hash note into a warning when a B − A is not zero', async () => {
+    renderAt('/compare?a=run-base&b=run-drift');
+    // throughput 1702 − 1700 = +2: impossible on the same seeds
+    expect(cells(await metricRow('throughput_veh_h'))[2]).toHaveTextContent(/^\+2$/);
+    const warning = await screen.findByText(/^Same config hash \(b0b0…b0b0\), yet B − A is not zero \(throughput\)\./);
+    expect(warning).toHaveTextContent(/not sampling noise — the code or SUMO version, or a file the config references, changed/);
+    expect(warning.closest('[data-note]')).toHaveAttribute('data-note', 'hash-same');
+    expect(screen.getByText('What else differs between A and B')).toBeInTheDocument();
+  });
+
+  it('claims one demand realisation only for one scenario on the micro tier', async () => {
+    // another scenario, same seeds
+    renderAt('/compare?a=run-base&b=run-ring');
+    const note = await screen.findByText(/^Both fields are seed 2000:/, {}, { timeout: 4000 });
+    expect(note).toHaveTextContent(/^Both fields are seed 2000: one replicate each, not a mean\.$/);
+    expect(screen.queryByText(/demand realisation/)).toBeNull();
+  });
+
+  it('claims no demand realisation across tiers either', async () => {
+    renderAt('/compare?a=run-base&b=run-macro');
+    const note = await screen.findByText(/^Both fields are seed 2000:/, {}, { timeout: 4000 });
+    expect(note).toHaveTextContent(/^Both fields are seed 2000: one replicate each, not a mean\.$/);
+  });
+
+  it('reads everything again when the API comes back, dropping what the demo backend answered', async () => {
+    // offline: every read goes to the in-browser demo backend
+    setOfflineFallback(true);
+    renderAt('/compare?a=run-base&b=run-8f2c11');
+    expect(
+      await screen.findByText(/The API is unreachable, so these are built-in demo runs/, {}, { timeout: 4000 }),
+    ).toBeInTheDocument();
+    // the demo backend has no run-base, and does have a demo run-8f2c11
+    expect(
+      await within(pickerA()).findByText('Run A (run-base) could not be loaded.', {}, { timeout: 4000 }),
+    ).toBeInTheDocument();
+    expect(await within(pickerB()).findByText('DEMO', {}, { timeout: 4000 })).toBeInTheDocument();
+    expect(calls).toEqual([]);
+
+    act(() => setOfflineFallback(false));
+
+    // the lists and both runs are read from the server, without a Retry
+    await waitFor(() => expect(calls.some((u) => u.endsWith('/api/v1/runs'))).toBe(true), { timeout: 4000 });
+    expect(calls.some((u) => u.endsWith('/api/v1/scenarios'))).toBe(true);
+    await waitFor(() =>
+      expect(screen.queryByText(/The API is unreachable, so these are built-in demo runs/)).toBeNull(),
+    );
+    expect(await within(pickerA()).findByText('20 · 2000–2019', {}, { timeout: 4000 })).toBeInTheDocument();
+    // the demo run is not this server's: its DEMO facts are gone, not kept
+    expect(
+      await within(pickerB()).findByText('Run B (run-8f2c11) could not be loaded.', {}, { timeout: 4000 }),
+    ).toBeInTheDocument();
+    expect(within(pickerB()).queryByText('DEMO')).toBeNull();
+    expect(calls.filter((u) => u.endsWith('/runs/run-base'))).toHaveLength(1);
+  });
+
+  it('reads again, exactly once, on Retry after a failed Reload', async () => {
+    renderAt('/compare?a=run-base&b=run-going');
+    expect(await screen.findByText('Run B (run-going) is running.', {}, { timeout: 4000 })).toBeInTheDocument();
+    const reads = (): number => calls.filter((u) => u.endsWith('/runs/run-going')).length;
+
+    // Reload fails: the run read before stays, under an error with Retry
+    failing.add('/runs/run-going');
+    fireEvent.click(screen.getByRole('button', { name: 'Reload' }));
+    expect(
+      await within(pickerB()).findByText('Run B (run-going) could not be loaded.', {}, { timeout: 4000 }),
+    ).toBeInTheDocument();
+
+    failing.delete('/runs/run-going');
+    const before = reads();
+    fireEvent.click(within(pickerB()).getByRole('button', { name: 'Retry' }));
+    await waitFor(() => expect(reads()).toBe(before + 1));
+    // the answer lands (the facts are back) and no second read went out
+    expect(await within(pickerB()).findByRole('link', { name: 'run-going' })).toBeInTheDocument();
+    await new Promise((r) => setTimeout(r, 50));
+    expect(reads()).toBe(before + 1);
+    expect(within(pickerB()).queryByText('Run B (run-going) could not be loaded.')).toBeNull();
+  });
+});
+
 /* ------------------------------- logic -------------------------------- */
 
 describe('lib/compare', () => {
@@ -535,10 +713,59 @@ describe('lib/compare', () => {
   });
 
   it('picks the first seed both runs ran, and describes seed lists', () => {
-    expect(sharedSeed([5, 6, 7], [7, 6])).toBe(6);
-    expect(sharedSeed([1, 2], [3])).toBeNull();
+    expect(sharedSeed(['5', '6', '7'], ['7', '6'])).toBe('6');
+    expect(sharedSeed(['1', '2'], ['3'])).toBeNull();
     expect(describeSeeds(SEEDS)).toBe('20 · 2000–2019');
-    expect(describeSeeds([3, 9])).toBe('2');
+    expect(describeSeeds(['3', '9'])).toBe('2');
+  });
+
+  it('keeps 64-bit seeds exact: compared as strings, counted with BigInt', () => {
+    // all three are one double: Number() would call them the same seed
+    const [s0, s1, s2] = ['6914975401685141156', '6914975401685141157', '6914975401685141158'];
+    expect(Number(s0)).toBe(Number(s1));
+    expect(sharedSeed([s0], [s1])).toBeNull();
+    expect(sharedSeed([s1, s0], [s0])).toBe(s0);
+    expect(describeSeeds([s0, s1, s2])).toBe(`3 · ${s0}–${s2}`);
+    expect(describeSeeds([s0, s2])).toBe('2');
+    expect(describeSeeds([s0])).toBe(`1 · ${s0}`);
+    // not a decimal seed: never called consecutive
+    expect(describeSeeds(['x', 'y'])).toBe('2');
+  });
+
+  it('expects exactly zero from one config hash, and warns on any nonzero B − A', () => {
+    const side = (id: string) => ({
+      run: RUNS[id] as unknown as RunDetail,
+      scenarioName: 'corridor_10km',
+      demo: false,
+    });
+    const drift = { ...AGG_BASE, mean_tt_s: ci(512.5, 505.1, 519.9) };
+    expect(nonzeroDifferences(AGG_BASE, AGG_BASE)).toEqual([]);
+    expect(nonzeroDifferences(AGG_BASE, drift)).toEqual(['mean_tt_s']);
+
+    // metrics not read yet, or all zero: the info note says what zero means
+    for (const aggregates of [{}, { a: AGG_BASE, b: AGG_BASE }]) {
+      const [note] = compareNotes(side('run-base'), side('run-twin'), aggregates);
+      expect(note.id).toBe('hash-same');
+      expect(note.tone).toBe('info');
+      expect(note.text).toMatch(/same replicate seeds, so B − A should be exactly zero/);
+      expect(note.text).toMatch(/not sampling noise/);
+    }
+    // one mean differs: a warning naming it
+    const [note] = compareNotes(side('run-base'), side('run-twin'), { a: AGG_BASE, b: drift });
+    expect(note).toMatchObject({ id: 'hash-same', tone: 'warning' });
+    expect(note.text).toMatch(/^Same config hash \(b0b0…b0b0\), yet B − A is not zero \(mean travel time\)\./);
+  });
+
+  it('calls one seed one demand realisation only within a scenario on the micro tier', () => {
+    const side = (id: string) => ({
+      run: RUNS[id] as unknown as RunDetail,
+      scenarioName: 'x',
+      demo: false,
+    });
+    expect(sameDemandRealisation(side('run-base'), side('run-p5'))).toBe(true);
+    expect(sameDemandRealisation(side('run-base'), side('run-ring'))).toBe(false);
+    expect(sameDemandRealisation(side('run-base'), side('run-macro'))).toBe(false);
+    expect(sameDemandRealisation(side('run-macro'), side('run-macro'))).toBe(false);
   });
 
   it('notes the same run, and skips hash notes for demo rows', () => {

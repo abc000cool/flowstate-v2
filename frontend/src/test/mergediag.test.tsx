@@ -51,7 +51,7 @@ describe('MergeDiagnosticsPanel', () => {
     expect(none.container).toBeEmptyDOMElement();
     const absent = render(<MergeDiagnosticsPanel diagnostics={undefined} />);
     expect(absent.container).toBeEmptyDOMElement();
-    const empty: MergeDiagnostics = { seed: 1, ramp_meters: [], weave_sections: [] };
+    const empty: MergeDiagnostics = { seed: '1', ramp_meters: [], weave_sections: [] };
     const both = render(<MergeDiagnosticsPanel diagnostics={empty} />);
     expect(both.container).toBeEmptyDOMElement();
     expect(screen.queryByTestId('merge-diagnostics')).toBeNull();
@@ -59,7 +59,7 @@ describe('MergeDiagnosticsPanel', () => {
 
   it('shows the ramp-meter table alone when only meters ran', () => {
     render(
-      <MergeDiagnosticsPanel diagnostics={{ seed: 4242, ramp_meters: [METER], weave_sections: [] }} />,
+      <MergeDiagnosticsPanel diagnostics={{ seed: '4242', ramp_meters: [METER], weave_sections: [] }} />,
     );
     expect(screen.getByText('Merge diagnostics · seed 4242')).toBeInTheDocument();
     const table = within(screen.getByLabelText('ramp meters'));
@@ -77,7 +77,7 @@ describe('MergeDiagnosticsPanel', () => {
 
   it('shows the weaving-section table with every counter and the mean wait', () => {
     render(
-      <MergeDiagnosticsPanel diagnostics={{ seed: 7, ramp_meters: [], weave_sections: [WEAVE] }} />,
+      <MergeDiagnosticsPanel diagnostics={{ seed: '7', ramp_meters: [], weave_sections: [WEAVE] }} />,
     );
     expect(screen.queryByLabelText('ramp meters')).toBeNull();
     const table = within(screen.getByLabelText('weaving sections'));
@@ -127,7 +127,7 @@ describe('MergeDiagnosticsPanel', () => {
     const older = render(
       <MergeDiagnosticsPanel
         diagnostics={{
-          seed: 2,
+          seed: '2',
           ramp_meters: [],
           weave_sections: [
             {
@@ -153,7 +153,7 @@ describe('MergeDiagnosticsPanel', () => {
     const between = render(
       <MergeDiagnosticsPanel
         diagnostics={{
-          seed: 5,
+          seed: '5',
           ramp_meters: [],
           weave_sections: [
             {
@@ -175,7 +175,7 @@ describe('MergeDiagnosticsPanel', () => {
     render(
       <MergeDiagnosticsPanel
         diagnostics={{
-          seed: 3,
+          seed: '3',
           ramp_meters: [],
           weave_sections: [{ ...WEAVE, n_cooperations: 0, mean_follower_decel_ms2: null }],
         }}
@@ -190,7 +190,7 @@ describe('MergeDiagnosticsPanel', () => {
     render(
       <MergeDiagnosticsPanel
         diagnostics={{
-          seed: 1,
+          seed: '1',
           ramp_meters: [METER],
           weave_sections: [
             {

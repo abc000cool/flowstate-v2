@@ -30,7 +30,7 @@ const doneRun = {
   config_hash: 'abc123',
   seeded: false,
   progress: { completed_replicates: 20, total_replicates: 20 },
-  seeds: [1],
+  seeds: ['1'],
   error: null,
   error_kind: null,
   created_at: '2026-09-16T00:00:00',

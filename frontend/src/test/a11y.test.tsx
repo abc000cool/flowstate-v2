@@ -164,7 +164,7 @@ function run(id: string, status: string, done: number, error: string | null = nu
     config_hash: 'c0ffeec0ffee',
     seeded: false,
     progress: { completed_replicates: done, total_replicates: 20 },
-    seeds: [1, 2, 3],
+    seeds: ['1', '2', '3'],
     error,
     error_kind: error ? 'ValueError' : null,
     created_at: '2026-10-01T00:00:00',

@@ -14,6 +14,9 @@ import {
   getReportArchive,
   getReportMarkdown,
   getReportPdf,
+  getRun,
+  getRunHeatmap,
+  getRunMetrics,
   getSweep,
   isAuthFailed,
   isAuthRetryScheduled,
@@ -237,6 +240,60 @@ describe('api client contract routes', () => {
       json: async () => ({ detail: "report 'rpt-1' is running, not done" }),
     } as unknown as Response);
     await expect(getReportMarkdown('rpt-1')).rejects.toThrow("report 'rpt-1' is running, not done");
+  });
+});
+
+/** Replicate seeds are 64-bit and the API sends them as decimal strings
+ * (`api.schemas.Seed`): the client hands them on and sends them back exactly,
+ * and makes an older service's numbers strings so seeds are one type. */
+describe('api client seeds', () => {
+  const fetchMock = vi.fn();
+  const BIG = '6914975401685141156';
+
+  /** A response whose body is the exact JSON text, parsed by `res.json()`. */
+  const raw = (text: string): Response =>
+    new Response(text, { status: 200, headers: { 'content-type': 'application/json' } });
+
+  beforeEach(() => {
+    setOfflineFallback(false);
+    fetchMock.mockReset();
+    vi.stubGlobal('fetch', fetchMock);
+    window.localStorage.clear();
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    window.localStorage.clear();
+  });
+
+  it('asks for a heatmap seed by its exact string and returns the seed as sent', async () => {
+    fetchMock.mockResolvedValue(
+      raw(`{"run_id":"run-1","seed":"${BIG}","t_bins":[],"x_bins":[],"values":[]}`),
+    );
+    const h = await getRunHeatmap('run-1', 'speed', BIG);
+    const [url] = fetchMock.mock.calls[0] as [string];
+    expect(url).toBe(`${DEFAULT_BASE_URL}/runs/run-1/heatmap?field=speed&seed=${BIG}`);
+    expect(h.seed).toBe(BIG);
+  });
+
+  it('keeps a run’s 64-bit seeds digit for digit', async () => {
+    fetchMock.mockResolvedValue(raw(`{"run_id":"run-1","seeds":["${BIG}","134183728835869882"]}`));
+    expect((await getRun('run-1')).seeds).toEqual([BIG, '134183728835869882']);
+    // what a JSON number would have made of it
+    expect(String(JSON.parse(`[${BIG}]`)[0])).not.toBe(BIG);
+  });
+
+  it('turns an older service’s numeric seeds into strings', async () => {
+    fetchMock.mockResolvedValueOnce(raw('{"run_id":"run-1","seeds":[42,43]}'));
+    expect((await getRun('run-1')).seeds).toEqual(['42', '43']);
+    fetchMock.mockResolvedValueOnce(
+      raw('{"replicates":[{"seed":42,"metrics":{}}],"aggregate":{},"merge_diagnostics":{"seed":42,"ramp_meters":[],"weave_sections":[]}}'),
+    );
+    const m = await getRunMetrics('run-1');
+    expect(m.replicates[0].seed).toBe('42');
+    expect(m.merge_diagnostics?.seed).toBe('42');
+    fetchMock.mockResolvedValueOnce(raw('{"seed":42,"t_bins":[],"x_bins":[],"values":[]}'));
+    expect((await getRunHeatmap('run-1', 'speed')).seed).toBe('42');
   });
 });
 

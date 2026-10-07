@@ -20,13 +20,13 @@ const run = {
   config_hash: '3f9a0b1c2d3e4f5a6b7c8d9e0f1ac21e',
   seeded: false,
   tier: 'micro',
-  seeds: [2000, 2001],
+  seeds: ['2000', '2001'],
 };
 
 const metrics = {
   replicates: [
-    { seed: 2000, metrics: { sigma_v_spatial_ms: 3.1 } },
-    { seed: 2001, metrics: { sigma_v_spatial_ms: 3.3 } },
+    { seed: '2000', metrics: { sigma_v_spatial_ms: 3.1 } },
+    { seed: '2001', metrics: { sigma_v_spatial_ms: 3.3 } },
   ],
   aggregate: {
     sigma_v_spatial_ms: { mean: 3.2, lo95: 1.93, hi95: 4.47, n: 2, underpowered: true, reason: null },

@@ -221,6 +221,14 @@ lane-discrete microsimulator on a 1.2 km acceleration lane in every report's lim
 section, and no further compute is spent on it without new data, meaning the TDOT
 radar counts of `docs/I24_DATA.md` §4.
 
+**Superseded (2026-10-07):** the rule fired (the addenda below), but its peak-section
+clause did not measure the merge. A fixture of I-24's 4-lane merge geometry with free
+outflow discharges 6,620 ± 62 veh/h with the capacity-calibrated population, about the
+recorded 6,626, and the peak-section ceiling is set at the downstream end: how the
+measured boundary is imposed, partly the Hickory Hollow weave
+(docs/I24_DISCHARGE_DIAGNOSIS.md §4–§6, §8.1). The segment-speed clauses were not
+re-measured.
+
 ## 4. What not to try again, and the artifact that settled it
 
 * Any further sweep of SUMO's lane-change parameters here: strategic, cooperative,
@@ -361,6 +369,14 @@ population at a merge (a fleet whose calibrated spacing gives 5,880 veh/h cannot
 6,630), which is a calibration question for the IDM population under merging, not a
 scenario question.
 
+**Superseded (2026-10-07):** the 5,880 veh/h is the corridor's ceiling, not the merge's
+discharge. A fixture of I-24's 4-lane merge geometry with free outflow discharges
+6,620 ± 62 veh/h with this population, about the recorded 6,626, and the ceiling is set
+at the downstream end: how the measured boundary is imposed, partly the Hickory Hollow
+weave (docs/I24_DISCHARGE_DIAGNOSIS.md §4–§6, §8.1). The count check there (§8.4.2)
+keeps the targets, so the shortfall is the model's, downstream; the speed row's
+attribution to the merge was not re-measured.
+
 ## Addendum, 2026-09-17, evening: the calibration question, answered
 
 docs/I24_VALIDATION.md §0.12: a population fitted on the merge zone only (4,193 episodes)
@@ -371,3 +387,8 @@ it is in the merging process itself, which the IDM population cannot carry and S
 lane-change model does not reproduce. This closes the plan: the merge is a model-form
 limitation at both the scenario and the calibration level, and the next step, if wanted,
 is a gap-acceptance merge model measured from the recording's lane-change events.
+
+**Superseded (2026-10-07):** "in the merging process itself" does not hold: in I-24's
+4-lane geometry the merge passes about the recorded flow, and the ceiling is set at the
+downstream end (docs/I24_DISCHARGE_DIAGNOSIS.md §4.1, §5–§6, §8.1). The merge-zone
+population's measurements stand; their reading as a limitation of the merge does not.

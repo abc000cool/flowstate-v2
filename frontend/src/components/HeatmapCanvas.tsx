@@ -34,7 +34,7 @@ import {
   type KeyboardEvent as ReactKeyboardEvent,
   type MouseEvent as ReactMouseEvent,
 } from 'react';
-import type { HeatField, Heatmap, RunDetail, Tier } from '../api/types';
+import type { HeatField, Heatmap, RunDetail, Seed, Tier } from '../api/types';
 import {
   binColor,
   rampGradientCSS,
@@ -148,8 +148,9 @@ export interface HeatmapExportContext {
 export interface HeatmapProvenance {
   runId: string;
   field: HeatField;
-  /** The replicate's RNG seed (`HeatmapOut.seed`). */
-  seed: number | null;
+  /** The replicate's RNG seed (`HeatmapOut.seed`), the decimal string the API
+   * sent: a 64-bit seed is printed digit for digit, never through a number. */
+  seed: Seed | null;
   /** 1-based position of `seed` in the run's seed list, and its length. */
   replicate: { index: number; of: number } | null;
   configHash: string | null;
@@ -220,7 +221,7 @@ export function heatmapCSVHeader(h: Heatmap, p: HeatmapProvenance): string {
     ],
     ['tier', p.tier === null ? unknown : TIER_LINE[p.tier]],
     ['seeded', p.seeded === null ? 'unknown' : String(p.seeded)],
-    ['seed', p.seed === null ? 'unknown (the service did not say which replicate this is)' : String(p.seed)],
+    ['seed', p.seed === null ? 'unknown (the service did not say which replicate this is)' : p.seed],
     [
       'replicate',
       p.seed === null

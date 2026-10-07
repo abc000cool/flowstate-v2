@@ -110,7 +110,8 @@ def test_meter_and_weave_counters_are_read_from_the_first_replicate(client: Test
 
     diag = _metrics(client, run["run_id"])["merge_diagnostics"]
     assert diag is not None
-    assert diag["seed"] == meta["seed"]
+    # a decimal string: the seed is 64-bit, past what a JSON number keeps exactly
+    assert diag["seed"] == str(meta["seed"])
 
     (meter,) = diag["ramp_meters"]
     assert meter["ramp"] == "Hickory Hollow Pkwy"

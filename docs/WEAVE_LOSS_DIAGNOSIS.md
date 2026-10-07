@@ -1579,3 +1579,4 @@ row) were scored on b066935, before the second regression review made one standi
 runs, the extra ones upstream of the weave, so its `by_section` table names the McKnight Rd merge (on-ramp
 178547099) in all three. The run-level counts (3 of 20, 0 of 20) and the weave heads agree with C4b's reader;
 the per-run lists would read differently under today's code.
+The generated reports under `docs/reports/*_p9/` carry the same pre-fix lock lists and are left as generated.

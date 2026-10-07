@@ -10,7 +10,7 @@
  * dashboard computes no statistic of its own (CLAUDE.md §7.4). */
 
 import { useMemo, useState, type KeyboardEvent } from 'react';
-import type { AggregateStat, ReplicateMetrics } from '../api/types';
+import type { AggregateStat, ReplicateMetrics, Seed } from '../api/types';
 import { formatNumber } from '../lib/format';
 import {
   hasNoObservations,
@@ -22,7 +22,8 @@ import { Skeleton } from './ui/Skeleton';
 
 /** One replicate's value of a metric, with the seed that produced it. */
 export interface ReplicatePoint {
-  seed: number;
+  /** The decimal string the API sent (`Seed`). */
+  seed: Seed;
   value: number;
 }
 

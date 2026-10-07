@@ -157,11 +157,11 @@ describe('heatmap CSV provenance', () => {
     ...FIELD,
     run_id: 'run-m1',
     config_hash: '3f9a0b1c2d3e',
-    seed: 43,
+    seed: '43',
     field: 'speed',
     tier: 'macro',
   };
-  const MACRO_RUN = { tier: 'macro' as const, config_hash: '3f9a0b1c2d3e', seeds: [42, 43, 44], seeded: false };
+  const MACRO_RUN = { tier: 'macro' as const, config_hash: '3f9a0b1c2d3e', seeds: ['42', '43', '44'], seeded: false };
 
   const metaOf = (text: string): string[] => text.split('\n').filter((l) => l.startsWith('#'));
   const valueOf = (text: string, key: string): string | undefined =>
@@ -196,19 +196,33 @@ describe('heatmap CSV provenance', () => {
   });
 
   it('names a micro export by seed and tier', () => {
-    const micro: Heatmap = { ...MACRO, tier: 'micro', seed: 2000 };
+    const micro: Heatmap = { ...MACRO, tier: 'micro', seed: '2000' };
     const { filename, text } = heatmapExport(micro, 'density', {
       runId: 'run-a41d09',
-      run: { ...MACRO_RUN, tier: 'micro', seeds: [2000, 2001] },
+      run: { ...MACRO_RUN, tier: 'micro', seeds: ['2000', '2001'] },
       exportedAt: AT,
     });
     expect(filename).toBe('flowstate-run-a41d09-density-seed2000-micro.csv');
-    expect(heatmapCSVFilename({ runId: 'run-a41d09', field: 'density', seed: 2000, tier: 'micro', demo: false })).toBe(
+    expect(heatmapCSVFilename({ runId: 'run-a41d09', field: 'density', seed: '2000', tier: 'micro', demo: false })).toBe(
       filename,
     );
     expect(valueOf(text, 'tier')).toMatch(/^micro/);
     expect(valueOf(text, 'units')).toMatch(/density_vehm = veh\/m/);
     expect(text).toContain('\nt_s,x_m,density_vehm\n');
+  });
+
+  it('writes a 64-bit seed digit for digit, in the header and the file name', () => {
+    // spawn_seeds(42, 2): both past 2^53, where a JSON number would round them
+    const seeds = ['6914975401685141156', '134183728835869882'];
+    const micro: Heatmap = { ...MACRO, tier: 'micro', seed: seeds[0] };
+    const { filename, text } = heatmapExport(micro, 'speed', {
+      runId: 'run-big',
+      run: { ...MACRO_RUN, tier: 'micro', seeds },
+      exportedAt: AT,
+    });
+    expect(filename).toBe('flowstate-run-big-speed-seed6914975401685141156-micro.csv');
+    expect(valueOf(text, 'seed')).toBe('6914975401685141156');
+    expect(valueOf(text, 'replicate')).toMatch(/^1 of 2 /);
   });
 
   it('falls back to the run for tier and hash, and never invents a seed', () => {

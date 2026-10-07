@@ -27,12 +27,14 @@ import type {
   ReportOut,
   InsertionSummary,
   MergeDiagnostics,
+  ReplicateMetrics,
   RunDetail,
   RunMetrics,
   RunSummary,
   ScenarioConfig,
   PresetSummary,
   ScenarioSummary,
+  Seed,
   SweepCell,
   SweepDetail,
   SweepStrategy,
@@ -262,7 +264,7 @@ const runs: RunRecord[] = [
     // runner writes: a few vehicles that could not stop for the meter, one
     // change never made, one vehicle still under control at the end
     merge_diagnostics: {
-      seed: 2000,
+      seed: '2000',
       ramp_meters: [
         {
           ramp: 'I-494 entrance',
@@ -488,10 +490,16 @@ function aggregateMetric(values: (number | null)[]): AggregateStat {
   };
 }
 
+/** Replicate `i`'s seed as the API sends it: a decimal string (`Seed`). The
+ * demo's seeds are small, but they travel the way a real 64-bit one does. */
+function seedOf(r: RunRecord, i: number): Seed {
+  return String(r.seedBase + i);
+}
+
 function buildMetrics(r: RunRecord): RunMetrics {
   const profile = r.profile ?? BASELINE;
   const rng = mulberry32(r.seedBase);
-  const per: { seed: number; metrics: Record<string, number | null> }[] = [];
+  const per: ReplicateMetrics[] = [];
   for (let i = 0; i < r.n; i++) {
     const rep: Record<string, number | null> = {};
     for (const k of METRIC_KEYS) {
@@ -510,7 +518,7 @@ function buildMetrics(r: RunRecord): RunMetrics {
       rep.wave_speed_kmh = null;
       rep.wave_amplitude_ms = null;
     }
-    per.push({ seed: r.seedBase + i, metrics: rep });
+    per.push({ seed: seedOf(r, i), metrics: rep });
   }
   const aggregate: Record<string, AggregateStat> = {};
   for (const k of METRIC_KEYS) {
@@ -842,7 +850,7 @@ function reportMarkdown(reportId: string, runIds: string[], profile: string): st
     lines.push('');
     lines.push(`- scenario: ${r.scenario_name}`);
     lines.push(`- config_hash: \`${r.config_hash}\``);
-    lines.push(`- replicates: ${r.n} · seeds ${r.seedBase}–${r.seedBase + r.n - 1}`);
+    lines.push(`- replicates: ${r.n} · seeds ${seedOf(r, 0)}–${seedOf(r, r.n - 1)}`);
     lines.push(`- seeded perturbation: ${r.seeded ? '**yes (labeled)**' : 'no (emergent)'}`);
     lines.push('');
     lines.push('| metric | mean | 95% CI | n |');
@@ -955,7 +963,7 @@ export async function mockGetRun(runId: string): Promise<RunDetail> {
   await latency();
   const r = runs.find((x) => x.run_id === runId);
   if (!r) throw new Error(`run ${runId} not found in the demo backend`);
-  return { ...toSummary(r), seeds: Array.from({ length: r.n }, (_, i) => r.seedBase + i) };
+  return { ...toSummary(r), seeds: Array.from({ length: r.n }, (_, i) => seedOf(r, i)) };
 }
 
 export async function mockCreateRun(req: CreateRunRequest): Promise<{ run_id: string }> {
@@ -1004,7 +1012,7 @@ export async function mockGetRunHeatmap(runId: string, field: HeatField): Promis
   return {
     run_id: r.run_id,
     config_hash: r.config_hash,
-    seed: r.seedBase,
+    seed: seedOf(r, 0),
     field,
     tier: r.tier,
     ...buildHeatmap(r, field),

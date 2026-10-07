@@ -28,11 +28,11 @@ const run = {
   config_hash: '3f9a0b1c2d3e4f5a6b7c8d9e0f1ac21e',
   seeded: true,
   tier: 'macro',
-  seeds: [7, 8, 9],
+  seeds: ['7', '8', '9'],
 };
 
 const metrics = {
-  replicates: [{ seed: 7, metrics: { sigma_v_spatial_ms: 3.1 } }],
+  replicates: [{ seed: '7', metrics: { sigma_v_spatial_ms: 3.1 } }],
   aggregate: {
     sigma_v_spatial_ms: { mean: 3.1, lo95: null, hi95: null, n: 1, underpowered: true, reason: null },
   },
@@ -43,7 +43,7 @@ const metrics = {
 const heatmap = {
   run_id: 'run-m1',
   config_hash: run.config_hash,
-  seed: 7,
+  seed: '7',
   field: 'speed',
   tier: 'macro',
   t_bins: [30, 90],

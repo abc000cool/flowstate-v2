@@ -171,6 +171,14 @@ The next diagnostic is the merge itself: the same arm with the Old Hickory
 inflow at its tracked level, with the ramp closed, and with the strategic
 lane-change weight at SUMO's default.
 
+**Superseded (2026-10-07):** the merge is not the replica's limit. A fixture
+of I-24's 4-lane merge geometry with free outflow discharges
+6,620 ± 62 veh/h with this population, about the recorded 6,626, and the
+peak-section ceiling is set at the downstream end: how the measured boundary
+is imposed, partly the Hickory Hollow weave (docs/I24_DISCHARGE_DIAGNOSIS.md
+§4–§6, §8.1). Whether the slow first kilometre read here is the merge's own
+queue or one held from downstream was not re-measured.
+
 The single-level variant on the tracked profile (`--base tracked`,
 `artifacts/demand_scale_i24.json`, coarse grid, same seed) is inferior on
 both hours: its best level 1.60 scores 34.3% on the fitted hour and 44.1%
@@ -257,6 +265,14 @@ stops metering the flow. Cooperation must stay at SUMO's default; gap
 acceptance is a candidate only jointly with the downstream ramp levels and
 the boundary discharge, which is the joint out-of-sample fit that follows
 (`scripts/i24_fit_boundary_ramps.py`).
+
+**Superseded (2026-10-07):** "the merge is where the replica's congestion is
+generated" does not hold for the flow. A fixture of I-24's 4-lane merge
+geometry with free outflow discharges 6,620 ± 62 veh/h with this population,
+about the recorded 6,626, and the replica's peak-section ceiling is set at
+the downstream end: how the measured boundary is imposed, partly the Hickory
+Hollow weave (docs/I24_DISCHARGE_DIAGNOSIS.md §4–§6, §8.1). The parameter
+results in the table stand as measured.
 
 ## 7. Joint out-of-sample fit of ramp levels, boundary discharge and gap acceptance (FHWA step 3)
 

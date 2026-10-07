@@ -41,7 +41,8 @@ def test_worker_precomputes_every_replicate_cache(client: TestClient) -> None:
     cached = res.cached_run_metrics(run_root)
     assert cached is not None
     per_replicate, agg = cached
-    assert sorted(seed for seed, _ in per_replicate) == sorted(run["seeds"])
+    # the API sends seeds as decimal strings (64-bit; api.schemas.Seed)
+    assert sorted(seed for seed, _ in per_replicate) == sorted(int(s) for s in run["seeds"])
     assert agg["throughput_veh_h"].n == 3
 
 

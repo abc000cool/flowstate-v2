@@ -133,6 +133,13 @@ the merging process itself, which SUMO's lane-change model does not reproduce. T
 merge is recorded as a model-form limitation with its residual stated (about 5,880
 veh/h discharged where the recording sustains 6,630).
 
+**Superseded (2026-10-07):** the missing discharge is not in the merging process. A
+fixture of I-24's 4-lane merge geometry with free outflow discharges 6,620 ± 62 veh/h
+with the capacity-calibrated population, about the recorded 6,626, so the 5,880 veh/h is
+the corridor's ceiling, set at the downstream end: how the measured boundary is imposed,
+partly the Hickory Hollow weave (docs/I24_DISCHARGE_DIAGNOSIS.md §4–§6, §8.1). The count
+check there (§8.4.2) keeps the targets, so the shortfall is the model's, downstream.
+
 **Is the service safe to put in front of a pilot customer?**
 Safer than it was: scenario file paths are confined to allowed roots, errors
 carry no traceback frames, server source paths, file contents or pydantic

@@ -22,9 +22,13 @@ for f in i24_wb_gap_sequences.parquet i24_wb_critical_gap_drivers.parquet; do
 done
 cp -R "$TMP"/logs/. logs/pipeline_vm/ 2>/dev/null || true
 # artifacts and scenarios written by the VM (new families only; the canonical ones are untouched
-# except the heavy arm's artifact and the cap sweep)
+# except the heavy arm's artifact and the cap sweep). Stage p13 (amendment B2) writes the rc family's inputs and
+# demand (i24_replica_inputs_flow_rc.json, demand_i24_flow_rc.json), its two batteries (i24_validation_dc_refit_
+# p13ref / _rc, under i24_validation_dc*), their ramp-flow reductions (i24_b2_ramp_flows_<label>.json, which the
+# score re-reads: the archive carries at most the first seed's vehicles.parquet) and boundary_b2_corridor.json
+# (2026-10-07 review: the reductions, inputs and demand were dropped)
 for f in "$TMP"/artifacts/*.json; do [ -f "$f" ] || continue; b=$(basename "$f"); case "$b" in
-  i24_validation_zip_*|i24_validation_flow_*|i24_validation_tracked.json|i24_validation_corrected.json|i24_validation_speedcal.json|i24_validation_ramps.json|i24_validation_speedcal_heavy.json|us101_validation_calibrated.json|i24_merge_experiment_zipper_jm.json|i24_merge_experiment_scripted.json|i24_merge_experiment_entryflow.json|i24_merge_experiment_ohlevel.json|i24_merge_experiment_heavylanes.json|demand_scale_i24_zip.json|demand_scale_i24_flow.json|i24_boundary_ramps_fit_zip.json|i24_boundary_ramps_fit_flow.json|i24_replica_inputs_zip.json|i24_replica_inputs_flow.json|demand_i24_zip.json|demand_i24_flow.json|i24_cap_sweep_summary.json|i24_sweep_summary.json|i24_merge_experiment_mergefleet.json|idm_i24_merge.json|idm_i24_capacity_equilibrium.json|validation_mndot_*|sweep_mndot_*|i24_lane_change_gaps.json|i24_critical_gaps.json|lane_change_relaxation_*|coverage_thinning_*|sweep_*_hb_summary.json|sweep_*_cc_summary.json|collisions_*_hb.json|collisions_*_cc.json|sweep_*_wp96*_summary.json|collisions_*_wp96*.json|i24_validation_dc*.json|validation_*_dc*.json|baseline_gate_*_dc.json|baseline_gate_*_dc_cal*.json|demand_scale_*_dc.json|i94_netfix_probe.json|merge_anticipation_i24.json|weave_w1b_corridor.json|i94_cal_collisions_trace.json|i24_count_consistency.json|weave_w2_corridor.json|i24_validation_p12_*.json|boundary_b1_corridor.json|boundary_b2_corridor.json)
+  i24_validation_zip_*|i24_validation_flow_*|i24_validation_tracked.json|i24_validation_corrected.json|i24_validation_speedcal.json|i24_validation_ramps.json|i24_validation_speedcal_heavy.json|us101_validation_calibrated.json|i24_merge_experiment_zipper_jm.json|i24_merge_experiment_scripted.json|i24_merge_experiment_entryflow.json|i24_merge_experiment_ohlevel.json|i24_merge_experiment_heavylanes.json|demand_scale_i24_zip.json|demand_scale_i24_flow.json|i24_boundary_ramps_fit_zip.json|i24_boundary_ramps_fit_flow.json|i24_replica_inputs_zip.json|i24_replica_inputs_flow.json|demand_i24_zip.json|demand_i24_flow.json|i24_cap_sweep_summary.json|i24_sweep_summary.json|i24_merge_experiment_mergefleet.json|idm_i24_merge.json|idm_i24_capacity_equilibrium.json|validation_mndot_*|sweep_mndot_*|i24_lane_change_gaps.json|i24_critical_gaps.json|lane_change_relaxation_*|coverage_thinning_*|sweep_*_hb_summary.json|sweep_*_cc_summary.json|collisions_*_hb.json|collisions_*_cc.json|sweep_*_wp96*_summary.json|collisions_*_wp96*.json|i24_validation_dc*.json|validation_*_dc*.json|baseline_gate_*_dc.json|baseline_gate_*_dc_cal*.json|demand_scale_*_dc.json|i94_netfix_probe.json|merge_anticipation_i24.json|weave_w1b_corridor.json|i94_cal_collisions_trace.json|i24_count_consistency.json|weave_w2_corridor.json|i24_validation_p12_*.json|boundary_b1_corridor.json|boundary_b2_corridor.json|i24_b2_ramp_flows_*.json|i24_replica_inputs_flow_rc.json|demand_i24_flow_rc.json)
     cp "$f" artifacts/"$b"; echo "artifact $b" ;;
   *)  # not on the list: say so when it is new or differs from the repository's copy (2026-10-07 review: stage 23's
       # calibrated batteries and gate were dropped without a word)
@@ -33,8 +37,10 @@ esac; done
 # scenarios written by the VM: the I-24 zip/flow families; the handback re-runs' copies (WP-95, stage 18: *_hb.yaml, and
 # the US-101 boundary copies); the command-path re-runs' (WP-96, stage 19: *_wp96f.yaml, *_wp96fh.yaml); stage 23's
 # calibrated-driver scenarios (*_dc.yaml) and every variant of them (*_dc_*.yaml: the I-24 demand refit *_dc_refit,
-# p8's *_dc_cal*, p9's W1b copy *_dc_w1b; 2026-10-07 review: the W1b copy its battery names was dropped). Any other
-# scenario that is new or differs from the repository's copy is named, as the artifacts are.
+# p8's *_dc_cal*, p9's W1b copy *_dc_w1b; 2026-10-07 review: the W1b copy its battery names was dropped). Stage
+# p13's rc scenarios fall under i24_replica_flow*.yaml (i24_replica_flow_rc{,_corrected,_corrected_dc,
+# _speedcal_dc_refit}.yaml). Any other scenario that is new or differs from the repository's copy is named, as the
+# artifacts are.
 ingested_scenario() {
   case "$1" in
     i24_replica_zip*.yaml|i24_replica_flow*.yaml|*_hb.yaml|us101_replica_boundary_*.yaml|*_wp96f.yaml|*_wp96fh.yaml) return 0 ;;
@@ -66,7 +72,8 @@ for d in "$TMP"/runs/mndot_*; do [ -d "$d" ] && rsync -a "$d/" "runs/$(basename 
 for d in "$TMP"/runs/*_hb "$TMP"/runs/*_cc; do [ -d "$d" ] && rsync -a "$d/" "runs/$(basename "$d")/" && echo "runs: $(basename "$d")"; done
 # stage 19's run trees (WP-96: _wp96c, _wp96f, _wp96fh)
 for d in "$TMP"/runs/*_wp96*; do [ -d "$d" ] && rsync -a "$d/" "runs/$(basename "$d")/" && echo "runs: $(basename "$d")"; done
-# stage 23's I-24 batteries (runs/i24_validation/dc, dc_refit: per-replicate meta.json, first-seed trajectories)
+# stage 23's I-24 batteries (runs/i24_validation/dc, dc_refit: per-replicate meta.json, first-seed trajectories);
+# stage p13's two batteries (dc_refit_p13ref, dc_refit_rc) are taken by the same line
 for d in "$TMP"/runs/i24_validation/dc*; do [ -d "$d" ] && rsync -a "$d/" "runs/i24_validation/$(basename "$d")/" && echo "runs: i24_validation/$(basename "$d")"; done
 # stage 24's probe (readings, meta and lane geometry of every run; the artifact rebuilds from them)
 [ -d "$TMP/runs/p5/i94_netfix_probe" ] && mkdir -p runs/p5 && rsync -a "$TMP/runs/p5/i94_netfix_probe/" runs/p5/i94_netfix_probe/ && echo "runs: p5/i94_netfix_probe"

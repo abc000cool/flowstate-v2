@@ -397,6 +397,14 @@ and survive any slip in the critical path.
   recorded as a model-form limitation; the next research question is the discharge
   capacity of the calibrated IDM population under merging (about 5,880 against the
   observed 6,630 veh/h), a calibration question rather than a scenario one.
+
+  **Superseded (2026-10-07):** the 5,880 veh/h is not the merge's discharge. A fixture
+  of I-24's 4-lane merge geometry with free outflow discharges 6,620 ± 62 veh/h with the
+  capacity-calibrated population, about the recorded 6,626, and the replica's
+  peak-section ceiling is set at the downstream end: how the measured boundary is
+  imposed, partly the Hickory Hollow weave (docs/I24_DISCHARGE_DIAGNOSIS.md §4–§6,
+  §8.1). The count check there (§8.4.2) keeps the targets, so the shortfall is the
+  model's, downstream.
 - The record's artifacts carry the corrected metric definitions and hash-policy-v2
   hashes as of the 2026-09-17 re-run; the 500-run sweep and the cap sweep keep the
   earlier definitions and are labelled so. *Correction 2026-09-25:* superseded on
@@ -409,6 +417,12 @@ and survive any slip in the critical path.
   shortfall is not in the car-following population. The merge stays a model-form
   limitation; the only remaining research route is a measured gap-acceptance merge
   model, outside the product scope for now.
+
+  **Superseded (2026-10-07):** the premise, a merge shortfall, does not hold: the merge
+  passes about the recorded flow in I-24's 4-lane geometry, and the ceiling is set at
+  the downstream end (the note above; docs/I24_DISCHARGE_DIAGNOSIS.md §8.1). The
+  amendments that follow from that diagnosis address the downstream boundary and the
+  ramp inputs (B1 and B2, §8.3 and §8.4.3 there), not a merge model.
 - Published reports regenerated under the corrected definitions; the sweep and cap
   sweep re-run is on the cloud chain and lands overnight.
 - Next product step: a pilot-shaped onboarding of a third corridor, end to end.

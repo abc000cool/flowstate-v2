@@ -997,7 +997,13 @@ def _scripted_merge_step(
                 "zone_s": None,
                 "requested_s": -math.inf,
                 "forced": False,
-                "lc_mode_orig": int(mod.vehicle.getLaneChangeMode(vid)),
+                # a pending veto's recorded mode, not the vetoed one: the
+                # scripted merges are stepped before every weaving section and
+                # measured zone (run_micro's loop), so a vehicle a section vetoed
+                # in step t and now on this lane is read here in t + dt before
+                # that section's restore (review 2026-10-07, third regression
+                # review; _lc_mode_owned)
+                "lc_mode_orig": _lc_mode_owned(mod, ss, vid),
                 "v_max_orig": float(mod.vehicle.getMaxSpeed(vid)),
                 "s0": float(mod.vehicle.getMinGap(vid)),
                 "mode": LC_MODE_SCRIPTED_SAFE,  # the mode last set (read under force_guard)
@@ -1623,7 +1629,10 @@ def _weave_vacate_step(
         if budget <= 0:
             pending.add(vid)
             continue
-        mode_orig = int(mod.vehicle.getLaneChangeMode(vid))
+        # a veto pending on the vehicle (any section's opposing resolution)
+        # is consumed and its recorded mode taken: the hold then restores
+        # the real mode (review 2026-10-07, third regression review)
+        mode_orig = _lc_mode_owned(mod, ws, vid)
         if mode_orig in (
             LC_MODE_SCRIPTED_SAFE,
             LC_MODE_SCRIPTED_FORCE,
@@ -1900,7 +1909,9 @@ def _weave_exit_prepare_step(
         if beside_vacating(vid, x):
             pending.add(vid)  # asked once clear of the vacating vehicle
             continue
-        mode_orig = int(mod.vehicle.getLaneChangeMode(vid))
+        # a pending veto's recorded mode, not the vetoed one (review
+        # 2026-10-07, third regression review; _lc_mode_owned)
+        mode_orig = _lc_mode_owned(mod, ws, vid)
         if mode_orig in (
             LC_MODE_SCRIPTED_SAFE,
             LC_MODE_SCRIPTED_FORCE,
@@ -2412,13 +2423,63 @@ def _weave_opposing_restore(mod: Any, ws: dict[str, Any], results: Any) -> None:
     vehicle's model-driven bits for one step; before anything of the next
     step reads a mode, each vetoed vehicle
     still in the network gets the mode it had — unless another rule has set
-    one since, which is then left as it is.
+    one since, which is then left as it is. A veto another rule consumed
+    when it took the vehicle into a hold (:func:`_lc_mode_owned`; review
+    2026-10-07, third regression review) is no longer listed: that rule
+    restores the mode.
     """
     vetoes: dict[str, int] = ws["opp_veto"]
     for vid, mode in vetoes.items():
         if vid in results and int(mod.vehicle.getLaneChangeMode(vid)) == mode & ~LC_MODE_MODEL_BITS:
             mod.vehicle.setLaneChangeMode(vid, mode)
     vetoes.clear()
+
+
+def _weave_share_vetoes(
+    states: Sequence[dict[str, Any]], readers: Sequence[dict[str, Any]] = ()
+) -> None:
+    """Let every section's mode capture see every section's vetoes (review 2026-10-07, third regression review).
+
+    Each weaving section and measured zone (``states``) keeps its own
+    ``opp_veto``, restored by its own :func:`_weave_opposing_restore` at the
+    start of its next step; all of them are listed in one ``opp_veto_all``,
+    the same list object on every state and on each of ``readers`` (the
+    scripted merges, which veto nothing), which :func:`_lc_mode_owned`
+    reads. One dict shared by every state was not taken: a section stepped
+    later in the step would restore, at its own start, a veto an upstream
+    section made earlier in that step, before SUMO stepped, and no veto
+    would act.
+    """
+    shared = [ws["opp_veto"] for ws in states]
+    for st in (*states, *readers):
+        st["opp_veto_all"] = shared
+
+
+def _lc_mode_owned(mod: Any, ws: dict[str, Any], vid: str) -> int:
+    """``vid``'s own ``laneChangeMode``, read by a rule about to hold it (review 2026-10-07, third regression review).
+
+    A vehicle an opposing-entry resolution vetoed
+    (:func:`_weave_resolve_and_execute`, :func:`_measured_step`) is under
+    its mode with the model bits cleared until that section restores it at
+    the start of its next step. A hold of another section taken in between
+    (the vacate request, the exiters' early move, a vehicle taken under
+    control, the measured hand-over, a scripted merge's acceleration lane)
+    read the vetoed mode as the vehicle's own; the restore then found the
+    hold's mode, left it and dropped the record, and the hold handed the
+    vetoed mode back at its end — the vehicle's strategic, cooperative,
+    speed-gain and keep-right changes off for the rest of the run. A veto
+    pending on ``vid`` in any section (``ws["opp_veto_all"]``, also on a
+    scripted merge's state; :func:`_weave_share_vetoes`) is consumed here
+    and its recorded mode returned, with no TraCI read: the capturing rule
+    owns the restoration from now on. Otherwise the live mode, one read, as
+    the capture sites made it before. A recorded mode always carries model
+    bits (only a ``model`` opponent is vetoed), so a capture site's
+    scripted-hold guard never skips a vehicle whose veto was consumed.
+    """
+    for vetoes in ws.get("opp_veto_all", ()):
+        if vid in vetoes:
+            return int(vetoes.pop(vid))
+    return int(mod.vehicle.getLaneChangeMode(vid))
 
 
 def _weave_cooperate(
@@ -3063,7 +3124,9 @@ def _weave_step(
                 "zone_s": None,
                 "requested_s": -math.inf,
                 "forced": False,
-                "lc_mode_orig": int(mod.vehicle.getLaneChangeMode(vid)),
+                # a pending veto's recorded mode, not the vetoed one (review
+                # 2026-10-07, third regression review; _lc_mode_owned)
+                "lc_mode_orig": _lc_mode_owned(mod, ws, vid),
                 "s0": float(mod.vehicle.getMinGap(vid)),
                 "mode": LC_MODE_SCRIPTED_SAFE,
                 # the gap chosen on the ramp, if any, carries over
@@ -4215,7 +4278,9 @@ def _measured_handover_step(
         if k is None or target is None or merge_model.mandatory_direction(reach0, k, target) == 0:
             continue
         if vid not in handover:
-            mode = int(mod.vehicle.getLaneChangeMode(vid))
+            # a pending veto's recorded mode, not the vetoed one (review
+            # 2026-10-07, third regression review; _lc_mode_owned)
+            mode = _lc_mode_owned(mod, ws, vid)
             if mode in (
                 LC_MODE_SCRIPTED_SAFE,
                 LC_MODE_SCRIPTED_FORCE,
@@ -4675,10 +4740,12 @@ def _measured_step(
                 "zone_s": None,
                 "requested_s": -math.inf,
                 "forced": False,
+                # a pending veto's recorded mode, not the vetoed one (review
+                # 2026-10-07, third regression review; _lc_mode_owned)
                 "lc_mode_orig": (
                     ws["handover"].pop(vid)
                     if vid in ws["handover"]
-                    else int(mod.vehicle.getLaneChangeMode(vid))
+                    else _lc_mode_owned(mod, ws, vid)
                 ),
                 "s0": p_c["s0"],
                 "mode": LC_MODE_SCRIPTED_SAFE,
@@ -7052,6 +7119,10 @@ def run_micro(
         for n_z, ws_z in enumerate(ws for ws in weave_states if ws.get("mm")):
             ws_z["mm"]["index"] = n_z
     measured_states = [ws for ws in weave_states if ws.get("mm")]
+    # every section's and scripted merge's capture sees every section's
+    # pending vetoes (review 2026-10-07, third regression review;
+    # _weave_share_vetoes)
+    _weave_share_vetoes(weave_states, scripted_states)
 
     # --- The lane-end give-up (OSMNetwork.lane_end_giveup_m, WP-71) ---------
     # At every diverge the weaving sections do not cover, a vehicle held at

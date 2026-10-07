@@ -457,6 +457,15 @@ Hickory to Hickory Hollow and improved the held-out hour from 42.6% to
 it lost five, 15.3 → 10.4%), and loses 136 veh/h of throughput, so the
 merge is still where the error lives.
 
+**Superseded (2026-10-07):** "it is the replica's only bottleneck" and "the
+merge is still where the error lives" do not hold for the flow row. A
+fixture of I-24's 4-lane merge geometry with free outflow discharges
+6,620 ± 62 veh/h with the capacity-calibrated population, about the recorded
+6,626, and the replica's peak-section ceiling is set at the downstream end:
+how the measured boundary is imposed, partly the Hickory Hollow weave
+(docs/I24_DISCHARGE_DIAGNOSIS.md §4–§6, §8.1). The speed residual's
+attribution to the merge was not re-measured.
+
 A diagnostic round on 6 September took the two failing rows apart
 (`docs/I24_VALIDATION.md` §0.5). The 5-minute speed criterion sits below
 the recording's own repeatability: the recorded field differs from its own
@@ -471,6 +480,17 @@ eagerness field, the measured entry lane distribution, and the sublane
 model, which gridlocks as configured: it is a merge lock of SUMO's
 lane-discrete lane-change model on this geometry. The next round is a
 merge model that does not lock, then the calibration sequence again.
+
+**Superseded (2026-10-07):** the 12 to 13 percent is real, since the count
+check keeps the targets 6,626 / 6,639 (docs/I24_DISCHARGE_DIAGNOSIS.md
+§8.4.2), but it is not the merge's discharge: a fixture of I-24's 4-lane
+merge geometry with free outflow passes 6,620 ± 62 veh/h with the
+capacity-calibrated population, about the recorded 6,626, and the ceiling is
+set at the downstream end: how the measured boundary is imposed, partly the
+Hickory Hollow weave (§4–§6, §8.1 there). The same check found 14 and
+35 percent of the two on-ramp counts to be through traffic, which the
+replica's ramp inputs carry; "that gap is the merge" for the speed row was
+not re-measured.
 
 ![Front-speed distributions](figures/i24_validation_waves.png)
 
@@ -941,6 +961,16 @@ simulator where the recording sustains 6,630, and six rounds of merge levers plu
 a merge-zone recalibration of the driver population (docs/I24_VALIDATION.md §0.5
 to §0.12) locate that shortfall in the merging process the lane-change model does
 not reproduce, a model-form limitation rather than a tuning gap.
+
+  **Superseded (2026-10-07):** the stated cause does not hold for the flow
+  row. A fixture of I-24's 4-lane merge geometry with free outflow
+  discharges 6,620 ± 62 veh/h with the capacity-calibrated population, about
+  the recorded 6,626, so the 5,880 veh/h is the corridor's ceiling, set at
+  the downstream end: how the measured boundary is imposed, partly the
+  Hickory Hollow weave (docs/I24_DISCHARGE_DIAGNOSIS.md §4–§6, §8.1). The
+  count check there (§8.4.2) keeps the targets, so the shortfall is the
+  model's and the 5-of-7 record stands; its attribution to the merge does
+  not.
 - Why not just use the standard detector for wave speed? Because on
   congested backgrounds it finds nothing; the synthetic benchmark in the
   tests shows it, and the criterion now names its detector.

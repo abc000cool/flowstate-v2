@@ -71,8 +71,8 @@ const METRICS = {
   n_replicates: SMOKE_REPLICATES,
   underpowered: true,
   replicates: [
-    { seed: 42, metrics: { speed_std_ms: 1.2 } },
-    { seed: 43, metrics: { speed_std_ms: 1.3 } },
+    { seed: '42', metrics: { speed_std_ms: 1.2 } },
+    { seed: '43', metrics: { speed_std_ms: 1.3 } },
   ],
   aggregate: {
     speed_std_ms: { mean: 1.25, ci95_lo: 1.1, ci95_hi: 1.4, n: SMOKE_REPLICATES },
@@ -161,7 +161,7 @@ describe('GuidedFirstRun', () => {
               completed_replicates: runStatus === 'done' ? SMOKE_REPLICATES : 1,
               total_replicates: SMOKE_REPLICATES,
             },
-            seeds: [42, 43],
+            seeds: ['42', '43'],
             error: failed ? (runError?.error ?? null) : null,
             error_kind: failed ? (runError?.error_kind ?? null) : null,
             created_at: '2026-09-23T00:00:00',

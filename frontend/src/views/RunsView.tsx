@@ -16,7 +16,11 @@
  * The list can answer after the user has started typing (a cold server parses
  * every preset YAML first): a late answer still chooses that opening scenario
  * and fills the fields nobody has touched, but never replaces a typed value
- * and never moves a scenario the user picked.
+ * and never moves a scenario the user picked. A preset read that fails says
+ * nothing about the presets unless it is a 404 (a service older than the
+ * endpoint, which has none): the launcher keeps the presets it last showed,
+ * so a picked preset stays where it is, and a scenario it opened on before
+ * any preset read answered is chosen again once one does.
  *
  * Two honesty rules, the same ones the Scenarios cards follow: a failed run
  * shows the service's own reason rather than a bare status chip, and a row
@@ -45,6 +49,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { MouseEvent as ReactMouseEvent } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import {
+  ApiError,
   createRun,
   isMockActive,
   listPresetScenarios,
@@ -151,6 +156,15 @@ export function RunsView(): JSX.Element {
    * library: a preset already stored shows there as the stored scenario, and
    * the launcher's default is chosen among presets either way. */
   const [presets, setPresets] = useState<PresetSummary[]>([]);
+  /** The presets of the last preset read that answered, and whether the demo
+   * backend answered it (null before one has): what a later failed read from
+   * the same backend keeps showing. Only a 404 answers "no presets"; a cold
+   * server's 503 or a dropped connection says nothing about them, and
+   * treating it as none emptied the presets out of the launcher — moving a
+   * picked preset, or opening on the first stored scenario for good. */
+  const lastPresets = useRef<{ demo: boolean; rows: PresetSummary[] } | null>(null);
+  /** Whether a preset read has answered, so `presets` is the service's list. */
+  const [presetsKnown, setPresetsKnown] = useState(false);
   const [launchKey, setLaunchKey] = useState('');
   const [launchTier, setLaunchTier] = useState<'micro' | 'macro'>('micro');
   const [repsRaw, setRepsRaw] = useState('');
@@ -218,23 +232,33 @@ export function RunsView(): JSX.Element {
   }, []);
   usePoll(poll, authFailed ? null : RUNS_POLL_MS);
 
-  // quiet retry until the library loads (covers the offline-fallback race
-  // where the first fetch fires before the health probe flips to demo), then a
-  // slow refresh so newly created scenarios and their names appear
-  const libraryLoaded = library.length > 0;
+  // quiet retry until the library loads, presets included (covers the
+  // offline-fallback race where the first fetch fires before the health probe
+  // flips to demo, and a preset read that failed), then a slow refresh so
+  // newly created scenarios and their names appear
+  const libraryLoaded = library.length > 0 && presetsKnown;
   const loadLibrary = useCallback(async () => {
     const seq = ++librarySeq.current;
+    const demo = isMockActive();
     try {
-      // a service older than `GET /scenarios/preset` answers 404: the presets
-      // are then unavailable, which must not empty the stored list with them
+      // the preset read failing must not empty the stored list with it; a
+      // 404 (a service older than `GET /scenarios/preset`) means it has no
+      // presets, any other failure leaves them as last shown (null: unknown)
       const [loadedPresets, stored] = await Promise.all([
-        listPresetScenarios().catch(() => [] as PresetSummary[]),
+        listPresetScenarios().catch((err: unknown) =>
+          err instanceof ApiError && err.status === 404 ? ([] as PresetSummary[]) : null,
+        ),
         listScenarios(),
       ]);
       if (seq < libraryApplied.current) return;
       libraryApplied.current = seq;
-      setPresets(loadedPresets);
-      setLibrary(mergeLibrary(loadedPresets, stored));
+      if (loadedPresets !== null) lastPresets.current = { demo, rows: loadedPresets };
+      // the demo backend's presets are not the server's (nor the reverse)
+      else if (lastPresets.current?.demo !== demo) lastPresets.current = null;
+      const shown = lastPresets.current?.rows ?? [];
+      setPresets(shown);
+      setPresetsKnown(lastPresets.current !== null);
+      setLibrary(mergeLibrary(shown, stored));
     } catch {
       /* retried by usePoll; connectivity is surfaced by the status dot */
     }
@@ -260,17 +284,26 @@ export function RunsView(): JSX.Element {
   // exists (the select would show its first option while Launch stayed off).
   // With nothing shown yet, open on the cheap default preset (or its stored
   // copy, same config hash), and only then on whatever is listed first.
+  // Before any preset read has answered that default is unknown, so a
+  // scenario chosen then is provisional: it is chosen again once the presets
+  // are known, unless the user has picked one meanwhile.
   const lastHash = useRef<string | null>(null);
+  const provisionalPick = useRef(false);
   useEffect(() => {
     if (selected) lastHash.current = selected.config_hash;
   }, [selected]);
   useEffect(() => {
-    if (library.length === 0 || library.some((s) => itemKey(s) === launchKey)) return;
-    const same = library.find((s) => s.config_hash === lastHash.current);
+    if (library.length === 0) return;
+    const shown = library.some((s) => itemKey(s) === launchKey);
+    if (shown && !(provisionalPick.current && presetsKnown)) return;
+    const same = provisionalPick.current
+      ? undefined
+      : library.find((s) => s.config_hash === lastHash.current);
     const fallbackHash = defaultPreset(presets)?.config_hash;
     const cheap = library.find((s) => s.config_hash === fallbackHash);
+    provisionalPick.current = !presetsKnown && same === undefined;
     setLaunchKey(itemKey(same ?? cheap ?? library[0]));
-  }, [library, presets, launchKey]);
+  }, [library, presets, presetsKnown, launchKey]);
 
   // The fields the user has typed into since the launcher last showed a
   // scenario's values at the user's own request (a pick in the select, or the
@@ -310,6 +343,7 @@ export function RunsView(): JSX.Element {
   /** A scenario picked in the select is a new starting point: every field
    * shows its values, whatever was typed for the one before. */
   const pickScenario = (key: string): void => {
+    provisionalPick.current = false;
     setLaunchKey(key);
     const item = library.find((s) => itemKey(s) === key);
     if (!item) return;
@@ -353,6 +387,7 @@ export function RunsView(): JSX.Element {
       setFocusLauncher(true);
       return;
     }
+    provisionalPick.current = false;
     setLaunchKey(itemKey(item));
     // the scenario's own values, even if this scenario was already selected
     // and its fields had been edited before the request (cleared when it was

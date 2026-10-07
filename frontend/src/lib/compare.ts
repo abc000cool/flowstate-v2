@@ -25,13 +25,20 @@ import type {
   RunDetail,
   RunSummary,
   ScenarioSummary,
+  Seed,
   SweepDetail,
   SweepStrategy,
   Tier,
 } from '../api/types';
 import { truncateMiddle } from '../components/ui/CopyButton';
 import { formatDeltaPct, formatNumber } from './format';
-import { groupedMetricKeys, hasNoObservations, MIN_REPLICATES, type MetricGroup } from './metrics';
+import {
+  groupedMetricKeys,
+  hasNoObservations,
+  metricDef,
+  MIN_REPLICATES,
+  type MetricGroup,
+} from './metrics';
 
 /* ------------------------------ metrics ------------------------------ */
 
@@ -122,6 +129,21 @@ export function compareSections(
   for (const k of Object.keys(a ?? {})) keys.add(k);
   for (const k of Object.keys(b ?? {})) keys.add(k);
   return groupedMetricKeys([...keys]);
+}
+
+/** The metrics whose B − A is a number other than zero, in the table's
+ * order. A metric either run lacks a mean for has no difference and is not
+ * listed. */
+export function nonzeroDifferences(
+  a: Record<string, AggregateStat>,
+  b: Record<string, AggregateStat>,
+): string[] {
+  return compareSections(a, b)
+    .flatMap((s) => s.keys)
+    .filter((k) => {
+      const d = metricDifference(sideStat(a, k), sideStat(b, k));
+      return d.kind === 'difference' && d.diff !== 0;
+    });
 }
 
 /* ------------------------- what each run ran ------------------------- */
@@ -255,11 +277,25 @@ export function runOptionLabel(run: RunSummary, scenarioName: string, demo: bool
   return parts.join(' · ');
 }
 
+/** A seed's value, or null when the string is not a decimal integer. BigInt,
+ * because a 64-bit seed is past what a JS number holds exactly. */
+function seedValue(s: Seed): bigint | null {
+  return /^[0-9]+$/.test(s) ? BigInt(s) : null;
+}
+
 /** `20 · 2000–2019` for a consecutive seed list, else the count alone (the
- * full list goes in a title). */
-export function describeSeeds(seeds: number[]): string {
+ * full list goes in a title). Seeds are the API's decimal strings (`Seed`):
+ * the run is checked with BigInt and the ends are printed as sent, digit for
+ * digit. */
+export function describeSeeds(seeds: Seed[]): string {
   if (seeds.length === 0) return '0';
-  const consecutive = seeds.every((s, i) => i === 0 || s === seeds[i - 1] + 1);
+  const values = seeds.map(seedValue);
+  const consecutive = values.every((v, i) => {
+    if (v === null) return false;
+    if (i === 0) return true;
+    const prev = values[i - 1];
+    return prev !== null && v === prev + 1n;
+  });
   return consecutive && seeds.length > 1
     ? `${seeds.length} · ${seeds[0]}–${seeds[seeds.length - 1]}`
     : seeds.length === 1
@@ -268,9 +304,9 @@ export function describeSeeds(seeds: number[]): string {
 }
 
 /** The replicate both space–time fields are drawn from: A's first seed that
- * B also ran, so the two show the same demand realisation; null when the runs
- * share no seed. */
-export function sharedSeed(a: number[], b: number[]): number | null {
+ * B also ran; null when the runs share no seed. Compared as the strings the
+ * API sent, so two 64-bit seeds that would round to one number stay apart. */
+export function sharedSeed(a: Seed[], b: Seed[]): Seed | null {
   const inB = new Set(b);
   return a.find((s) => inB.has(s)) ?? null;
 }
@@ -284,6 +320,16 @@ export interface CompareSide {
   scenarioName: string;
   /** Served by the in-browser demo backend: its hash exists on no server. */
   demo: boolean;
+}
+
+/** Whether one seed is one demand realisation in both runs: only within one
+ * scenario on the micro tier, where the seed draws the vehicles' insertions.
+ * Across scenarios the same seed number drives different demand, and the
+ * macro (CTM) tier draws no demand from its seed at all. */
+export function sameDemandRealisation(a: CompareSide, b: CompareSide): boolean {
+  return (
+    a.run.scenario_id === b.run.scenario_id && a.run.tier === 'micro' && b.run.tier === 'micro'
+  );
 }
 
 export interface CompareNote {
@@ -305,9 +351,24 @@ export interface CompareNote {
 const tierPhrase = (t: Tier): string =>
   t === 'macro' ? 'a macro (CTM screening) run' : 'a micro (SUMO) run';
 
+/** Each run's metric aggregates (`MetricsOut.aggregate`), once read. */
+export interface CompareAggregates {
+  a?: Record<string, AggregateStat>;
+  b?: Record<string, AggregateStat>;
+}
+
 /** What differs between A and B that B − A would otherwise silently fold in.
- * Warnings never block the comparison; they say what it mixes. */
-export function compareNotes(a: CompareSide, b: CompareSide): CompareNote[] {
+ * Warnings never block the comparison; they say what it mixes.
+ *
+ * With both runs' aggregates, a shared config hash is also checked against
+ * the table: the same hash means the same configuration on the same replicate
+ * seeds, so every B − A must be exactly zero, and one that is not turns the
+ * note into a warning. */
+export function compareNotes(
+  a: CompareSide,
+  b: CompareSide,
+  aggregates: CompareAggregates = {},
+): CompareNote[] {
   if (a.run.run_id === b.run.run_id) {
     return [
       {
@@ -367,13 +428,25 @@ export function compareNotes(a: CompareSide, b: CompareSide): CompareNote[] {
   // a demo row's hash exists on no server: comparing two of them says nothing
   if (!a.demo && !b.demo) {
     if (a.run.config_hash === b.run.config_hash) {
-      notes.push({
-        id: 'hash-same',
-        tone: 'info',
-        text:
-          `Same config hash (${truncateMiddle(a.run.config_hash)}): one configuration run twice, ` +
-          'so B − A is replicate noise only.',
-      });
+      const hash = truncateMiddle(a.run.config_hash);
+      const why =
+        'The same configuration ran on the same replicate seeds, so B − A should be exactly ' +
+        'zero; a nonzero difference is not sampling noise — the code or SUMO version, or a ' +
+        'file the config references, changed between the runs, or the runs are not ' +
+        'reproducible.';
+      const nonzero =
+        aggregates.a && aggregates.b ? nonzeroDifferences(aggregates.a, aggregates.b) : [];
+      if (nonzero.length > 0) {
+        const named = nonzero.slice(0, 3).map((k) => metricDef(k).label.toLowerCase());
+        const more = nonzero.length > 3 ? ` and ${nonzero.length - 3} more` : '';
+        notes.push({
+          id: 'hash-same',
+          tone: 'warning',
+          text: `Same config hash (${hash}), yet B − A is not zero (${named.join(', ')}${more}). ${why}`,
+        });
+      } else {
+        notes.push({ id: 'hash-same', tone: 'info', text: `Same config hash (${hash}). ${why}` });
+      }
     } else {
       notes.push({
         id: 'hash-differs',

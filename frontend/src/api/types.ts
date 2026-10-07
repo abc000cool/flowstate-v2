@@ -104,9 +104,22 @@ export interface ScenarioConfig {
   fd_calibration?: string | null;
   macro?: MacroOptions | null;
   perturbation?: PerturbationSpec | null;
+  /** The master seed the replicate seeds are spawned from. A config value the
+   * user sets (the launchers cap it at `MAX_SEED`, 2^31 − 1), so a JSON number
+   * carries it exactly; the replicate seeds it spawns are 64-bit and travel as
+   * strings (`Seed`). */
   seed: number;
   replicates: number;
 }
+
+/** A replicate RNG seed as the API sends it: a decimal string
+ * (`api.schemas.Seed`). Replicate seeds are 64-bit
+ * (`flowstate_core.rng.spawn_seeds` draws them below 2^63), and `JSON.parse`
+ * rounds a number past 2^53: 6914975401685141156 becomes 6914975401685141000,
+ * a seed the run never used, and a `?seed=` request for it is a 404. So a seed
+ * stays the string it arrived as, end to end — never `Number(seed)`; compare
+ * seeds as strings and do arithmetic on them with `BigInt`. */
+export type Seed = string;
 
 /* --------------------------- API payloads ------------------------- */
 
@@ -171,7 +184,8 @@ export interface RunSummary {
 }
 
 export interface RunDetail extends RunSummary {
-  seeds: number[];
+  /** The replicate seeds, in replicate order (`Seed`: decimal strings). */
+  seeds: Seed[];
 }
 
 export interface CreateRunRequest {
@@ -210,7 +224,7 @@ export interface AggregateStat {
 }
 
 export interface ReplicateMetrics {
-  seed: number;
+  seed: Seed;
   /** Metric name → value; null when undefined for this replicate. */
   metrics: Record<string, number | null>;
 }
@@ -356,7 +370,7 @@ export interface WeaveSectionDiagnostics {
 /** Mirrors the API's `MergeDiagnosticsOut`. */
 export interface MergeDiagnostics {
   /** The replicate the counters were read from. */
-  seed: number;
+  seed: Seed;
   ramp_meters: RampMeterDiagnostics[];
   weave_sections: WeaveSectionDiagnostics[];
 }
@@ -368,8 +382,8 @@ export interface MergeDiagnostics {
 export interface Heatmap {
   run_id?: string;
   config_hash?: string;
-  /** The replicate's RNG seed. */
-  seed?: number;
+  /** The replicate's RNG seed (`Seed`: a decimal string). */
+  seed?: Seed;
   field?: HeatField;
   /** `macro` is the CTM screening tier (CLAUDE.md §5.6). */
   tier?: Tier;

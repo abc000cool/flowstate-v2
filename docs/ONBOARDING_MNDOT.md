@@ -363,6 +363,14 @@ attach to short edges whose added lane runs on into the next edge. What would
 be needed next: a merge model that does not need a dead-ending lane (or a
 network patch that ends the added lane), and a Minnesota driver population.
 
+**Superseded (2026-10-07):** the I-24 reading above does not hold for the flow
+row: a fixture of I-24's 4-lane merge geometry with free outflow discharges
+6,620 ± 62 veh/h with this population, about the recorded 6,626, and the
+replica's ceiling is set at the downstream end (docs/I24_DISCHARGE_DIAGNOSIS.md
+§4–§6, §8.1); the count check there (§8.4.2) keeps the targets, so the
+shortfall is the model's, downstream. The I-94 observation in this paragraph
+(the peak sits at the discharge the model cannot reach) stands on its own.
+
 A last attempt the same night (03:00–03:40; the slice figures below are
 session records, not committed): the engine can now end an added
 acceleration lane with a connection patch so the gap-acceptance (`scripted`)

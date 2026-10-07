@@ -28,7 +28,7 @@ function run(id: string, status: string, tier = 'micro'): Record<string, unknown
     config_hash: `hash-${id}`,
     seeded: false,
     progress: { completed_replicates: status === 'done' ? 20 : 3, total_replicates: 20 },
-    seeds: [1, 2, 3],
+    seeds: ['1', '2', '3'],
     error: status === 'failed' ? 'boom' : null,
     error_kind: status === 'failed' ? 'ValueError' : null,
     created_at: '2026-10-01T00:00:00',

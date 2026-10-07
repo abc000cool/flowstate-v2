@@ -22,10 +22,15 @@ reads trajectories. Criteria, as §8.3 fixed them before any run (not re-thresho
   ``simulated.counts_per_replicate`` at the 5,400-m section, as veh/h over the study window) within
   5,829-6,309 veh/h; and the boundary-zone mean speed error smaller in magnitude than the reference's. The
   zone is where the schedule was measured, data x 5,492-6,437 m (``artifacts/i24_replica_inputs_flow.json``
-  ``boundary.x_range_m``, mapped with ``geometry.sim_x_of_data_x``): the Edie speed (sum of flow over sum
-  of density) of the ``edges.parquet`` cells lying wholly in the zone and in the study window (sim t
-  600-7,800 s), per replicate, then the replicate mean; the error is that mean minus the schedule's
-  study-window mean as written (49.93 km/h).
+  ``boundary.x_range_m``, mapped with ``geometry.sim_x_of_data_x``). Per replicate, the ``edges.parquet``
+  cells lying wholly in the zone and in the study window (sim t 600-7,800 s) are grouped into the schedule's
+  30-s windows, each window's Edie speed (sum of flow over sum of density) is taken, and the window speeds
+  are averaged unweighted, as the schedule's study-window mean averages its 30-s steps (``zone_speeds``);
+  then the replicate mean; the error is that mean minus the schedule's study-window mean as written
+  (49.93 km/h). Corrected 2026-10-07, before any p12 result was read: the first version took one Edie speed
+  over the whole study window, which weights the windows by their vehicle-time; it is reported as
+  ``edie_2h``. The verdict (B1's error smaller in magnitude than the reference's) is unchanged. Not computed
+  when any replicate of either battery has no zone speed (no ``meta.json`` or ``edges.parquet``).
 * A3 no winning by backlog: realised demand (mean ``simulated.demand_realized_fraction``) >= the
   reference's. The Amendment-2 tolerance reading (no more than 1 percentage point below) is reported beside.
 * A4 emergent waves: the criteria profile's wave verdict (row ``wave_speed``) unchanged where the same-code
@@ -42,7 +47,10 @@ A2 on ``dc_refit``, A3-A5 on the canonical arm; the other arms' A3-A5 are report
 fleet is EIDM, for which B1's factor is not defined (scripts/boundary_limit_factor.py), so the I-94 half of
 the rule needs the owner. Reported, not gating: the peak sections (2,200 / 3,200 m) against their GEH
 thresholds, GEH < 5 share and 5-min RMSPE; the reference's reproduction of the committed step-3 battery.
-Lane shares are not computed: only the trajectories carry per-lane section crossings.
+Lane shares are not computed: only the trajectories carry per-lane section crossings. Every arm feeds the
+reading (A1), so any arm with ``problems`` (a replicate's files missing, a recorded factor or config hash that
+disagrees, different seeds, ...) blocks it: ``i24_holds`` is None, ``adoption.blocked_by_problems`` names each
+such arm's problems, and ``evaluate`` exits with status 3 after writing the output.
 """
 
 import argparse
@@ -72,6 +80,10 @@ A3_TOLERANCE = 0.01
 EMERGENCY = "-8.9"
 WINDOWS_15MIN = 3
 ZONE_WINDOW_S = 300.0
+# the boundary schedule's step: scripts/i24_build_replica.py BOUNDARY_WINDOW_S, one observed mean speed per 30 s
+# from the study window's start (zone_geometry checks it against the inputs artifact's boundary.window_s)
+BOUNDARY_WINDOW_S = 30.0
+EXIT_BLOCKED = 3
 
 
 # --------------------------------------------------------------------------- helpers
@@ -87,9 +99,9 @@ def ci(d: list[float]) -> list[float] | None:
     return [float(a.mean()), float(a.mean() - h), float(a.mean() + h)]
 
 
-def paired(b1: list[float], ref: list[float]) -> list[float] | None:
-    """[mean, lo95, hi95] of the per-seed differences B1 - reference."""
-    return ci([x - y for x, y in zip(b1, ref, strict=True)])
+def paired(b1: list[float | None], ref: list[float | None]) -> list[float] | None:
+    """[mean, lo95, hi95] of the per-seed differences B1 - reference; a pair missing either value is skipped."""
+    return ci([x - y for x, y in zip(b1, ref, strict=True) if x is not None and y is not None])
 
 
 def geh(m: float, c: float) -> float:
@@ -125,6 +137,22 @@ def schedule_mean(steps: list[list[float]], t_lo: float, t_hi: float) -> float:
         if b > a:
             total += v * (b - a)
     return total / (t_hi - t_lo)
+
+
+def schedule_on_grid(steps: list[list[float]], t_lo: float, t_hi: float) -> bool:
+    """Whether the schedule is one value per ``BOUNDARY_WINDOW_S`` window from ``t_lo`` over [t_lo, t_hi].
+
+    That is scripts/i24_build_replica.py ``boundary_schedule`` shifted to sim time (data 1,800 + 30 i s ->
+    sim 600 + 30 i s, its first step moved to sim 0): a step in force at ``t_lo``, every later step inside
+    the window on the grid, and a whole number of windows. Then ``schedule_mean`` over the window is the
+    unweighted mean of the windows' values, which A2's zone speed (``zone_speeds``) mirrors.
+    """
+    ts = [float(t) for t, _ in steps]
+    n = (t_hi - t_lo) / BOUNDARY_WINDOW_S
+    if not ts or ts[0] > t_lo + 1e-9 or abs(n - round(n)) > 1e-9:
+        return False
+    k = [(t - t_lo) / BOUNDARY_WINDOW_S for t in ts if t_lo < t < t_hi]
+    return all(abs(x - round(x)) < 1e-9 for x in k)
 
 
 def sha256(path: Path) -> str:
@@ -194,15 +222,34 @@ def zone_geometry() -> dict[str, Any]:
     inp = json.loads(path.read_text())
     a, b = inp["geometry"]["sim_x_of_data_x"]["a"], inp["geometry"]["sim_x_of_data_x"]["b"]
     lo, hi = (float(x) for x in inp["boundary"]["x_range_m"])
+    w = float(inp["boundary"]["window_s"])
+    if w != BOUNDARY_WINDOW_S:
+        raise SystemExit(
+            f"{path}: boundary.window_s {w}, but A2's zone speed groups by {BOUNDARY_WINDOW_S} s"
+        )
     return {
         "data_x_m": [lo, hi],
         "sim_x_m": [a + b * lo, a + b * hi],
-        "source": f"{path.relative_to(REPO)} boundary.x_range_m, geometry.sim_x_of_data_x",
+        "schedule_window_s": w,
+        "source": f"{path.relative_to(REPO)} boundary.x_range_m, boundary.window_s, "
+        "geometry.sim_x_of_data_x",
     }
 
 
 def zone_speeds(run_dir: Path, zone: dict, t_lo: float, t_hi: float) -> dict[str, Any]:
-    """Edie speed of the boundary zone over the study window and per 5-min window, one replicate."""
+    """Boundary-zone speeds of one replicate, from the ``edges.parquet`` cells wholly in the zone and [t_lo, t_hi].
+
+    ``speed_ms`` (A2's zone speed) is built as the schedule's study-window mean is. The schedule
+    (scripts/i24_build_replica.py ``boundary_schedule``) is one observed mean speed per 30-s window from
+    ``t_lo``, each the mean over every sample in the zone and the window (a per-window Edie speed), and
+    ``schedule_mean`` weights every window equally. So the cells are grouped into those windows
+    (``(t_bin - t_lo) // BOUNDARY_WINDOW_S``), each window's Edie speed is its sum of flow over its sum of
+    density, a window without density is filled as the schedule fills one without samples (forward, then
+    backward), and ``speed_ms`` is the unweighted mean of the window speeds. Corrected 2026-10-07, before any
+    p12 result was read: the first version took one Edie speed over all the cells, which weights each window
+    by its vehicle-time (dense, slow windows count more than in the schedule's mean); that value is reported
+    as ``edie_2h_ms``. ``per_window_ms`` is the Edie speed per 5-min window (reported).
+    """
     e = pd.read_parquet(run_dir / "edges.parquet", columns=["t_bin", "x_bin", "density", "flow"])
     xs, ts = np.unique(e["x_bin"].to_numpy()), np.unique(e["t_bin"].to_numpy())
     dx, dt = float(np.median(np.diff(xs))), float(np.median(np.diff(ts)))
@@ -215,13 +262,32 @@ def zone_speeds(run_dir: Path, zone: dict, t_lo: float, t_hi: float) -> dict[str
     ]
     dens = float(sel["density"].sum())
     whole = float(sel["flow"].sum()) / dens if dens > 0 else math.nan
-    win = ((sel["t_bin"] - t_lo) // ZONE_WINDOW_S).astype(int)
-    g = sel.groupby(win)[["flow", "density"]].sum()
-    per_window = (g["flow"] / g["density"].where(g["density"] > 0)).reindex(
-        range(round((t_hi - t_lo) / ZONE_WINDOW_S))
-    )
+
+    def edie(width: float) -> pd.Series:
+        """Edie speed per ``width``-s window from ``t_lo`` (NaN where a window has no density)."""
+        win = ((sel["t_bin"] - t_lo) // width).astype(int)
+        g = sel.groupby(win)[["flow", "density"]].sum()
+        return (g["flow"] / g["density"].where(g["density"] > 0)).reindex(
+            range(round((t_hi - t_lo) / width))
+        )
+
+    sched_win = edie(BOUNDARY_WINDOW_S)
+    n_filled = int(sched_win.isna().sum())
+    speed = float(sched_win.ffill().bfill().mean())
+    # every cell must lie in one schedule window (its start and its end in the same one)
+    tb = sel["t_bin"].to_numpy(float)
+    first = np.floor((tb - dt / 2 - t_lo) / BOUNDARY_WINDOW_S + 1e-9)
+    last = np.floor((tb + dt / 2 - t_lo) / BOUNDARY_WINDOW_S - 1e-9)
+    per_window = edie(ZONE_WINDOW_S)
     return {
-        "speed_ms": whole,
+        "speed_ms": speed,
+        "edie_2h_ms": whole,
+        "schedule_windows": {
+            "window_s": BOUNDARY_WINDOW_S,
+            "n": len(sched_win),
+            "filled": n_filled,
+            "cells_inside_one_window": bool(np.array_equal(first, last)),
+        },
         "per_window_ms": [
             None if not math.isfinite(v) else float(v) for v in per_window.to_numpy()
         ],
@@ -287,6 +353,8 @@ def battery(label: str, runs_root: Path, zone: dict, factor: float | None) -> di
         )
         if zones[-1] is None:
             problems.append(f"{seed}: no edges.parquet under {run_dir}")
+        elif not zones[-1]["schedule_windows"]["cells_inside_one_window"]:
+            problems.append(f"{seed}: edges.parquet cells straddle the schedule's 30-s windows")
     coll = [int(x) for x in sim.get("n_collisions_per_replicate") or []]
     coll_meta = [None if m is None else m.get("n_collisions") for m in metas]
     if (
@@ -309,6 +377,11 @@ def battery(label: str, runs_root: Path, zone: dict, factor: float | None) -> di
         rmspe(agg_windows(np.asarray(f, float), WINDOWS_15MIN), agg_windows(obs_seg, WINDOWS_15MIN))
         for f in sim["segment_speeds_ms_per_replicate"]
     ]
+    if steps and not schedule_on_grid(steps, t_lo, t_hi):
+        problems.append(
+            "the boundary schedule is not one step per 30 s from the study window's start: A2's zone "
+            "speed (30-s window means) does not mirror its study-window mean"
+        )
     v_sched = schedule_mean(steps, t_lo, t_hi) if steps else math.nan
     sched_win = (
         [
@@ -339,6 +412,10 @@ def battery(label: str, runs_root: Path, zone: dict, factor: float | None) -> di
         "emergency_steps": emergency,
         "braking_file": None if brk is None else str(runs_root / label / "hard_braking.json"),
         "zone_speed_ms": [None if z is None else z["speed_ms"] for z in zones],
+        "zone_edie_2h_ms": [None if z is None else z["edie_2h_ms"] for z in zones],
+        "zone_windows_filled": [
+            None if z is None else z["schedule_windows"]["filled"] for z in zones
+        ],
         "zone_per_window_ms": [None if z is None else z["per_window_ms"] for z in zones],
         "zone_cells": next((z["cells"] for z in zones if z is not None), None),
         "schedule_mean_ms": v_sched,
@@ -430,13 +507,32 @@ def evaluate_arm(name: str, ref: dict, b1: dict, committed: Path) -> dict[str, A
     f_b1, f_ref = ci(b1["flows_2h_veh_h"][k]), ci(ref["flows_2h_veh_h"][k])
     flow_ok = None if f_b1 is None else bool(A2_BAND[0] <= f_b1[0] <= A2_BAND[1])
     v_sched = b1["schedule_mean_ms"]
-    zb, zr = ci(b1["zone_speed_ms"]), ci(ref["zone_speed_ms"])
-    if zb is None or zr is None or not math.isfinite(v_sched):
-        zone = {"verdict": None, "not_computed": "edges.parquet missing for a replicate"}
+    gaps = {
+        side: [
+            int(s)
+            for s, v in zip(bt["seeds"], bt["zone_speed_ms"], strict=True)
+            if v is None or not math.isfinite(v)
+        ]
+        for side, bt in (("b1", b1), ("reference", ref))
+    }
+    if any(gaps.values()):
+        zone = {
+            "verdict": None,
+            "not_computed": "no zone speed for some replicates (meta.json or edges.parquet missing, or no "
+            "cell in the zone): A2 reads every replicate of both batteries",
+            "seeds_without_zone_speed": gaps,
+        }
+    elif not math.isfinite(v_sched):
+        zone = {"verdict": None, "not_computed": "no boundary schedule recorded in meta.json"}
     else:
+        zb, zr = ci(b1["zone_speed_ms"]), ci(ref["zone_speed_ms"])
+        assert zb is not None and zr is not None
         eb, er = (zb[0] - v_sched) * 3.6, (zr[0] - v_sched) * 3.6
+        eb2, er2 = ci(b1["zone_edie_2h_ms"]), ci(ref["zone_edie_2h_ms"])
         zone = {
             "verdict": bool(abs(eb) < abs(er)),
+            "estimator": "per replicate, the unweighted mean of the 30-s window Edie speeds on the schedule's "
+            "grid (as the schedule's study-window mean); then the replicate mean",
             "schedule_mean_kmh": v_sched * 3.6,
             "b1_zone_kmh": [x * 3.6 for x in zb],
             "reference_zone_kmh": [x * 3.6 for x in zr],
@@ -448,6 +544,18 @@ def evaluate_arm(name: str, ref: dict, b1: dict, committed: Path) -> dict[str, A
             "window_rmspe_reported": {
                 "b1": _window_rmspe(b1),
                 "reference": _window_rmspe(ref),
+            },
+            "edie_2h_reported": {
+                "what": "one Edie speed over the zone's cells in the whole study window (vehicle-time "
+                "weighted; A2's first estimator, replaced 2026-10-07 before any p12 result was read)",
+                "b1_kmh": None if eb2 is None else [x * 3.6 for x in eb2],
+                "reference_kmh": None if er2 is None else [x * 3.6 for x in er2],
+                "b1_error_kmh": None if eb2 is None else (eb2[0] - v_sched) * 3.6,
+                "reference_error_kmh": None if er2 is None else (er2[0] - v_sched) * 3.6,
+            },
+            "windows_filled": {
+                "b1": b1["zone_windows_filled"],
+                "reference": ref["zone_windows_filled"],
             },
         }
     a2 = {
@@ -614,7 +722,9 @@ def evaluate(arms: list[list[str]], out: Path, runs_root: Path, factor: float) -
         "A4": crit("canonical", "A4"),
         "A5": crit("canonical", "A5"),
     }
-    holds = None if any(v is None for v in i24.values()) else all(i24.values())
+    # A1 reads every arm, so every arm feeds the reading: an arm with problems blocks it
+    blocked = {a: list(r["problems"]) for a, r in results.items() if r.get("problems")}
+    holds = None if blocked or any(v is None for v in i24.values()) else all(i24.values())
     doc = {
         "schema": "flowstate.boundary_b1_corridor/1",
         "created_at": datetime.now(UTC).isoformat(timespec="seconds"),
@@ -629,6 +739,7 @@ def evaluate(arms: list[list[str]], out: Path, runs_root: Path, factor: float) -
             "reported under arms",
             "i24": i24,
             "i24_holds": holds,
+            "blocked_by_problems": blocked,
             "i94": "not run: the I-94 fleet is EIDM, for which B1's factor is not defined "
             "(scripts/boundary_limit_factor.py: applies false); §8.3 names I-94 in the adoption rule, so "
             "whether B1 can be adopted on I-24 alone is the owner's call",
@@ -674,6 +785,11 @@ def main() -> None:
             len(r["problems"]),
         )
     print("I-24 adoption reading:", doc["adoption"]["i24"], "holds:", doc["adoption"]["i24_holds"])
+    blocked = doc["adoption"]["blocked_by_problems"]
+    if blocked:
+        for name, problems in blocked.items():
+            print(f"BLOCKED by {name}: " + "; ".join(problems), file=sys.stderr)
+        sys.exit(EXIT_BLOCKED)
 
 
 if __name__ == "__main__":

@@ -33,6 +33,7 @@ import type {
   ScenarioConfig,
   PresetSummary,
   ScenarioSummary,
+  Seed,
   SweepDetail,
 } from './types';
 
@@ -422,9 +423,18 @@ export async function listRuns(): Promise<RunSummary[]> {
   return rows;
 }
 
-export function getRun(runId: string): Promise<RunDetail> {
+/** A seed as `Seed`, the decimal string the API sends. A service older than
+ * string seeds sent a JSON number: kept as its digits so seeds compare as one
+ * type, though a number past 2^53 was already rounded by `JSON.parse` before
+ * it got here (only the string form is exact). */
+function asSeed(v: unknown): Seed {
+  return typeof v === 'string' ? v : String(v);
+}
+
+export async function getRun(runId: string): Promise<RunDetail> {
   if (isMockActive()) return mock.mockGetRun(runId);
-  return request<RunDetail>(`/runs/${encodeURIComponent(runId)}`);
+  const run = await request<RunDetail>(`/runs/${encodeURIComponent(runId)}`);
+  return Array.isArray(run.seeds) ? { ...run, seeds: run.seeds.map(asSeed) } : run;
 }
 
 /** Write: demo backend under VITE_MOCK only (see `assertWritable`). */
@@ -434,19 +444,31 @@ export async function createRun(req: CreateRunRequest): Promise<{ run_id: string
   return request<{ run_id: string }>('/runs', { method: 'POST', body: req });
 }
 
-export function getRunMetrics(runId: string): Promise<RunMetrics> {
+export async function getRunMetrics(runId: string): Promise<RunMetrics> {
   if (isMockActive()) return mock.mockGetRunMetrics(runId);
-  return request<RunMetrics>(`/runs/${encodeURIComponent(runId)}/metrics`);
+  const m = await request<RunMetrics>(`/runs/${encodeURIComponent(runId)}/metrics`);
+  return {
+    ...m,
+    replicates: Array.isArray(m.replicates)
+      ? m.replicates.map((r) => ({ ...r, seed: asSeed(r.seed) }))
+      : m.replicates,
+    ...(m.merge_diagnostics
+      ? { merge_diagnostics: { ...m.merge_diagnostics, seed: asSeed(m.merge_diagnostics.seed) } }
+      : {}),
+  };
 }
 
 /** `GET /runs/{id}/heatmap`: one replicate's binned field, the run's first
  * seed unless `seed` names another (the API answers 404 for a seed the run
- * did not run). The demo backend ignores `seed`; the answer's own `seed`
- * says which replicate it is, whatever was asked. */
-export function getRunHeatmap(runId: string, field: HeatField, seed?: number): Promise<Heatmap> {
+ * did not run). `seed` is the decimal string the run listed (`Seed`) and goes
+ * into the query exactly as given: a 64-bit seed must never pass through a
+ * number. The demo backend ignores `seed`; the answer's own `seed` says which
+ * replicate it is, whatever was asked. */
+export async function getRunHeatmap(runId: string, field: HeatField, seed?: Seed): Promise<Heatmap> {
   if (isMockActive()) return mock.mockGetRunHeatmap(runId, field);
   const s = seed === undefined ? '' : `&seed=${encodeURIComponent(seed)}`;
-  return request<Heatmap>(`/runs/${encodeURIComponent(runId)}/heatmap?field=${field}${s}`);
+  const h = await request<Heatmap>(`/runs/${encodeURIComponent(runId)}/heatmap?field=${field}${s}`);
+  return h.seed === undefined || h.seed === null ? h : { ...h, seed: asSeed(h.seed) };
 }
 
 /** `POST /sweeps` answers 202 with the full `SweepOut` (cells still without

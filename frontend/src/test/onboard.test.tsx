@@ -190,7 +190,7 @@ function runRow(status: string): unknown {
       completed_replicates: status === 'done' ? 20 : 3,
       total_replicates: 20,
     },
-    seeds: [1],
+    seeds: ['1'],
     error: null,
     error_kind: null,
     created_at: '2026-09-23T06:10:00',

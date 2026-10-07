@@ -719,8 +719,10 @@ def get_run_heatmap(
 ) -> HeatmapOut | Response:
     """Binned space-time array from ``edges.parquet`` (JSON or PNG).
 
-    ``seed`` selects the replicate (default: the run's first seed). PNG
-    responses carry the config hash in the ``X-Config-Hash`` header.
+    ``seed`` selects the replicate (default: the run's first seed), spelled
+    as the run lists it: a decimal string, since seeds are 64-bit and a JSON
+    number would round them (``api.schemas.Seed``). PNG responses carry the
+    config hash in the ``X-Config-Hash`` header.
     """
     row = _get_run_or_404(request, run_id)
     _require_done(row)
