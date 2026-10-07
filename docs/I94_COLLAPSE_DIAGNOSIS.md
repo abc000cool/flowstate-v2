@@ -380,9 +380,11 @@ What the table shows:
    2.8 to 1.1 points without them, and for throughput from ±110 to ±9 veh/h. A battery's interval mixes
    ordinary seed variance with a rare discrete failure.
 3. **Plain mean travel time is blind to a lock** and can even improve. Vehicles trapped in the queue never
-   finish, so they are censored. 3011106312394044631 reads the lowest mean travel time of all 20 seeds. The
-   waiting block, which includes delay before departure, exposes it: censored vehicles 6,209 and 7,221 against
-   2,108–2,700.
+   finish, so they are censored. 3011106312394044631 reads the second-lowest mean travel time of all 20 seeds,
+   496.7 s (the lowest is 435.1 s, at the unlocked seed 165503670820534583; the battery mean is 572.6 s;
+   `per_seed[].metrics.mean_tt_s`). *Corrected 2026-10-07 (regression review): the first version said "the
+   lowest".* The waiting block, which includes delay before departure, exposes it: censored vehicles 6,209 and
+   7,221 against 2,108–2,700.
 4. **Criterion C4's one replicate without a backward front is the late Ruth St lock.**
 5. **The gate does not change.** Its per-replicate values are not committed, so its C1 and C3 were not
    re-split here. The direction is the same, and no gate verdict changes: C1 61.8 % against 85 %, C3 33.9 %

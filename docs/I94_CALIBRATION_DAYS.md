@@ -117,6 +117,8 @@ On the calibration days against nine days [computed]:
 - Ramp series: most hourly values move by less than 5 %; the largest moves
   are 10–12 % (the White Bear Ave C-D split at 07:30, 743 → 819 veh/h; the
   T.H.120 exit at 06:30, 410 → 362; the Mounds Blvd exit at 08:30, 979 → 876).
+  The low-volume 6th St left exit moves more in relative terms (61 → 74 veh/h at
+  06:30; 0 → 12 at 08:30).
 
 ## 2. Which committed results it touches, and how to read them
 
@@ -473,3 +475,37 @@ On an n2-standard-16: `--machine n2-standard-16 --cap-min 480 --pipeline-args
   - `tests/test_scripts/test_i94_calibration_days.py` (its slow test re-derives
     everything);
   - the ingest case in `tests/test_scripts/test_gcp_scripts.py`.
+
+## Results of stage p8 — 2026-10-07 (one n2-standard-16 in us-central1-a, about 3 h 15 min, about $2.50, self-deleted)
+
+20 seeds per arm, four-hour weave scenario, the protocol's baseline gate on the committed day sets
+(`artifacts/baseline_gate_mndot_i94_wb_stpaul_weave_xlsfg_dc_cal{,_netfix,_sf}.json`,
+`artifacts/validation_mndot_i94_wb_stpaul_weave_xlsfg_dc_cal*.json`, `docs/reports/mndot_i94_wb_stpaul_weave_xlsfg_dc_cal*/`).
+The step-3 arm (`_dc`, nine-day inputs with residual carrying) is the comparison.
+
+| check | day set | step 3 `_dc` | `_dc_cal` | `_dc_cal_netfix` | `_dc_cal_sf` | target |
+|---|---|---|---|---|---|---|
+| C1 GEH < 5 share | calibration | 61.8 % | 34.4 % | 35.0 % | 34.6 % | ≥ 85 % |
+| C1 GEH < 5 share | validation | 60.0 % | 32.1 % | 34.2 % | 31.3 % | ≥ 85 % |
+| C3 speed RMSPE (15 min) | calibration | 33.9 % | 41.7 % | 44.6 % | 43.6 % | ≤ 15 % |
+| C3 speed RMSPE (15 min) | validation | 38.8 % | 41.8 % | 44.6 % | 43.6 % | ≤ 15 % |
+| C4 wave speed | calibration | 4.9 km/h | 5.5 | 5.5 | 5.5 | 14–22 |
+| C6 bottlenecks | calibration | fail (phantom) | **pass** | fail | **pass** | — |
+| C5 collisions | all | 0 | **2** | **4** | 0 | 0 |
+| realised demand, mean / lowest run | | 0.955 / 0.889 | 0.957 / **0.597** | 0.958 / 0.761 | 0.901 / **0.200** | — |
+
+**What it says.** Correct inputs make the model fit *worse*, and they make it break: GEH falls from about 60 % to
+about 33 % of station-hours on both day sets, speed error rises, runs gridlock (lowest realised demand 0.597,
+0.761, 0.200 — the lock pattern of docs/I94_COLLAPSE_DIAGNOSIS.md) and collisions appear (edge 999007700 lane 0 in
+both `_dc_cal` arms; edge 51388891 lanes 1–2 in `_dc_cal_netfix`). The reading: the nine-day inputs' residual
+carrying had inflated the Mounds Blvd exit (1,542 against an observed check of about 854 veh/h in the 06:30 hour,
+§2), which drained traffic before the T.H.52 weave and hid that weave's capacity shortfall
+(docs/WEAVE_LOSS_DIAGNOSIS.md, docs/I94_RESIDUALS.md); with the counts honoured, the weave receives its real load,
+cannot carry it, and the corridor queues, locks and — in this configuration — collides. The phantom bottleneck on
+calibration days disappears in `_dc_cal` and `_dc_cal_sf`. The speed factor 1.30 adds nothing to the fit and
+produces the worst lock.
+
+**Consequences.** The step-3 gains on I-94 were partly bought by an input artefact; the honest I-94 model is the
+`_dc_cal` family, and its binding defect is the T.H.52 weave's capacity (plus the locks at weave gores, which W1b
+targets, and these collisions, which need their own diagnosis before any further I-94 battery is read). None of
+the three new scenarios is adopted; zero collisions is a pass/fail criterion of every run set.

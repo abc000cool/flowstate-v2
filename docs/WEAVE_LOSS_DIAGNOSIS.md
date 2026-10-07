@@ -991,7 +991,8 @@ The results are appended below this registration and do not change it.*
   themselves, so it failed F3 and F5 on frequency (§8.5).
 - **W1b fires only on long stands.** It keeps W1's action and adds a dwell:
   the entrant must have stood at the lane's end for at least T_dwell. A lock
-  stands for hours. The fixture's ordinary stands, all of which cleared by
+  stands until its run ends: at least 13.6–52.5 minutes in the three four-hour
+  replicates (10.3). The fixture's ordinary stands, all of which cleared by
   themselves, last at most about 50 s. So the rule is meant to change nothing
   in normal operation and to release every lock.
 
@@ -1057,9 +1058,14 @@ The results are appended below this registration and do not change it.*
     against 5 m and 0.1 m/s). So a stand by the rule's definition is no
     longer than these.
 - **The locks.** The front entrant stands from the lock's onset to the end of
-  the run: about 1.2–1.9 h in the three four-hour replicates (last vehicle
-  through the gore at about 08:37–09:16, runs end at 10:30).
-- **The choice.** Any T_dwell between about 51 s and an hour separates the two.
+  the run: at least 42.5, 52.5 and 13.6 minutes in the three four-hour
+  replicates (last vehicle through the gore at 08:47.5, 08:37.5 and 09:16.4;
+  the runs end at t = 14,400 s, which is 09:30 with t = 0 at 05:30). These
+  are lower bounds, because each lock still stood when its run ended
+  (docs/I94_COLLAPSE_DIAGNOSIS.md §10, the lock detector's run-end reader).
+- **The choice.** Any T_dwell between about 51 s and about 13 minutes
+  separates the two on this record. 60 s does, with the shortest observed
+  lock (at least 13.6 minutes) more than thirteen times longer.
   60 s is the smallest whole minute above every ordinary stand on record,
   with about 10 s of margin over 50.5 s.
   - A shorter dwell would release ordinary stands. The 20–30 s range
@@ -1070,6 +1076,14 @@ The results are appended below this registration and do not change it.*
     exiters become their fronts (the diagnosis's §2).
   - 60 s is not fitted to any outcome. Its only input is the reference stands
     above.
+- *Corrected 2026-10-07 (regression review).* The first version of 10.1 and
+  this section said that a lock "stands for hours", "about 1.2–1.9 h …
+  runs end at 10:30", and that any T_dwell "between about 51 s and an hour"
+  separates the two. The four-hour I-94 runs end at 09:30, not 10:30, so the
+  observed stands are 13.6–52.5 minutes to the run's end and the separating
+  band ends at about 13 minutes. The choice of 60 s is unaffected. The frozen
+  pre-registration (`artifacts/weave_loss_2026-10-07/w1b/prereg.md`) keeps
+  the original wording.
 - **Its limit.** The basis is 20 seeds × 20 min of one fixture. A rarer
   ordinary stand longer than 60 s would be released. F3b/F5b count such
   releases on the fixtures, and C5b counts them on the corridor.

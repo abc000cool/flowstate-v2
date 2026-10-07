@@ -206,11 +206,11 @@ T.H.52 weave, whose loss docs/WEAVE_LOSS_DIAGNOSIS.md decomposes.
 
 **I-24 (one recorded morning, no holdout; 20 seeds each, same code).**
 
-| arm | demand scale | GEH < 5 vs recommended | segment-speed RMSPE | wave criterion (stack) | waves per replicate | stripe / standard detector | realised demand (mean, min) | mean travel time |
+| arm | demand scale | GEH < 5 vs recommended | segment-speed RMSPE | wave criterion (stack) | jam components per replicate, standard detector (with a backward front) | stripe / standard detector | realised demand (mean, min) | mean travel time |
 |---|---|---|---|---|---|---|---|---|
-| reference: old drivers (`flow_speedcal_ref`, reproduces the committed arm exactly) | 0.800 | 21.5 % | 37.2 % | **15.9 km/h, pass** | 9.05 | 14.5 / 9.9 km/h | 0.987, 0.977 | 574 s |
-| calibrated drivers, old demand (`dc`) | 0.800 | 25.0 % | 78.4 % | no qualifying peak | 13.65 | 13.2 / 11.4 km/h | 0.996, 0.994 | 536 s |
-| calibrated drivers, demand refit (`dc_refit`) | 0.925 | 25.7 % | 33.3 % | **no qualifying peak** | 6.65 | 14.3 / 9.3 km/h | **0.921, 0.912** | **669 s** |
+| reference: old drivers (`flow_speedcal_ref`, reproduces the committed arm exactly) | 0.800 | 21.5 % | 37.2 % | **15.9 km/h, pass** | 9.05 (7.3) | 14.5 / 9.9 km/h | 0.987, 0.977 | 574 s |
+| calibrated drivers, old demand (`dc`) | 0.800 | 25.0 % | 78.4 % | no qualifying peak | 13.65 (10.3) | 13.2 / 11.4 km/h | 0.996, 0.994 | 536 s |
+| calibrated drivers, demand refit (`dc_refit`) | 0.925 | 25.7 % | 33.3 % | **no qualifying peak** | 6.65 (5.05) | 14.3 / 9.3 km/h | **0.921, 0.912** | **669 s** |
 
 The demand refit (the fitter that set 0.800, on the calibrated drivers; its
 objective is segment-speed RMSPE, train 0.336, held-out hour 0.312) raised the
@@ -224,9 +224,13 @@ recording's 6,630, as docs/MERGE_MODEL_READINESS.md's pre-registered
 experiment 4 reads it, and part of the refit's better speed fit comes from
 vehicles held off the network. GEH and RMSPE are slightly better than the
 reference, but not as an honest improvement. And the **wave criterion is lost**: the criterion's slant-stack
-detector finds no peak clearing its contrast threshold, the replicates carry
-fewer backward waves (6.65 against 9.05), and only the secondary detectors
-still read speeds near the band. This is the risk recorded in §1 before any
+detector finds no peak clearing its contrast threshold, the standard detector
+finds fewer jam components per replicate (6.65 against 9.05; 5.05 against 7.3
+with a backward front), and only the secondary detectors still read speeds near
+the band. *(Corrected 2026-10-07, regression review: the table's column and this
+sentence first called the component count "waves" and "backward waves". It is
+the standard detector's count of all jam components,
+`simulated.waves_per_replicate[].count`; the backward count is `n_backward`.)* This is the risk recorded in §1 before any
 run — a higher mean `a_max` makes the drivers more string-stable — and
 CLAUDE.md §3.1 makes instability near capacity a requirement, not an option.
 
@@ -257,7 +261,13 @@ CLAUDE.md §3.1 makes instability near capacity a requirement, not an option.
   Whether a smaller shift (k = 0.25 or 0.5, with its own demand refit) keeps
   I-24's waves while keeping part of the fit gain is a cheap question; it is
   posed as protocol Amendment 2 (proposed, not adopted), with a clarification
-  written before its results that an arm may not win by building a backlog.
+  that an arm may not win by building a backlog. The clarification was written
+  at 09:11 UTC, before any of the amendment's results was available or read,
+  but after the k = 0.25 battery had been written on the VM at 09:05 UTC
+  (`artifacts/i24_validation_dck025_refit.json`, `created_at`); it decides the
+  outcome for k = 0.5. *(Corrected 2026-10-07, regression review: this
+  sentence first said "written before its results"; see the protocol's
+  corrected clarification.)*
   **Run 2026-10-07:** both smaller shifts keep the waves, but both refits hold
   7-8 % of the demand off the network, so none qualifies and k = 0 stays on
   I-24 (docs/FRISCO_PROTOCOL.md, Result of Amendment 2).

@@ -373,8 +373,9 @@ corridor needs the owner.
 **Why.** Step 3 of Amendment 1 (docs/DISCHARGE_CALIBRATION.md §4) found that
 the chosen shift k = 1 improves the I-94 gate strongly but, on I-24, loses the
 emergent-wave criterion even with a demand refit (the criterion's slant-stack
-detector finds no qualifying peak; 6.65 backward waves per replicate against
-9.05 under the reference drivers), while flows and speeds fit slightly better (but, as
+detector finds no qualifying peak; 6.65 jam components per replicate on the
+standard detector (5.05 with a backward front) against 9.05 (7.3) under the
+reference drivers), while flows and speeds fit slightly better (but, as
 its clarification below records, partly by holding vehicles off the network)
 (GEH < 5 25.7 % against 21.5 %; RMSPE 33.3 % against 37.2 %). CLAUDE.md §3.1
 requires the calibrated fleet to stay string-unstable near capacity, and a
@@ -396,7 +397,15 @@ holdout, so any choice here is calibration, not validation, and is reported as
 such.
 
 **Clarification of Amendment 2 — 2026-10-07 09:11 UTC, before any p7 result
-existed** (the p7 bucket held only its inputs). The 2026-10-07 regression
+was available or read** (the p7 bucket held only its inputs; the pipeline
+uploads a stage's results only when the stage ends, at 09:53 UTC). *Corrected
+by the 2026-10-07 regression review:* the first wording said "before any p7
+result existed", which is false — the k = 0.25 battery had already been written
+on the VM at 09:05:37 UTC (`artifacts/i24_validation_dck025_refit.json`,
+`created_at`), about 5.5 minutes before this clause, though not uploaded or
+seen. The clause decides the outcome for k = 0.5 (which meets the original rule
+without it); it was motivated by the k = 1 refit's backlog, found earlier and
+independently, and a reader should weigh the timing accordingly. The 2026-10-07 regression
 review found that a demand refit can improve segment-speed RMSPE by holding
 vehicles off the network: under k = 1 the refit raised demand 15.6 % but the
 peak sections' flow did not move (6,031 / 6,025 → 6,047 / 5,983 veh/h) while

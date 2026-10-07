@@ -9,9 +9,10 @@
 > artifact it comes from, and Appendix A lists the headline numbers with
 > their seeds and sources. Appendix C lists places where the source
 > documents disagreed; items 1–18 were settled on 2026-09-25 against the
-> artifacts, and items 19–22, found during the 2026-10-07 revision, are
-> recorded and left open. The 2026-10-07 revision is listed in the
-> Revision notes below; it ran no simulation either.
+> artifacts. Of items 19–22, found during the 2026-10-07 revision, 19 and 20
+> were settled in the same commit (`4d32042`) and 21 and 22 are left open.
+> The 2026-10-07 revision is listed in the Revision notes below; it ran no
+> simulation either.
 
 **Authors:** Ansh Pathak, Sujan Sannidhi, Venkata Shashish Vasireddi
 **Affiliation:** FlowState
@@ -94,6 +95,19 @@ re-readings of committed runs).
 12. **§10, References, Appendices A and C.** Code commits and scripts for the
     new results; seven new reference entries and the HCM entry extended;
     claims-ledger rows 53–70; Appendix C items 19–22.
+13. **Regression-review corrections (2026-10-07, after `4d32042`).** Each
+    was checked against the committed artifact it cites. §7.5: the leak's
+    size is stated as I94_CALIBRATION_DAYS.md §1.4 gives it (ramp moves up
+    to 10–12%, the boundary speed up to 2.4 m/s), not "about 0.5–3%". §7.7:
+    locks stood at least 13.6–52.5 minutes to the runs' end at 09:30, not
+    "for hours"; one locked replicate has the second-lowest mean travel
+    time, not the lowest. §5.7: the column of 9.05 / 13.65 / 6.65 counts all
+    jam components of the standard detector, not backward waves. §7.6: the
+    direction of the anticipation reach's bias is not known; its zone-start
+    sensitivity reads longer (134 m). §2.4, §5.7, §8.3: Amendment 2's
+    backlog clause was written before any result was available or read, but
+    after the k = 0.25 battery had been written. Appendix C items 19 and 20
+    marked resolved.
 
 ---
 
@@ -388,10 +402,14 @@ the smallest discharge error; ties go to the smaller change
 [FRISCO_PROTOCOL.md, Amendment 1 and its clarifications]. Amendment 2,
 proposed and not adopted, constrains the shift on I-24 only: an arm qualifies
 only if its 20-seed battery keeps the wave criterion and does no worse on GEH
-and RMSPE than the reference arm. A clarification written before its results
-adds that the arm must realise at least 0.977 of its planned demand, so that
-no arm can win by holding vehicles off the network [FRISCO_PROTOCOL.md,
-Amendment 2 and its clarification].
+and RMSPE than the reference arm. A clarification adds that the arm must
+realise at least 0.977 of its planned demand, so that no arm can win by
+holding vehicles off the network. It was written at 09:11 UTC, before any of
+the amendment's results was available or read, but after the k = 0.25
+battery had been written on the cloud machine at 09:05 UTC; it decides the
+outcome for k = 0.5, which meets the original rule without it
+[FRISCO_PROTOCOL.md, Amendment 2 and its clarification, as corrected;
+artifacts/i24_validation_dck025_refit.json, `created_at`].
 
 ### 2.5 Validation criteria and statistics
 
@@ -1430,11 +1448,11 @@ exactly (GEH 21.5%, RMSPE 37.2%, stack wave 15.9 km/h; [I24_VALIDATION.md
 §0.10]). Every run recorded zero collisions, and the ring rows passed at 20
 of 20 seeds in every battery [DISCHARGE_CALIBRATION.md §4].
 
-| Arm (20 seeds) | Demand scale | GEH < 5 | Segment-speed RMSPE (5 min) | Wave row (`stack`) | Backward waves per replicate | Peak sections [veh/h] | Realised demand (mean, lowest) | Mean travel time [s] |
+| Arm (20 seeds) | Demand scale | GEH < 5 | Segment-speed RMSPE (5 min) | Wave row (`stack`) | Jam components per replicate, standard detector (with a backward front) | Peak sections [veh/h] | Realised demand (mean, lowest) | Mean travel time [s] |
 |---|---|---|---|---|---|---|---|---|
-| Reference, measured-mean drivers (k = 0) | 0.800 | 21.5% | 37.2% | 15.9 km/h PASS | 9.05 | 5,850 / 5,821 | 0.987, 0.977 | 574 |
-| k = 1, old demand | 0.800 | 25.0% | 78.4% | no qualifying peak, FAIL | 13.65 | 6,031 / 6,025 | 0.996, 0.994 | 536 |
-| k = 1, demand refit | 0.925 | 25.7% | 33.3% | no qualifying peak, FAIL | 6.65 | 6,047 / 5,983 | 0.921, 0.912 | 669 |
+| Reference, measured-mean drivers (k = 0) | 0.800 | 21.5% | 37.2% | 15.9 km/h PASS | 9.05 (7.3) | 5,850 / 5,821 | 0.987, 0.977 | 574 |
+| k = 1, old demand | 0.800 | 25.0% | 78.4% | no qualifying peak, FAIL | 13.65 (10.3) | 6,031 / 6,025 | 0.996, 0.994 | 536 |
+| k = 1, demand refit | 0.925 | 25.7% | 33.3% | no qualifying peak, FAIL | 6.65 (5.05) | 6,047 / 5,983 | 0.921, 0.912 | 669 |
 | k = 0.25, demand refit (Amendment 2) | 0.900 | 16.0% | 34.1% | 15.7 km/h PASS | — | 5,871 / 5,820 | 0.918, 0.908 | — |
 | k = 0.5, demand refit (Amendment 2) | 0.900 | 24.3% | 33.9% | 15.1 km/h PASS | — | 5,953 / 5,899 | 0.930, 0.916 | — |
 
@@ -1447,7 +1465,10 @@ artifacts/i24_validation_dck05_refit.json;
 artifacts/demand_scale_i24_flow_dc.json;
 artifacts/demand_scale_i24_flow_dck{025,05}.json]. Peak sections at data
 x = 2,200 / 3,200 m, against 6,626 / 6,639 veh/h recorded and 6,225 / 6,238
-needed for GEH 5. "—": not quoted in the source documents.*
+needed for GEH 5. Jam components are the standard detector's connected
+jam regions (`simulated.waves_per_replicate[].count`, the mean of which is
+`wave_count_mean`); the count in parentheses is those with a backward front
+(`n_backward`). "—": not quoted in the source documents.*
 
 - **More demand did not raise the peak flow.** The demand fitter of §4.2, run
   again under the stronger drivers, raised the demand by 15.6%. The peak
@@ -1473,7 +1494,8 @@ needed for GEH 5. "—": not quoted in the source documents.*
   re-analysis of the Amendment 2 refits].
 - **The wave criterion is lost at k = 1.** In both k = 1 arms the stack
   detector finds no peak at the required contrast. With the refit, the
-  replicates carry 6.65 backward waves against 9.05, and only the secondary
+  standard detector finds 6.65 jam components per replicate against 9.05
+  (5.05 against 7.3 with a backward front), and only the secondary
   detectors still read speeds near the band (stripe 14.3, standard 9.3
   km/h). This is the risk recorded before any run: a higher mean `a_max`
   makes the drivers more string-stable (§2.2) [DISCHARGE_CALIBRATION.md §1,
@@ -1481,9 +1503,11 @@ needed for GEH 5. "—": not quoted in the source documents.*
 - **Smaller shifts keep the waves but not the demand.** Under Amendment 2's
   rule, k = 0.25 and k = 0.5 both keep the wave row, and k = 0.5 is no worse
   than the reference on GEH and RMSPE. Both refits hold 7–8% of the planned
-  vehicles off the network, below the 0.977 floor fixed before the results.
-  No arm qualifies, and k = 0 stays on I-24 [FRISCO_PROTOCOL.md, Result of
-  Amendment 2].
+  vehicles off the network, below the 0.977 floor. The floor was written
+  before any result was available or read, though after the k = 0.25
+  battery had been written on the cloud machine (§2.4). No arm qualifies,
+  and k = 0 stays on I-24 [FRISCO_PROTOCOL.md, Result of Amendment 2 and
+  the corrected clarification].
 
 The calibrated drivers are therefore not adopted on I-24. The flow family's
 fitted arm with the measured-mean drivers stays the reference for this work,
@@ -2106,8 +2130,15 @@ a model whose inputs include the validation days' own counts at 4/9 weight.
 They are not a clean holdout, and the leak is expected to make validation
 look closer to calibration than a clean holdout would. Both gates fail on
 both day sets by wide margins, so no verdict changes [I94_CALIBRATION_DAYS.md
-§2]. The two input sets differ by about 0.5–3% in hourly means
-[I94_CALIBRATION_DAYS.md §1.4; I94_RESIDUALS.md §7]. The Amendment-1 grid and
+§2]. Under the committed demand method, the calibration-day inputs differ
+from the nine-day ones by 0.5–1.9% in the S1063 inflow's hourly means, by
+less than 5% in most hourly ramp values and by up to 10–12% in the largest
+ramp moves (the White Bear Ave C-D split at 07:30, 743 → 819 veh/h; the
+T.H.120 exit at 06:30, 410 → 362; the Mounds Blvd exit at 08:30, 979 → 876).
+The S97 boundary speed changes by 0.62 m/s on average and by up to 2.4 m/s
+[I94_CALIBRATION_DAYS.md §1.4]. The low-volume 6th St left exit moves more
+in relative terms (61 → 74 veh/h at 06:30, 0 → 12 at 08:30)
+[I94_CALIBRATION_DAYS.md §4]. The Amendment-1 grid and
 the netfix probe below ran on the same nine-day inputs, against
 calibration-day targets [I94_CALIBRATION_DAYS.md §1.2–1.3].
 
@@ -2122,8 +2153,14 @@ passenger speed factor of 1.3026, inside the measured range 1.094–1.542
 [CHANGELOG, 2026-10-07; I94_CALIBRATION_DAYS.md §0, §4–5]. Three scenarios
 carry the rebuild: `_dc_cal`, `_dc_cal_sf` with the speed factor, and
 `_dc_cal_netfix` with the map fix below. Their 20-seed batteries and gates
-(stage `p8_i94_cal`) have not run, and no `_dc_cal*` artifact is committed
-[I94_CALIBRATION_DAYS.md §6, §9; I94_COLLAPSE_DIAGNOSIS.md §5]. Two further
+(stage `p8_i94_cal`) ran later the same day: the honest inputs fit *worse*
+(GEH < 5 on 34–35 % of calibration-day and 31–34 % of validation-day
+station-hours against 62 / 60 % with the nine-day inputs; speed RMSPE 42–45 %),
+runs lock (lowest realised demand 0.597, 0.761, 0.200) and collisions appear (2
+and 4 runs in two arms), because the nine-day inputs' residual carrying had
+inflated the Mounds Blvd exit and hidden the T.H.52 weave's capacity shortfall
+[I94_CALIBRATION_DAYS.md, Results of stage p8;
+`artifacts/baseline_gate_mndot_i94_wb_stpaul_weave_xlsfg_dc_cal{,_netfix,_sf}.json`]. Two further
 input rules, the T.H.61 NB ramp from the mainline difference and S792 taken
 out of the balance, would change the recorded detector choice after results
 were seen; they need a protocol amendment and are not applied
@@ -2231,12 +2268,23 @@ Hollow–Bell Road weave at 20 m/s or more, reads 82 m on 233 changes but fails
 the interval-width check (67–154 m). The fallback, the weave and the Old
 Hickory acceleration lane pooled, reads **125 m [107, 154]** on 858 entering
 changes, 67% censored, and passes every check. Rounded to 10 m it is 120 m,
-the model's constant, which stays [MERGE_ANTICIPATION.md, Result;
-artifacts/merge_anticipation_i24.json]. I-24's entrants do not support a
-reach of 200–300 m. Under half coverage the reach is expected to read long
-(§3.4), so the true value is, if anything, shorter. That route to the weave's
-capacity is closed [MERGE_ANTICIPATION.md, Result; WEAVE_LOSS_DIAGNOSIS.md
-§9].
+the model's constant, which stays under the registered rule
+[MERGE_ANTICIPATION.md, Result; artifacts/merge_anticipation_i24.json]. The
+direction of the remaining bias is not known. Half coverage is expected to
+make the reach read long (§3.4), but by an unmeasured amount and not as a
+bound; censoring at the zone start, where ramp tracks begin, may make it read
+short. The sensitivity built for the second, changes at least 200 m past the
+zone start, reads longer: 134 m [110, 170] on the fallback stratum, and the
+run without fragment bridging also reads 134 m [107, 156]. Either would
+round to 130 m [MERGE_ANTICIPATION.md §5, §10;
+artifacts/merge_anticipation_i24.json, `sensitivities`, `limitations`]. So
+the stratum's true median may be somewhat longer than measured; its point
+estimates run from 125 to 134 m. No interval of the selected stratum, with or
+without these sensitivities, reaches 200 m (the primary stratum's 200-m
+sensitivity, on 90 changes, identifies no upper end). I-24's entrants
+therefore do not support a reach of 200–300 m, and that route to the weave's
+capacity is closed on this evidence [MERGE_ANTICIPATION.md, Result;
+WEAVE_LOSS_DIAGNOSIS.md §9].
 
 **The crossing share, bounded.** The movement is US 52 northbound entering
 I-94 westbound and leaving 305 m later at exit 242B. No count, published
@@ -2325,8 +2373,12 @@ zero collisions. The protocol's own no-lock rule (no seed's departed share
 below 0.8 of the median) passes every lock seen, because a lock that forms
 late costs only 0–7 points of departed share. Plain mean travel time is
 blind to a lock and can even improve, since trapped vehicles never finish:
-one locked replicate has the lowest mean travel time of the 20. The three
-locked replicates are the battery's three worst for failed station-hours,
+one locked replicate has the second-lowest mean travel time of the 20
+(496.7 s, against 435.1 s for the lowest, an unlocked replicate, and a
+battery mean of 572.6 s)
+[artifacts/validation_mndot_i94_wb_stpaul_weave_xlsfg_dc.json,
+`per_seed[].metrics.mean_tt_s`]. The three locked replicates are the
+battery's three worst for failed station-hours,
 and they widen its intervals more than they move its means
 [I94_COLLAPSE_DIAGNOSIS.md §5]. They stay in every criterion; dropping them
 would break CLAUDE.md §0.6.
@@ -2343,9 +2395,12 @@ readers has yet run on an I-94 battery that kept its space-time bins
 every lock seen, but it also fired on ordinary stands. W1b, registered before
 any code or run, fires only after an unbroken 60-s stand at the lane's end.
 Sixty seconds is the smallest whole minute above every ordinary stand of the
-T.H.52 section test's reference (longest 50.5 s); a lock stands for hours
-[WEAVE_LOSS_DIAGNOSIS.md §10.1–10.3]. On 132 paired fixture runs it passes all
-seven registered criteria. It waits exactly 60 s before each of its 7
+T.H.52 section test's reference (longest 50.5 s). The three corridor locks
+had stood at least 13.6, 42.5 and 52.5 minutes when their four-hour runs
+ended at 09:30, so 60 s lies far below every lock on record
+[WEAVE_LOSS_DIAGNOSIS.md §10.1–10.3; I94_COLLAPSE_DIAGNOSIS.md §10]. On 132
+paired fixture runs it passes all seven registered criteria. It waits
+exactly 60 s before each of its 7
 releases; each of the 126 runs in which it never fires is byte-identical to
 its reference; T.H.52 flow is unchanged; releases are 0.09–0.14% of entrance
 departures pooled per section; and there is no collision and no new lock.
@@ -2473,7 +2528,9 @@ next to the standard-detector reading (§5.4).
 The 2026-10-07 work kept the same rule. Every new setting was registered
 with its range, targets and selection rule before it ran: the drivers'
 acceleration and keep-right (Amendment 1); the wave and backlog constraints
-of Amendment 2, whose backlog clause was written before its results; the
+of Amendment 2, whose backlog clause was written before any of its results
+was available or read, though after its first battery had been written on
+the cloud machine (§2.4); the
 anticipation reach, adopted only from a measurement by a rule fixed in
 advance; and W1 and W1b, each with fixture criteria, of which W1 failed two
 and stays off (§2.4, §7.6–7.7). Values that would have helped were refused:
@@ -3148,22 +3205,30 @@ Found while resolving the list:
     field), FAIL as before; GEH and RMSPE reproduce to the digit
     [M3_US101_VALIDATION.md, note of 2026-09-25].
 
-Found while revising on 2026-10-07. These were not settled in this pass,
-which edited only this draft; each is left for the coordinator.
+Found while revising on 2026-10-07. The revision pass edited only this
+draft and left each item for the coordinator; items 19 and 20 were settled in
+the same commit (`4d32042`), and items 21 and 22 remain open.
 
-19. **Which I-24 arm is "canonical".** DISCHARGE_CALIBRATION.md §4 says
+19. **Which I-24 arm is "canonical".** DISCHARGE_CALIBRATION.md §4 said
     "`i24_replica_flow_speedcal` stays canonical". I24_VALIDATION.md §0.10
     calls that scenario the flow family's fitted arm and keeps the canonical
     family as the published record. Both are consistent in context: the first
     names the reference arm of the driver-calibration work. The draft calls
     it the flow family's fitted arm, the reference for §4.6 and §5.7, and
-    keeps §5.3's record unchanged. *Open; terminology only.*
+    keeps §5.3's record unchanged. *Resolved in commit `4d32042`.*
+    DISCHARGE_CALIBRATION.md §4 now reads "The canonical I-24 arm
+    (`i24_replica_speedcal`) and the Amendment-1 reference
+    (`i24_replica_flow_speedcal`) are unchanged", as the CHANGELOG's step-3
+    entry of 2026-10-07 does.
 20. **The I-24 plateau in CHANGELOG 2026-10-07.** The entry for the
-    Amendment-1 grid still reads the I-24 plateau "as demand-limited", with
-    no dated note. The step-3 entry of the same date and
+    Amendment-1 grid read the I-24 plateau "as demand-limited", with no
+    dated note. The step-3 entry of the same date and
     DISCHARGE_CALIBRATION.md §3 carry the correction: a merge and discharge
-    shortfall. The draft follows the correction (§5.7). *Open; correction
-    text for the coordinator.*
+    shortfall. The draft follows the correction (§5.7). *Resolved in commit
+    `4d32042`.* The entry now reads "first read as demand-limited (corrected
+    the same day: the step-3 refit raised demand without raising the peak
+    sections and built a backlog, so the plateau is a merge/discharge
+    shortfall)".
 21. **Two string-stability readings.** DISCHARGE_CALIBRATION.md §1 gives the
     onset of instability as 29 veh/km (I-24 fleet) and 35 veh/km (I-94 fleet)
     today, against 41 and 49 at + 1 sd. §4 gives 28.2 against 39.8 veh/km for

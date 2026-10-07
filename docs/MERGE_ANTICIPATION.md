@@ -512,7 +512,25 @@ peak 2.0 GB). Under the pre-registered rule (§8):
 
 **The rule proposes 120 m — the model's current constant.** The measured anticipation reach of real entrants
 agrees with `lookahead_m` = 120 m; the 200–300 m that would recover 100–180 veh/h of T.H.52 capacity
-(docs/WEAVE_LOSS_DIAGNOSIS.md) is not supported by I-24's drivers, and with the coverage caveat (§7: half
-coverage merges gaps and reads the reach long) the true reach is if anything shorter. `WEAVE_DEFAULTS` is
-unchanged. The weave's capacity loss is therefore not an anticipation-distance problem; of the two unmeasured
-inputs the diagnosis named, the ramp-to-ramp crossing share is what remains.
+(docs/WEAVE_LOSS_DIAGNOSIS.md) is not supported by I-24's drivers. `WEAVE_DEFAULTS` is unchanged. The weave's
+capacity loss is therefore not an anticipation-distance problem; of the two unmeasured inputs the diagnosis
+named, the ramp-to-ramp crossing share is what remains.
+
+**The direction of the remaining bias is not known** (§5, §10). Half coverage is expected to read the reach
+long, by an unmeasured amount and not as a bound; censoring at the zone start may read it short. The
+sensitivities built for the second read longer, not shorter [artifact, `sensitivities`, fallback stratum,
+`gap`]:
+
+| sensitivity | Kaplan–Meier median | 95 % interval | rounded to 10 m |
+|---|---|---|---|
+| as registered | 124.8 m | 107.4–153.5 m | 120 m |
+| changes at least 200 m past the zone start | 133.6 m | 110.2–170.3 m | 130 m |
+| no fragment bridging | 133.6 m | 107.4–156.3 m | 130 m |
+
+The registered rule's output stands at 120 m, but the stratum's true median may be somewhat longer than
+measured: its point estimates run from 125 to 134 m. No interval in the table reaches 200 m. (In the primary
+stratum the 200-m sensitivity reads 121.5 m on 90 changes, against 82.0 m as registered, and identifies no
+upper end.) So 200–300 m stays unsupported, and the conclusion above holds on this evidence.
+*Corrected 2026-10-07 (regression review).* This paragraph first said that "with the coverage caveat (§7: half
+coverage merges gaps and reads the reach long) the true reach is if anything shorter". That contradicted §5,
+§10 and the artifact's own `limitations` and `sensitivities`; the coverage discussion is §5, not §7.
