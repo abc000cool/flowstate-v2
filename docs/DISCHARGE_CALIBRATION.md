@@ -161,3 +161,77 @@ what is left.
 
 Step 3 (the 20-seed batteries on the calibrated scenarios) decides whether the
 change improves the criteria; until then nothing here is a validation claim.
+
+## 4. Step 3: the full tests (2026-10-07)
+
+One n2-standard-32 (us-west1-b, after us-west1-c refused for capacity), stage 23
+at code 6de4e21, about 1 h 45 min, about $2.80, self-deleted. Every arm is 20
+seeds; every run recorded zero collisions; the ring benchmark passed at 20 of
+20 seeds in every I-24 battery. Artifacts: `artifacts/baseline_gate_mndot_dc.json`,
+`artifacts/validation_mndot_i94_wb_stpaul_weave_xlsfg_dc{,_gated}.json`,
+`docs/reports/mndot_i94_wb_stpaul_weave_xlsfg_dc/`, `artifacts/i24_validation_dc.json`,
+`artifacts/i24_validation_dc_refit.json`, `artifacts/i24_validation_flow_speedcal_ref.json`,
+`artifacts/demand_scale_i24_flow_dc.json`, `scenarios/i24_replica_flow_corrected_dc.yaml`,
+`scenarios/i24_replica_flow_speedcal_dc_refit.yaml`.
+
+**I-94 (the protocol's baseline gate, four-hour weave scenario under the
+reference configuration; calibrated drivers k = 1, keep-right 0.1, against the
+phase-1 reference on the same day sets and observations,
+`artifacts/baseline_gate_mndot_i94_wb_stpaul_p1.json`).**
+
+| check | day set | reference (p1) | calibrated drivers | target |
+|---|---|---|---|---|
+| C1 GEH < 5 share | calibration | 15.5 % | **61.8 %** (95 % interval 56.5–67.0) | ≥ 85 % |
+| C1 GEH < 5 share | validation | 14.5 % | **60.0 %** (54.0–66.0) | ≥ 85 % |
+| C2 GEH < 3 share (not gating) | calibration / validation | 12.3 / 11.4 % | 45.8 / 42.5 % | 100 % |
+| C3 speed RMSPE, 15 min | calibration | 49.7 % | **33.9 %** (31.3–36.5) | ≤ 15 % |
+| C3 speed RMSPE, 15 min | validation | 48.7 % | **38.8 %** (34.2–43.4) | ≤ 15 % |
+| C4 backward wave speed | calibration | 6.6 km/h | 4.9 km/h (front in 19 of 20) | 14–22 km/h |
+| C6 bottlenecks | calibration | fail (phantom) | fail (phantom) | — |
+| C6 bottlenecks | validation | pass | pass | — |
+| C5 collisions | all | 0 | 0 | 0 |
+
+The gate still **fails**, but the calibrated drivers are the largest single
+improvement the I-94 model has had: four times the share of station-hours
+inside GEH 5 and a third less speed error, on the validation days as much as on
+the calibration days. The wave speed moved the wrong way (it was failing
+already). About 4 % of planned vehicles never departed (two seeds 10–11 %), and
+2.1 % of exiters at on-ramp 745524613 gave up (above the 2 % threshold) — the
+T.H.52 weave, whose loss docs/WEAVE_LOSS_DIAGNOSIS.md decomposes.
+
+**I-24 (one recorded morning, no holdout; 20 seeds each, same code).**
+
+| arm | demand scale | GEH < 5 vs recommended | segment-speed RMSPE | wave criterion (stack) | waves per replicate | stripe / standard detector |
+|---|---|---|---|---|---|---|
+| reference: old drivers (`flow_speedcal_ref`, reproduces the committed arm exactly) | 0.800 | 21.5 % | 37.2 % | **15.9 km/h, pass** | 9.05 | 14.5 / 9.9 km/h |
+| calibrated drivers, old demand (`dc`) | 0.800 | 25.0 % | 78.4 % | no qualifying peak | 13.65 | 13.2 / 11.4 km/h |
+| calibrated drivers, demand refit (`dc_refit`) | 0.925 | **25.7 %** | **33.3 %** | **no qualifying peak** | 6.65 | 14.3 / 9.3 km/h |
+
+The demand refit (the fitter that set 0.800, on the calibrated drivers; train
+RMSPE 0.336, held-out hour 0.312) raised the demand scale to 0.925: the
+"plateau" of §3 was indeed demand-limited, and with the demand the calibrated
+drivers can carry, flows and speeds both fit a little better than the
+reference. But the **wave criterion is lost**: the criterion's slant-stack
+detector finds no peak clearing its contrast threshold, the replicates carry
+fewer backward waves (6.65 against 9.05), and only the secondary detectors
+still read speeds near the band. This is the risk recorded in §1 before any
+run — a higher mean `a_max` makes the drivers more string-stable — and
+CLAUDE.md §3.1 makes instability near capacity a requirement, not an option.
+
+**What this means.**
+
+- **I-94:** the calibrated drivers should replace the reference drivers for
+  further I-94 work (every gating check except the already-failing wave speed
+  improved, on validation days as well).
+- **I-24:** the calibrated package (k = 1 with the demand refit) is *not*
+  adopted as the canonical I-24 arm: a better fit of flows and speeds bought
+  with the loss of the emergent-wave criterion is not an improvement of this
+  model. `i24_replica_flow_speedcal` stays canonical; `_dc_refit` is kept as a
+  documented alternative.
+- The one-recipe-for-all-corridors reading of Amendment 1 does not hold: the
+  same driver shift helps the weaving corridor and hurts the wave corridor.
+  Whether a smaller shift (k = 0.25 or 0.5, with its own demand refit) keeps
+  I-24's waves while keeping part of the fit gain is a cheap question; it is
+  posed as protocol Amendment 2 (proposed, not adopted).
+
+Nothing here is a pass: neither corridor passes its acceptance criteria.

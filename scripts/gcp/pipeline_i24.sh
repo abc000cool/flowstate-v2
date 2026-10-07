@@ -1313,6 +1313,36 @@ if echo " $STAGES " | grep -q " p6_i24_anticipation "; then
     || say "p6_i24_anticipation failed; continuing"
 fi
 
+# p7. Amendment 2 (PROPOSED, docs/FRISCO_PROTOCOL.md; diagnostics, adoption needs the owner): I-24 at mean a_max
+#     shifts k = 0.25 and 0.5 (keep-right 0), each with its own demand refit on the corrected profile and a 20-seed
+#     battery, read against the reference arm artifacts/i24_validation_flow_speedcal_ref.json. Needs --data-set i24.
+#     Cost: per k about 30 min of refit + 12 min of battery on n2-standard-32 (stage p4_i24_refit took about 45 min).
+#     Writes scenarios/i24_replica_flow_corrected_dck{025,05}.yaml, scenarios/i24_replica_flow_speedcal_dck{025,05}_refit.yaml,
+#     artifacts/demand_scale_i24_flow_dck{025,05}.json, artifacts/i24_validation_dck{025,05}_refit.json.
+p7_i24_amax_wave_steps() {
+  local rc=0 k tag base scn pop
+  for k in 0.25 0.5; do
+    tag=$(echo "$k" | tr -d '.')
+    base="scenarios/i24_replica_flow_corrected_dck${tag}.yaml"
+    scn="scenarios/i24_replica_flow_speedcal_dck${tag}_refit.yaml"
+    pop="artifacts/idm_i24_capacity_amax_k${k}.json"
+    [ -f "$pop" ] || { say "p7: $pop missing; k=$k skipped"; rc=1; continue; }
+    $RUN scripts/apply_driver_calibration.py --corridor i24 --k "$k" --keep-right 0 \
+        --source scenarios/i24_replica_flow_corrected.yaml --out "$base" --name "i24_replica_flow_corrected_dck${tag}" --force \
+      || { say "p7: k=$k base scenario not written; skipped"; rc=1; continue; }
+    $RUN scripts/i24_fit_demand_scale.py --base corrected --base-yaml "$base" --fleet-artifact "$pop" --procs "$PROCS" \
+        --write-scenario --out "artifacts/demand_scale_i24_flow_dck${tag}.json" --scenario-out "$scn" \
+        --name "i24_replica_flow_speedcal_dck${tag}_refit" || { say "p7: k=$k demand fit failed; battery skipped"; rc=1; continue; }
+    $RUN scripts/i24_validate.py --scenario "$scn" --label "dck${tag}_refit" --replicates "$REPS" --procs "$PROCS" \
+        --analysis-procs 8 --ring-seeds "$RING" || { say "p7: k=$k battery failed; continuing"; rc=1; }
+    p4_prune "runs/i24_validation/dck${tag}_refit"
+  done
+  return $rc
+}
+if echo " $STAGES " | grep -q " p7_i24_amax_wave "; then
+  stage p7_i24_amax_wave p7_i24_amax_wave_steps || say "p7_i24_amax_wave failed; continuing"
+fi
+
 # 9. Done marker; the EXIT trap builds the final archives (light, then full with the first-seed replicates).
 echo "PIPELINE_DONE $(date -u +%FT%TZ)" > logs/PIPELINE_DONE
 say "PIPELINE_DONE"

@@ -67,7 +67,7 @@ export interface RunData {
   x: Float32Array;
   /** Speed [m/s], same layout. */
   v: Float32Array;
-  /** 95th-percentile speed of the run, the colour scale's top. */
+  /** 95th-percentile speed of the run [m/s]; the uncontrolled run's value tops the colour scale. */
   vRef: number;
 }
 
@@ -80,6 +80,8 @@ export interface Selection {
 
 export const X_SCALE = 0.1; // uint16 decimetres → m
 export const V_SCALE = 0.01; // uint16 cm/s → m/s
+/** "Stopped" means below this speed [m/s]; the same threshold as STOPPED_MS in scripts/website_sim_pack.py. */
+export const STOPPED_BELOW_MS = 0.5;
 
 /** Decode a run blob (see scripts/website_sim_pack.py for the layout). */
 export function decodeRun(
@@ -149,7 +151,7 @@ export interface FleetStats {
 }
 
 /** Mean, population standard deviation, minimum, and count below `stoppedBelow` m/s. */
-export function fleetStats(v: Float32Array, stoppedBelow = 0.5): FleetStats {
+export function fleetStats(v: Float32Array, stoppedBelow = STOPPED_BELOW_MS): FleetStats {
   const n = v.length;
   if (n === 0) return { mean: 0, std: 0, min: 0, stopped: 0 };
   let sum = 0;

@@ -6,16 +6,32 @@ ring-road simulations (the CI-gated `ring_sugiyama` benchmark, CLAUDE.md
 page fetches a committed data pack and interpolates between the engine's
 0.5 s samples. It is built to be iframed into the public website.
 
-* **Ring benchmark tab.** 18 / 22 / 26 vehicles on the 230 m ring, 0 / 1 / 2
+* **Ring simulation tab.** 18 / 22 / 26 vehicles on the 230 m ring, 0 / 1 / 2
   vehicles running FollowerStopper, switched on from the start or after five
-  minutes, three seeds each (45 runs). Top-down ring, time-space diagram,
-  live readouts, per-minute speed spread against the uncontrolled baseline
-  with the same seed, and a provenance line (SUMO version, config hash, seed).
+  minutes, three seeds each (45 runs). Top-down ring, a time-space diagram
+  (each point coloured by the speed of the nearest vehicle behind it, with
+  every trajectory drawn over it), live readouts, per-minute speed spread
+  against the uncontrolled run with the same seed, a last-5-minutes table, and
+  a provenance line (SUMO version, config hash, seed).
 * **I-24, observed tab.** The 30 Nov 2022 westbound space-time mean-speed
-  field from I-24 MOTION (60 s × 100 m bins) with a hover readout.
+  field from I-24 MOTION (60 s × 100 m bins), hatched where no vehicle was
+  tracked, with a readout row (hover, or focus the plot and use the arrow keys).
 
 Every number shown is computed from the trajectories in `public/data/`; the
 page contains no hand-typed results.
+
+## Design
+
+The page follows the "Paper & Signal" brief (`docs/design/DASHBOARD_DESIGN.md`):
+its tokens are copied into `src/tokens.css` (light and dark; the embed does not
+import from `frontend/`), and every speed colouring uses the §7.1 "FlowState
+speed" stops (`src/colormap.ts`) with a km/h + mph legend. The I-24 field uses
+the absolute 0–120 km/h scale with the 40 km/h wave-threshold notch. Ring
+speeds are far lower (22 vehicles share 230 m), so the ring views use 0 to the
+95th-percentile speed of the uncontrolled run with the same ring and seed; a
+run and its uncontrolled twin therefore share one scale, and the legend prints
+it. No web fonts are shipped (system stacks). The theme follows
+`prefers-color-scheme`; visitors who prefer reduced motion start paused.
 
 ## Run locally
 
@@ -67,12 +83,16 @@ page may be embedded anywhere.
 
 ## Embed on the website
 
+The public site serves this build at `/demo/` (the `flowstate-site` repository
+holds a copy of `dist/` as `demo/`; its README says how to refresh it) and
+iframes it on Research → Science:
+
 ```html
 <iframe
-  src="https://flowstate-sim.onrender.com/?embed=1&run=n22_av1_t300_s42"
-  title="FlowState ring simulation"
-  width="100%" height="720" style="border:0;border-radius:12px"
-  loading="lazy" allow="fullscreen"></iframe>
+  src="/demo/?embed=1&theme=dark"
+  title="FlowState ring-road simulation replay"
+  width="100%" height="900" style="border:0;border-radius:12px"
+  loading="lazy"></iframe>
 ```
 
 The page posts its rendered height to the parent
@@ -88,14 +108,19 @@ URL parameters:
 
 | Parameter | Values | Default |
 |---|---|---|
-| `embed` | `1` hides the tagline and footer prose | off |
+| `embed` | `1` hides the brand line (the host page carries its own heading) | off |
+| `theme` | `light` or `dark` pins the theme | follows `prefers-color-scheme` |
 | `run` | a run id from `data/index.json`, e.g. `n22_av1_t300_s42` | 22 vehicles, 1 controlled, on after 5 min, seed 42 |
 | `n`, `av`, `t`, `seed` | grid values (ignored when `run` is given) | as above |
 | `rate` | `1`, `5`, `20`, `60` (playback speed) | `20` |
-| `autoplay` | `0` to start paused | plays, unless the visitor prefers reduced motion |
+| `autoplay` | `0` to start paused (and stay paused when another run is picked) | plays once the ring is on screen, unless the visitor prefers reduced motion |
 | `tab` | `ring` or `observed` | `ring` |
 
-Keyboard: space plays/pauses, arrow keys seek 5 s, Home rewinds.
+Keyboard: space plays/pauses, arrow keys seek 5 s, Home rewinds; on the I-24
+plot, arrow keys move the readout one bin (Shift: ten), Home/End jump to the
+time edges. The page posts its height after every layout change, and a path
+without its trailing slash (`/demo`) redirects to `/demo/` so the relative
+asset paths resolve.
 
 ## What it will not do
 

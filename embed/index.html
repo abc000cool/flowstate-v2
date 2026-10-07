@@ -3,87 +3,146 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="color-scheme" content="dark" />
-    <meta name="theme-color" content="#07080a" />
+    <meta name="color-scheme" content="light dark" />
     <meta
       name="description"
-      content="Replay of real Eclipse SUMO + IDM ring-road simulations: a stop-and-go wave emerges from nothing and one controlled vehicle dissolves it. Every frame is engine output."
+      content="Replays of real Eclipse SUMO + IDM ring-road simulations: a stop-and-go wave emerges without a seeded disturbance, and one vehicle running FollowerStopper damps it. Every frame is engine output."
     />
-    <title>FlowState · ring simulation</title>
-    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='11' fill='none' stroke='%232a78d6' stroke-width='5'/%3E%3C/svg%3E" />
+    <title>FlowState ring replay</title>
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='11' fill='none' stroke='%23256abf' stroke-width='5'/%3E%3C/svg%3E" />
+    <script>
+      (function () {
+        // A host page may pin the theme (?theme=light|dark); otherwise the OS decides.
+        try {
+          var t = new URLSearchParams(location.search).get('theme');
+          if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t;
+        } catch (e) {}
+        // Asset and data paths are relative, so a sub-folder needs its trailing slash (/demo -> /demo/).
+        var p = location.pathname;
+        if (p && p.charAt(p.length - 1) !== '/' && !/\.[A-Za-z0-9]+$/.test(p)) {
+          location.replace(p + '/' + location.search + location.hash);
+        }
+      })();
+    </script>
+    <style>
+      html { background: #f9f9f8; }
+      @media (prefers-color-scheme: dark) { html:not([data-theme='light']) { background: #111110; } }
+      html[data-theme='dark'] { background: #111110; }
+    </style>
   </head>
   <body>
-    <main id="app" class="app" tabindex="0" aria-label="FlowState ring simulation">
+    <main id="app" class="app" aria-label="FlowState ring simulation replay">
       <header class="top">
         <div class="brand">
           <span class="mark" aria-hidden="true"></span>
           <span class="name">FlowState</span>
-          <span class="sub">emergent stop-and-go waves, and one vehicle that removes them</span>
+          <span class="sub">Recorded simulation runs: a stop-and-go wave emerges, and one controlled vehicle damps it</span>
         </div>
-        <nav class="tabs" role="tablist" aria-label="Views">
-          <button id="tab-ring" class="tab is-active" role="tab" aria-selected="true" aria-controls="panel-ring">Ring benchmark</button>
-          <button id="tab-observed" class="tab" role="tab" aria-selected="false" aria-controls="panel-observed">I-24, observed</button>
-        </nav>
+        <div class="tabs" role="tablist" aria-label="Views">
+          <button id="tab-ring" class="tab" type="button" role="tab" aria-selected="true" aria-controls="panel-ring">Ring simulation</button>
+          <button id="tab-observed" class="tab" type="button" role="tab" aria-selected="false" aria-controls="panel-observed" tabindex="-1">I-24, observed</button>
+        </div>
       </header>
 
       <section id="panel-ring" class="panel" role="tabpanel" aria-labelledby="tab-ring">
         <div class="controls" aria-label="Scenario">
-          <div class="ctl"><span class="lbl">Vehicles on the ring</span><div id="grp-vehicles" class="seg" role="group"></div></div>
-          <div class="ctl"><span class="lbl">Controlled vehicles</span><div id="grp-av" class="seg" role="group"></div></div>
-          <div class="ctl"><span class="lbl">Controller switch-on</span><div id="grp-activation" class="seg" role="group"></div></div>
-          <div class="ctl"><span class="lbl">Seed</span><div id="grp-seed" class="seg" role="group"></div></div>
+          <div class="ctl"><span class="lbl" id="lbl-vehicles">Vehicles on the ring</span><div id="grp-vehicles" class="seg" role="group" aria-labelledby="lbl-vehicles"></div></div>
+          <div class="ctl"><span class="lbl" id="lbl-av">Controlled vehicles</span><div id="grp-av" class="seg" role="group" aria-labelledby="lbl-av"></div></div>
+          <div class="ctl"><span class="lbl" id="lbl-activation">Controller switch-on</span><div id="grp-activation" class="seg" role="group" aria-labelledby="lbl-activation"></div></div>
+          <div class="ctl"><span class="lbl" id="lbl-seed">Seed</span><div id="grp-seed" class="seg" role="group" aria-labelledby="lbl-seed"></div></div>
         </div>
 
         <div class="stage">
-          <div class="ring-wrap">
-            <canvas id="cv-ring" role="img" aria-label="Top-down view of the ring road with vehicles coloured by speed"></canvas>
-            <div id="ring-status" class="ring-status" aria-live="polite"></div>
+          <div class="left">
+            <figure class="card ring-card">
+              <div class="ring-wrap">
+                <canvas id="cv-ring" role="img" aria-label="Top-down view of the ring road, vehicles coloured by speed"></canvas>
+                <span id="ring-status" class="pill" aria-live="polite"></span>
+              </div>
+              <div class="transport">
+                <div class="transport-row">
+                  <button id="btn-play" class="btn primary play" type="button" aria-pressed="false">
+                    <svg class="ic ic-play" viewBox="0 0 16 16" aria-hidden="true"><path d="M5 3.5v9l7-4.5z" fill="currentColor" /></svg>
+                    <svg class="ic ic-pause" viewBox="0 0 16 16" aria-hidden="true"><path d="M4.5 3.5h2.5v9H4.5zM9 3.5h2.5v9H9z" fill="currentColor" /></svg>
+                    <span id="btn-play-label">Play</span>
+                  </button>
+                  <input id="rng-time" type="range" min="0" max="600" step="0.5" value="0" aria-label="Simulation time" />
+                  <span id="ro-time" class="clock mono" aria-hidden="true">0:00</span>
+                </div>
+                <div class="transport-row rate-row">
+                  <span class="lbl" id="lbl-rate">Playback speed</span>
+                  <div id="grp-rate" class="seg rate" role="group" aria-labelledby="lbl-rate"></div>
+                </div>
+              </div>
+              <div id="lg-ring" class="legend-host"></div>
+              <p id="lg-ring-note" class="caption"></p>
+              <p id="av-key" class="caption av-key" hidden><span class="key-av" aria-hidden="true"></span><span>Controlled vehicle: solid outline when its controller is on, dashed before.</span></p>
+            </figure>
           </div>
-          <div class="right">
-            <canvas id="cv-st" class="st" role="img" aria-label="Time-space diagram: every vehicle trajectory coloured by speed; backward-moving stripes are stop-and-go waves"></canvas>
-            <div class="readouts" aria-live="polite">
-              <div class="ro"><span class="k">time</span><span id="ro-time" class="v mono">0:00</span></div>
-              <div class="ro"><span class="k">mean speed</span><span id="ro-mean" class="v mono">–</span></div>
-              <div class="ro"><span class="k">speed spread σ<sub>v</sub></span><span id="ro-std" class="v mono">–</span></div>
-              <div class="ro"><span class="k">slowest</span><span id="ro-min" class="v mono">–</span></div>
-              <div class="ro"><span class="k">stopped</span><span id="ro-stopped" class="v mono">–</span></div>
-            </div>
-            <canvas id="cv-strip" class="strip" role="img" aria-label="Speed spread per minute, this run versus the uncontrolled baseline with the same seed"></canvas>
-            <p id="cmp-text" class="cmp"></p>
-          </div>
-        </div>
 
-        <div class="transport">
-          <button id="btn-play" class="play" aria-label="Play or pause" aria-pressed="false">Play</button>
-          <input id="rng-time" type="range" min="0" max="600" step="0.5" value="0" aria-label="Simulation time" />
-          <div id="grp-rate" class="seg rate" role="group" aria-label="Playback speed"></div>
+          <div class="right">
+            <figure class="card st-card">
+              <figcaption class="card-head">
+                <span class="card-title">Time-space diagram</span>
+                <span class="card-sub">Thin lines are the vehicles' paths around the ring; the colour at each point is the speed of the nearest vehicle behind it. Stripes sloping down to the right are waves moving backwards.</span>
+              </figcaption>
+              <canvas id="cv-st" class="st" role="img" aria-label="Time-space diagram: vehicle trajectories over a speed field; backward-moving stripes are stop-and-go waves"></canvas>
+            </figure>
+
+            <div class="readouts" aria-live="polite">
+              <div class="ro"><span class="k">Mean speed</span><span id="ro-mean" class="v">–</span><span id="ro-mean-mph" class="v2 mono">–</span></div>
+              <div class="ro"><span class="k">Speed spread σ<sub>v</sub></span><span id="ro-std" class="v">–</span><span id="ro-std-mph" class="v2 mono">–</span></div>
+              <div class="ro"><span class="k">Slowest vehicle</span><span id="ro-min" class="v">–</span><span id="ro-min-mph" class="v2 mono">–</span></div>
+              <div class="ro"><span class="k">Stopped</span><span id="ro-stopped" class="v">–</span><span id="ro-stopped-sub" class="v2 mono">–</span></div>
+            </div>
+
+            <figure class="card strip-card">
+              <figcaption class="card-head">
+                <span class="card-title">Speed spread per minute (km/h)</span>
+                <span class="strip-keys">
+                  <span class="sk"><span id="sk-run" class="sw sw-fill" aria-hidden="true"></span><span id="sk-run-label">this run</span></span>
+                  <span id="sk-base" class="sk"><span class="sw sw-outline" aria-hidden="true"></span>no control, same seed</span>
+                </span>
+              </figcaption>
+              <canvas id="cv-strip" class="strip" role="img" aria-label="Speed spread per minute, this run against the uncontrolled run with the same seed"></canvas>
+            </figure>
+
+            <div class="card cmp-card">
+              <table id="cmp-table" class="data">
+                <caption id="cmp-caption"></caption>
+                <thead><tr id="cmp-head"></tr></thead>
+                <tbody id="cmp-body"></tbody>
+              </table>
+            </div>
+          </div>
         </div>
       </section>
 
       <section id="panel-observed" class="panel" role="tabpanel" aria-labelledby="tab-observed" hidden>
         <p class="obs-caption">
           Nashville, I-24 westbound, 30 November 2022, 06:00–10:00 CST, four mainline lanes over the instrumented miles.
-          Mean speed from the I-24 MOTION trajectory instrument in 60 s × 100 m bins. Time runs left to right; position
-          runs upward in the direction of travel, so every band sloping down-right is a stop-and-go wave travelling
-          backwards through the traffic.
+          Mean speed from the I-24 MOTION trajectory instrument in 60 s × 100 m bins. Time runs left to right and position
+          runs upward in the direction of travel, so every band sloping down to the right is a stop-and-go wave travelling
+          backwards through the traffic. This is measured data, not a simulation.
         </p>
-        <div class="obs-wrap">
-          <canvas id="cv-obs" role="img" aria-label="Space-time mean-speed field of I-24 westbound on 30 November 2022"></canvas>
-          <div id="obs-hover" class="obs-hover mono" aria-live="polite"></div>
-        </div>
+        <figure class="card obs-card">
+          <canvas id="cv-obs" tabindex="0" role="img" aria-label="Space-time mean-speed field of I-24 westbound on 30 November 2022"></canvas>
+          <div id="lg-obs" class="legend-host"></div>
+          <p id="obs-readout" class="readout mono is-idle"></p>
+        </figure>
         <p id="obs-note" class="obs-note"></p>
       </section>
 
       <footer class="foot">
         <p id="provenance" class="prov mono"></p>
         <p class="honest">
-          Nothing here is animated by hand. The ring frames are trajectories written by Eclipse SUMO with the Intelligent
-          Driver Model, replayed with linear interpolation between the 0.5 s samples; the wave is emergent (no seeded
-          perturbation). The controlled vehicle runs FollowerStopper (Stern et al. 2018). Source and data:
-          <a id="repo-link" href="https://github.com/abc000cool/flowstate-v2" rel="noopener">abc000cool/flowstate-v2</a>.
+          Nothing here is animated by hand. The ring frames are vehicle trajectories written by Eclipse SUMO with the
+          Intelligent Driver Model, replayed with linear interpolation between the 0.5 s samples. The wave is emergent:
+          no perturbation is seeded. The controlled vehicle runs FollowerStopper (Stern et al. 2018). Every number on
+          this page is computed from the recorded runs (data pack built by <span class="mono">scripts/website_sim_pack.py</span>).
         </p>
       </footer>
-      <div id="loading" class="loading" role="status">Loading real simulation data…</div>
+      <div id="loading" class="loading" role="status">Loading the recorded simulation runs…</div>
     </main>
     <script type="module" src="/src/main.ts"></script>
   </body>

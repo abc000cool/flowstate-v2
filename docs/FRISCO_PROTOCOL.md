@@ -363,3 +363,33 @@ while implementing it; neither changes a target value):
   and the per-window activity flags are reported, not used to select windows.
 - *"Improves"* means a strictly smaller error than the current setting (k = 0,
   `lc_keep_right` = 0), with no noise band.
+
+### Amendment 2 — 2026-10-07: PROPOSED, not adopted (I-24 wave constraint on the driver shift)
+
+Written by the coordinator during the owner's absence, before any run that uses
+it; the runs it names are diagnostics, and adopting its outcome for any
+corridor needs the owner.
+
+**Why.** Step 3 of Amendment 1 (docs/DISCHARGE_CALIBRATION.md §4) found that
+the chosen shift k = 1 improves the I-94 gate strongly but, on I-24, loses the
+emergent-wave criterion even with a demand refit (the criterion's slant-stack
+detector finds no qualifying peak; 6.65 backward waves per replicate against
+9.05 under the reference drivers), while flows and speeds fit slightly better
+(GEH < 5 25.7 % against 21.5 %; RMSPE 33.3 % against 37.2 %). CLAUDE.md §3.1
+requires the calibrated fleet to stay string-unstable near capacity, and a
+shift chosen on discharge and lane use alone cannot see that.
+
+**What it adds.** On I-24 only, mean `a_max` shifts k ∈ {0.25, 0.5}
+(`lc_keep_right` 0, Amendment 1's I-24 choice), each with its own demand refit
+by the fitter that set 0.800 and 0.925 (`scripts/i24_fit_demand_scale.py`,
+corrected profile, 06:30–07:30 fit, 07:30–08:30 held out) and a 20-seed battery
+(`scripts/i24_validate.py`; pipeline stage `p7_i24_amax_wave`).
+
+**Rule (fixed now).** An arm qualifies when its battery passes the wave
+criterion (stack detector, 14–22 km/h). Among qualifying arms, choose the
+largest k whose GEH < 5 share and segment-speed RMSPE are both no worse than
+the reference arm's (`artifacts/i24_validation_flow_speedcal_ref.json`: 21.5 %,
+37.2 %). If none qualifies, k = 0 stays. Every arm's three readings are
+reported whatever the outcome; the I-24 recording is one morning with no
+holdout, so any choice here is calibration, not validation, and is reported as
+such.
