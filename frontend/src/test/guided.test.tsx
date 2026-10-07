@@ -14,6 +14,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { clearAuthFailure, OFFLINE_WRITE_MESSAGE, setOfflineFallback } from '../api/client';
 import { GuidedFirstRun, SMOKE_REPLICATES } from '../components/GuidedFirstRun';
 import { MIN_REPLICATES } from '../lib/metrics';
+import { dropFocus } from './focus';
 
 // the panel's toasts are claims about a server; asserted through the DOM
 // state instead of the shared, time-dismissed queue
@@ -376,6 +377,69 @@ describe('GuidedFirstRun', () => {
       expect(
         await screen.findByRole('button', { name: 'Use ring_sugiyama' }, { timeout: 4000 }),
       ).toBeEnabled();
+    },
+    20000,
+  );
+
+  // §9.1 "Busy": a step's button is disabled while its request runs and gone
+  // once the step is done, so keyboard focus falls to <body>. It moves on to
+  // the step the user acts on next — its button, or its title when it has
+  // none — and back to the button after a refusal.
+  it(
+    'moves keyboard focus on to the next step as each one finishes',
+    async () => {
+      renderPanel();
+      const use = await screen.findByRole('button', { name: 'Use ring_sugiyama' }, { timeout: 4000 });
+      await waitFor(() => expect(use).toBeEnabled(), { timeout: 4000 });
+      use.focus();
+      fireEvent.click(use);
+      dropFocus();
+      const launch = await screen.findByRole(
+        'button',
+        { name: `Launch ${SMOKE_REPLICATES}-replicate smoke run` },
+        { timeout: 4000 },
+      );
+      await waitFor(() => expect(launch).toHaveFocus());
+
+      fireEvent.click(launch);
+      dropFocus();
+      // the watch step has no control: its title takes focus
+      await waitFor(() => expect(screen.getByText('Wait for the run to finish')).toHaveFocus(), {
+        timeout: 4000,
+      });
+    },
+    20000,
+  );
+
+  it(
+    'gives focus back to the step button after a refusal',
+    async () => {
+      const base = globalThis.fetch;
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+          if (String(input).endsWith('/runs') && init?.method === 'POST') {
+            return json({ detail: 'replicates: the queue is full' }, 422);
+          }
+          return base(input, init);
+        }),
+      );
+      renderPanel();
+      const use = await screen.findByRole('button', { name: 'Use ring_sugiyama' }, { timeout: 4000 });
+      await waitFor(() => expect(use).toBeEnabled(), { timeout: 4000 });
+      fireEvent.click(use);
+      const launch = await screen.findByRole(
+        'button',
+        { name: `Launch ${SMOKE_REPLICATES}-replicate smoke run` },
+        { timeout: 4000 },
+      );
+      await waitFor(() => expect(launch).toBeEnabled());
+      launch.focus();
+      fireEvent.click(launch);
+      expect(launch).toBeDisabled();
+      dropFocus();
+      expect(await screen.findByText(/the queue is full/, {}, { timeout: 4000 })).toBeInTheDocument();
+      await waitFor(() => expect(launch).toHaveFocus());
     },
     20000,
   );

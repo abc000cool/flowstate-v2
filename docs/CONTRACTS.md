@@ -2589,9 +2589,12 @@ guessing widened the edge (`ramps_unset_edges`), else the connection patch
 count`). On the committed I-94 WB extract without fixes the audit now
 reports three defects (the 6th Street exit `45782590-AddedOffRampEdge →
 42165869`, lane 3 of 4, besides the two above), and the onboarding fixes add
-`--ramps.unset 45782590,1001426896`. The dashboard's `SplitVerdict` type and
-defect badge (`frontend/src/api/types.ts`, `SplitAuditTable.tsx`) predate the
-verdict.
+`--ramps.unset 45782590,1001426896`. The dashboard carries the verdict
+(`SplitVerdict` and the optional `added_lane_side` / `trapped_lanes` /
+`trapped_evidence` in `frontend/src/api/types.ts`; `SplitAuditTable.tsx`: a
+red `THROUGH LANE EXIT-ONLY` badge, the trapped lanes and their evidence in
+the lanes column, the remedy under the row, and the summary counting trapped
+lanes apart from exits compiled on the wrong side).
 
 **Detector data quality: lane order — 2026-10-07.** Check `lane_order`
 (`calibration.data_quality.lane_order_check`, run by `assess_quality` on
@@ -3637,3 +3640,31 @@ and `flowstate.observed_lane_shares/1`. Run tree
 `artifacts/idm_i24_capacity_amax_k*.json` carry their provenance in `notes`
 and no `.calibration.json` sidecar (which tools read as a T-scaling record).
 No config field added.
+
+## Weave entering give-up, amendment W1 (opt-in, off) — 2026-10-07
+
+- **Config.** `WeaveSpec.weave_params` accepts `entrant_giveup_m` [m], the
+  one key of `flowstate_core.config.WEAVE_OPTIONAL_KEYS` (keys with no
+  default; `WEAVE_KEYS` = `WEAVE_DEFAULTS` keys plus these). Unset or 0 is
+  off; a negative value is refused. Hash-neutral unless set, and not in
+  `WEAVE_DEFAULTS`, so `tests/golden/config_defaults.json` is unchanged. No
+  committed scenario sets it (docs/WEAVE_LOSS_DIAGNOSIS.md §6.2, §8: fixture
+  criteria F3 and F5 failed).
+- **Behaviour** (`microsim.runner._weave_step`). When set, an entrant still
+  owing its change on lane 0 of an exit-only section edge, halted (below
+  `HALTING_SPEED_MS`) within `entrant_giveup_m` of the section's end, with no
+  accepted or guard-passing forced change that step, is rerouted
+  (`vehicle.changeTarget`) to the paired off-ramp's last edge, handed back and
+  never taken under control again.
+- **`meta.json["weave_sections"][i]`** gains `n_entrant_took_exit`, right
+  after `n_missed_exit`, **only when the rule is on** (a meta written with it
+  off is unchanged). It is a subset of `n_missed`:
+  `n_missed_exit + n_entrant_took_exit ≤ n_missed`, and the identity
+  `n_entered = n_changed_in + n_changed_out + n_missed + n_unfinished` holds.
+- **`vehicles.parquet`.** Such an entrant has `gave_up` true, `gave_up_s` the
+  step, and `destination_final` the paired exit's label; `destination` keeps
+  its planned destination.
+- **Script.** `scripts/merge_model_selfcheck.py grid|th52|ceiling --weave-set
+  KEY=VALUE` (repeatable, `--model weave` only) sets a `weave_params` key on
+  every weave block; `th52` rows gain `entrants_took_exit` (`[count or null,
+  entrance departures]`), `grid` zone rows `n_entrant_took_exit`.

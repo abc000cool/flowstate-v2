@@ -47,6 +47,8 @@ Labels:
   - Adopt one small physical fix as an opt-in amendment, with criteria fixed
     here (§6.2): an entrant stuck at the end of the auxiliary lane takes the
     exit, the mirror of the existing exit give-up.
+    - **Implemented and evaluated the same day (§8).** It passes F1, F2 and
+      F4 and fails F3 and F5. So the key stays off.
 
 ## 1. Setup and provenance
 
@@ -569,6 +571,9 @@ Notes:
 
 ### 6.2 Proposed amendment W1: the entering give-up (opt-in)
 
+*Implemented and judged against the criteria below on 2026-10-07 (§8). It
+passes F1, F2 and F4 and fails F3 and F5, so the key stays off.*
+
 **Rule.** An entrant still owing its change from the auxiliary lane into lane 1
 takes the paired exit when all of these hold in a step:
 - it has halted (below `HALTING_SPEED_MS`, 0.1 m/s);
@@ -679,3 +684,270 @@ is proposed for it.
 - **Not traced:**
   - the collision in D1 at p = 0.25;
   - the collision in H2+H3+H5.
+
+## 8. W1 implemented and evaluated (2026-10-07)
+
+Amendment W1 (§6.2) was implemented as an opt-in key and judged on the
+fixture criteria F1–F5 exactly as pre-registered. Labels as in §1; **[run]**
+rows are in `artifacts/weave_loss_2026-10-07/w1/`.
+
+### 8.0 In plain English
+
+- **The rule works as intended.** An entrant stuck at the end of the
+  auxiliary lane now takes the exit. Stranded-entrant time falls from
+  18.9 to 3.8 s per run, and flow rises by 29 veh/h (95 % CI 10–48).
+- **Off changes nothing.** With the key unset, every golden, every committed
+  scenario hash and 37 fixture runs are byte-identical to HEAD.
+- **It fails two of the five criteria fixed in advance.**
+  - **F3.** At one seed of 20, 4 of 386 entrance departures (1.04 %) took
+    the exit. The cap is 1 % at every seed.
+  - **F5.** In 8 of 37 grid runs, all on the Ruth St fixtures (whose
+    entrance departs only 73 or 128 vehicles), 1–5 entrants took the exit
+    (1.4–6.8 %). The cap is 1 % per run.
+- **So the key stays off.** No committed scenario sets it, and no criterion
+  was re-thresholded. Adoption, a revised criterion or the corridor rounds
+  are the owner's decision.
+
+### 8.1 What was implemented
+
+- **Config** (`flowstate_core.config`).
+  - `entrant_giveup_m` is the one key of a new `WEAVE_OPTIONAL_KEYS`. It is
+    accepted in `WeaveSpec.weave_params`, has no default, and must be ≥ 0.
+    Unset or 0 means off.
+  - **Deviation from §6.2's wording.** §6.2 said "default 0". The key is not
+    in `WEAVE_DEFAULTS`, because `tests/golden/config_defaults.json` pins that
+    table. A key added there with any value would change a golden. The
+    behaviour is the same: off unless set to a positive distance.
+- **Runner** (`microsim.runner._weave_step`).
+  - **When it fires.** The rule of §6.2 is applied in the step loop next to
+    the exit give-up, after the acceptance has been read. An entrant must
+    still owe its change and be on lane 0 of an exit-only edge. It must be
+    halted (below `HALTING_SPEED_MS`) within `entrant_giveup_m` of the gore,
+    with neither an accepted nor a guard-passing forced change that step.
+  - **What it does.** `vehicle.changeTarget` sends the entrant to the
+    off-ramp's last edge (`RampSpec.edges[-1]`). Its lane-change mode is
+    restored and it is handed back. It is counted in `n_missed` and the new
+    `n_entrant_took_exit`. It is never taken under control again (`took_exit`).
+- **Records.**
+  - `meta.json["weave_sections"][i]["n_entrant_took_exit"]` is written only
+    when the rule is on, right after `n_missed_exit`.
+  - `vehicles.parquet` marks the entrant `gave_up`, with `gave_up_s`. Its
+    `destination_final` is the exit's label; its `destination` keeps the plan.
+- **How it differs from the H2 counterfactual (§4).**
+  - H2 ran after the step, so its cooperation commands for that step had
+    already been issued. W1 skips them, as the exit give-up does.
+  - H2 used `sorted(exit_edges)[-1]` as the target. W1 uses the ramp's last
+    edge.
+  - H2 did not exclude a rerouted entrant from being taken again on the next
+    step. W1 does.
+- **Script.** `scripts/merge_model_selfcheck.py` has a new
+  `--weave-set KEY=VALUE` for `grid`, `th52` and `ceiling`. It sets the key on
+  every weave block, with `--model weave` only. `th52` rows gain
+  `entrants_took_exit`, and the `grid` zone rows gain `n_entrant_took_exit`.
+- **Tests.**
+  - `TestWeaveEntrantGiveup` in
+    `tests/test_microsim/test_microsim_merge_managed_meter.py`, on the fake
+    harness: a stranded entrant takes the exit and is not driven again.
+  - Unset and 0 change nothing; still rolling or 6 m back is kept; a halted
+    entrant that can change does; the schema.
+  - One SUMO test on the T.H.52 fixture with the calibrated drivers, seeds 4
+    and 15: entrants are rerouted and recorded. Unset writes no counter and
+    reroutes nobody. 0 is byte-identical to unset.
+
+### 8.2 Off is byte-identical [run]
+
+**Method.** The method of docs/PERFORMANCE_2026-10-07.md: two `git archive HEAD`
+trees (`daf8826`), the second with only `config.py` and `runner.py` copied in.
+Each was run through `harness/py.sh` (its packages first on `sys.path`), with
+the case configs taken from the HEAD tree in both legs.
+
+**Compared per run:**
+- the sha256 of every Parquet file;
+- `meta.json` without `wall_time_s` and `realtime_factor`;
+- the `compute_metrics` output;
+- the config hash.
+
+**Cases (37):**
+- the 12 micro golden cases;
+- the T.H.52 corridor fixture (seeds 3, 4), capacity (4, 5), corridor demand,
+  upstream and upstream-with-fleet;
+- Ruth St in five forms;
+- the moderate and golden weave fixtures;
+- McKnight Rd (seeds 3–5), T.H.61, the scripted merge golden;
+- the T.H.52 section with the calibrated drivers (seeds 3–5);
+- the measured model on T.H.52, Ruth St and McKnight.
+
+**Result.**
+- **37 of 37 identical** (`identity_head.json`, `identity_change.json`).
+- **The 33 committed scenarios hash the same** in both trees
+  (`scenario_hashes_*.json`), and `WEAVE_DEFAULTS` is unchanged.
+- **The section test's reference arm reproduces §2** (`arms/base.json`) field
+  for field at seeds 3–22, stranded time included.
+
+### 8.3 F1–F4: the T.H.52 section test, seeds 3–22 [run]
+
+**Command.** `merge_model_selfcheck.py th52 --model weave --fleet-from
+scenarios/mndot_i94_wb_stpaul_weave_dc.yaml`, once with
+`--weave-set entrant_giveup_m=5` and once without, at the same seeds.
+
+**Readouts.** Stranded time is `harness/strand.py`'s definition (F2). Locks are
+`run_summary`'s flag. Paired t-intervals, 19 degrees of freedom; macOS.
+
+| | without (reference) | with W1 | W1 − reference, paired [95 %] |
+|---|---|---|---|
+| exit-end flow, veh/h (mean ± sd) | 4,361 ± 83 | 4,390 ± 77 | **+29.0 [+9.7, +48.3]** |
+| lowest station speed, m/s | 17.07 | 17.59 | +0.52 [−0.10, +1.15] |
+| entrance departed share | 0.951 | 0.963 | +0.011 [+0.000, +0.023] |
+| mainline departed share | 0.9995 | 0.9999 | +0.0004 [−0.0002, +0.0010] |
+| stranded-entrant time, s per run | 18.9 | **3.8** | −15.05 [−22.30, −7.80] |
+| longest single stand, s | 50.5 | 5.0 | |
+| entrants taking the exit (20 seeds) | — | 27 (0–4 per seed; 0.34 % of 7,837) | |
+| highest per-seed share of entrance departures | — | **1.04 %** (seed 15: 4 / 386) | |
+| exits given up (20 seeds) | 66 of 8,334 | 62 of 8,370 | |
+| collisions | 0 | 0 | |
+| −9 m/s² vehicle-steps (20 seeds) | 2 | 0 | |
+| locks | 0 | 0 | |
+| GEH < 5 / all criteria | 1 / 0 of 20 | 2 / 0 of 20 | |
+
+**Per-seed shares of entrance departures.**
+- Seed 15: 1.04 %.
+- Seed 20: 0.81 % (3 of 370).
+- Seeds 3, 12, 16, 21: 0.49–0.54 % (2 each).
+- Elsewhere: 0–0.27 %.
+
+**Who took the exit.** Of the 27 entrants:
+- 24 were bound for the corridor's end and 3 for the Jackson exit;
+- none was a ramp-to-exit vehicle;
+- 26 left the network by the exit; one, given up at 1,199 s (seed 20), was
+  still in the network when the run ended.
+
+**Seed 15.** Two of its four were consecutive entrants, v01283 and v01284,
+given up 9.5 s apart. It is the seed with the longest stand in the reference
+(62.5 s).
+
+**Against the counterfactual.** The package rule reads like H2: +29 [+10, +48]
+against +32 [+8, +57], 27 entrants against 29, and 3.8 s per run against 4.2.
+
+### 8.4 F5: the fixture grid with the key on every weave [run]
+
+**Command.** `merge_model_selfcheck.py grid --model weave --weave-set
+entrant_giveup_m=5` covers the 29 runs of the weave record and the 8 G0 rows.
+The same grid was run without the key for reference. The share is of the
+weave entrance's departures in that run.
+
+| | without | with W1 |
+|---|---|---|
+| runs with a collision | 0 of 37 | **0 of 37** |
+| runs flagged as a lock | 2: `merge_golden`; `ruth_entr_fleet` s5 | **1: `merge_golden`** |
+| runs with entrants taking the exit above 1 % | — | **8 of 37** |
+| entrants taking the exit, total | — | 28 |
+| exits given up, total | 78 | 64 |
+| vehicles departed, total | 48,081 | 48,161 |
+| runs in which no entrant took the exit (4 of them have no weave) | | 22 |
+
+**About the remaining lock flag.**
+- `merge_golden` is the scripted merge golden. It has no weave block, so the
+  key cannot reach it, and the run is the same in both arms.
+- It is flagged by `run_summary`'s rule that more than 10 % of entered
+  vehicles are unfinished: 10 of 45 are still on the acceleration lane at
+  300 s.
+- The flag predates W1.
+
+**The rows above 1 %.** All are on Ruth St. The T.H.52 rows stay at or below
+0.6 %.
+
+| fixture | seed | entrants took the exit / entrance departed | share | exits given up, without → with | lowest zone minute [m/s], without → with |
+|---|---|---|---|---|---|
+| `ruth_exit` | 3 | 1 / 73 | 1.37 % | 1 → 1 | 16.6 → 16.6 |
+| `ruth_entr_fleet` | 3 | 2 / 128 | 1.56 % | 1 → 0 | 13.1 → 16.7 |
+| `ruth_exit_fleet` | 3 | 3 / 73 | 4.11 % | 12 → 6 | 6.6 → 12.1 |
+| `ruth_exit_fleet` | 4 | 1 / 73 | 1.37 % | 2 → 3 | 10.7 → 10.6 |
+| `ruth_exit_fleet` | 5 | 3 / 73 | 4.11 % | 4 → 4 | 13.4 → 12.2 |
+| `ruth_exit_fleet_271` | 3 | 5 / 73 | 6.85 % | 7 → 8 | 8.1 → 9.6 |
+| `ruth_exit_fleet_271` | 4 | 2 / 73 | 2.74 % | 2 → 5 | 9.5 → 9.6 |
+| `ruth_exit_fleet_271` | 5 | 2 / 73 | 2.74 % | 14 → 3 | 5.9 → 12.8 |
+
+Read beside the cap:
+- On these short-section, small-entrance fixtures one entrant is 1.4 %.
+  Neither the record nor these runs say whether that rate is unrealistic.
+- The same runs give up fewer exits overall (Ruth St: 45 → 31).
+- They clear the reference's one weave lock (`ruth_entr_fleet` s5, lowest
+  minute 8.9 → 18.2 m/s).
+- The T.H.52 corridor-fleet G0 row moves both ways. At seed 4 its lowest
+  minute fell from 10.9 to 6.6 m/s and its given-up exits rose from 1 to 4.
+
+### 8.5 Verdict, criterion by criterion (as pre-registered in §6.2)
+
+| # | criterion | result | verdict |
+|---|---|---|---|
+| F1 | exit-end flow gain, 95 % lower bound above 0 | +29.0 [+9.7, +48.3] | **pass** |
+| F2 | stranded-entrant time ≤ 9.5 s per run | 3.8 s | **pass** |
+| F3 | entrants taking the exit ≤ 1 % of entrance departures at every seed | 1.04 % at seed 15; ≤ 0.81 % at the other 19 | **fail** |
+| F4 | zero collisions; −9 m/s² steps ≤ reference + 2 (≤ 4); given-up exits ≤ the reference (66) | 0; 0; 62 | **pass** |
+| F5 | grid and G0 rows: zero collisions, no lock, entrants taking the exit ≤ 1 % per run | 0 collisions; one lock flag (`merge_golden`, no weave, the same run without the key); above 1 % in 8 of 37 runs, all Ruth St | **fail** |
+
+**Outcome.** Two fixture criteria fail. Under §6.2's rule the key stays off
+and nothing is re-thresholded.
+
+**What the pass criteria show.**
+- W1 does what it was built to do: it removes the exit-lane blockage, with no
+  safety cost.
+- Its capacity effect is small, as §6.2 expected: about 6 % of the 465 veh/h
+  loss.
+
+**What the failures are.** Both concern how often the rule fires on small
+entrances. Neither concerns safety or flow.
+
+### 8.6 What the corridor criteria C1–C5 would need (cloud; not run)
+
+Under §6.2, the failure of F3 and F5 already keeps the key off. The corridor
+round would be run only if the owner revisits that decision. It needs:
+
+- **A scenario variant.** `scenarios/mndot_i94_wb_stpaul_weave_dc.yaml` (the
+  xlsfg reference configuration of stage `p1_mndot_ref` with the Amendment-1
+  drivers; config hash `db9fbab5fc6e`), with
+  `weave_params: {exit_prepare: 1, entrant_giveup_m: 5}` on both weave
+  entrances:
+  - `on-ramp 769818012`, T.H.52 → `off-ramp 18207598`;
+  - `on-ramp 745524613`, Ruth St → `C-D split 18208090`.
+
+  Written as an uncommitted variant; its config hash differs from the
+  committed one.
+- **A paired battery.** The four-hour, 20-seed battery on the same seeds and
+  drivers as step 3's reference battery, paired seed by seed. One
+  n2-standard-32 runs all 20 seeds in parallel, at about $0.2–1.2 for the
+  simulation phase (docs/PERFORMANCE_2026-10-07.md §5).
+- **Readouts:**
+  - C1: S790 06:30–07:30, paired 95 % upper bound ≥ 0.
+  - C2: departed share, paired upper bound ≥ 0.
+  - C3: zero collisions.
+  - C4: lowest departed share ≥ 0.8 × the median.
+  - C5: per weave, `weave_sections[i].n_entrant_took_exit` over that
+    entrance's `ramps[k].n_departed` ≤ 1 %, at T.H.52 and Ruth St, read from
+    each run's `meta.json`.
+- **A tooling gap for C5.** Neither `scripts/corridor_battery.py` nor
+  `scripts/corridor_sweep.py` aggregates `n_entrant_took_exit` yet. It was
+  not added, because adoption is a separate decision.
+
+### 8.7 Reproduce
+
+From the repository root, with `$W` a scratch directory:
+
+```sh
+uv run --no-sync python scripts/merge_model_selfcheck.py th52 --model weave \
+    --fleet-from scenarios/mndot_i94_wb_stpaul_weave_dc.yaml --seeds 3-22 \
+    --keep --work-dir $W/ref --out $W/ref.json
+uv run --no-sync python scripts/merge_model_selfcheck.py th52 --model weave \
+    --fleet-from scenarios/mndot_i94_wb_stpaul_weave_dc.yaml --seeds 3-22 \
+    --weave-set entrant_giveup_m=5 --keep --work-dir $W/w1 --out $W/w1.json
+uv run --no-sync python artifacts/weave_loss_2026-10-07/w1/harness/eval_post.py $W/ref $W/ref_post.json
+uv run --no-sync python artifacts/weave_loss_2026-10-07/w1/harness/eval_post.py $W/w1 $W/w1_post.json
+uv run --no-sync python artifacts/weave_loss_2026-10-07/w1/harness/eval_stats.py $W   # F1-F4
+uv run --no-sync python scripts/merge_model_selfcheck.py grid --model weave \
+    --weave-set entrant_giveup_m=5 --out $W/grid_w1.json                              # F5
+```
+
+**Identity runs.** `harness/py.sh TREE harness/cmp.py HEAD_TREE OUT WORK` runs
+them once per tree, and `harness/hashes.py` hashes the scenarios. Each tree is
+a `git archive HEAD` extraction, the second with the two changed files copied
+in.

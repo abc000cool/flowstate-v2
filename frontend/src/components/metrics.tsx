@@ -163,6 +163,10 @@ export function DotStrip({
               className={`dot${shown === i ? ' active' : ''}`}
               data-dot={i}
               tabIndex={i === active ? 0 : -1}
+              // a focusable <g> has no role of its own, so whether its label
+              // is read depends on the browser's SVG mapping: each dot is a
+              // data-point graphic with a text alternative
+              role="img"
               aria-label={text(i)}
               onPointerEnter={() => setTip(i)}
               onPointerLeave={() => setTip(null)}

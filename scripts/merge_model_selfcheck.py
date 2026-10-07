@@ -47,6 +47,12 @@ Subcommands:
   speed factor (docs/MERGE_MODEL.md §2: 1.245 is a sensitivity, not the
   acceptance).
 
+``grid``, ``th52`` and ``ceiling`` take ``--weave-set KEY=VALUE`` (repeatable,
+``--model weave`` only): the key is set in the ``weave_params`` of every weave
+block of every run, e.g. ``--weave-set entrant_giveup_m=5`` for amendment W1
+(docs/WEAVE_LOSS_DIAGNOSIS.md §6.2). The runs' config hashes then differ from
+the committed fixtures'; nothing committed is changed.
+
 * ``ceiling`` — the T.H.52 section's ceiling with no crossing needed
   (docs/MERGE_MODEL.md amendment A2.3; WP-76's realization B at p = 1,
   docs/WEAVE_MODEL_PLAN.md, whose session harness was not kept and is
@@ -81,6 +87,8 @@ Run (from the repository root)::
     uv run --no-sync python scripts/merge_model_selfcheck.py check --out /tmp/selfcheck.json
     uv run --no-sync python scripts/merge_model_selfcheck.py grid --model measured --out /tmp/grid.json
     uv run --no-sync python scripts/merge_model_selfcheck.py th52 --model measured --seeds 3-22
+    uv run --no-sync python scripts/merge_model_selfcheck.py th52 --model weave \
+        --fleet-from scenarios/mndot_i94_wb_stpaul_weave_dc.yaml --weave-set entrant_giveup_m=5
     uv run --no-sync python scripts/merge_model_selfcheck.py ceiling --seeds 3-12 --speed-factor 1.245
 """
 
@@ -155,6 +163,41 @@ def to_model(cfg: Any, model: str, extra_on_ramps: Sequence[str] = ()) -> Any:
                 r["weave"]["weave_params"] = {}
     raw["name"] = f"{raw['name']}_measured"
     return ScenarioConfig.model_validate(raw)
+
+
+def parse_weave_set(items: Sequence[str] | None) -> dict[str, float]:
+    """``KEY=VALUE`` pairs of ``--weave-set`` as a ``weave_params`` mapping."""
+    out: dict[str, float] = {}
+    for item in items or ():
+        key, sep, value = item.partition("=")
+        if not sep or not key:
+            raise SystemExit(f"--weave-set expects KEY=VALUE, got {item!r}")
+        try:
+            out[key] = float(value)
+        except ValueError:
+            raise SystemExit(f"--weave-set {key}: {value!r} is not a number") from None
+    return out
+
+
+def with_weave_params(cfg: Any, overrides: dict[str, float]) -> Any:
+    """``cfg`` with ``overrides`` set in the ``weave_params`` of every ``merge: weave`` on-ramp.
+
+    Validated as any scenario is (an unknown or removed key is refused). A
+    config with no weave block is returned unchanged.
+    """
+    from flowstate_core.config import ScenarioConfig
+
+    if not overrides:
+        return cfg
+    raw = cfg.model_dump(mode="json")
+    if raw["network"].get("kind") != "osm":
+        return cfg
+    hit = False
+    for r in raw["network"]["ramps"]:
+        if r.get("kind") == "on" and r.get("merge") == "weave" and r.get("weave") is not None:
+            r["weave"]["weave_params"] = {**r["weave"].get("weave_params", {}), **overrides}
+            hit = True
+    return ScenarioConfig.model_validate(raw) if hit else cfg
 
 
 # --- the fixture configs ------------------------------------------------------
@@ -300,6 +343,7 @@ def run_summary(paths: Any, wall_s: float) -> dict[str, Any]:
                     "n_exec_forced",
                     "n_missed",
                     "n_missed_exit",
+                    "n_entrant_took_exit",
                     "n_reached_section_exiting",
                     "n_unfinished",
                     "n_pair_releases",
@@ -320,12 +364,15 @@ def run_summary(paths: Any, wall_s: float) -> dict[str, Any]:
     }
 
 
-def run_one(name: str, seed: int, model: str, work: Path) -> tuple[Any, dict[str, Any]]:
-    """Run one fixture under one model; returns its paths and summary."""
+def run_one(
+    name: str, seed: int, model: str, work: Path, weave_set: dict[str, float] | None = None
+) -> tuple[Any, dict[str, Any]]:
+    """Run one fixture under one model (``weave_set``: see ``--weave-set``); returns its
+    paths and summary."""
     from microsim import run_micro
 
     cfg, extra = fixture(name, seed)
-    cfg = to_model(cfg, model, extra)
+    cfg = with_weave_params(to_model(cfg, model, extra), weave_set or {})
     t0 = time.perf_counter()
     paths = run_micro(cfg, seed, work / f"{name}_{model}")
     return paths, {"fixture": name, "model": model, **run_summary(paths, time.perf_counter() - t0)}
@@ -578,6 +625,9 @@ def th52_criteria(paths: Any) -> dict[str, Any]:
         "station_speed_min_ms": round(float(station.min()), 3) if len(station) else None,
         "n_collisions": meta["n_collisions"],
         "exits_given_up": [given_up, reached],
+        # amendment W1's counter (None when entrant_giveup_m is off), against
+        # the entrance's departures
+        "entrants_took_exit": [z.get("n_entrant_took_exit"), on["n_departed"]],
         "hard_brake_vehicle_steps": int((df.a <= -EMERGENCY_DECEL_MS2 + 1e-6).sum()),
     }
     out["criteria"] = {
@@ -791,6 +841,7 @@ def th52_ceiling(
     speed_factor: float | None,
     keep: bool,
     fleet_from: Path | None = None,
+    weave_set: dict[str, float] | None = None,
 ) -> dict[str, Any]:
     """Amendment A2.3: the T.H.52 section test's criteria with no crossing needed."""
     from microsim import run_micro
@@ -815,7 +866,7 @@ def th52_ceiling(
     try:
         for seed in seeds:
             cfg = with_fleet(mmt._th52_corridor_config(seed), speed_factor, fleet_from)
-            cfg = to_model(cfg, model)
+            cfg = with_weave_params(to_model(cfg, model), weave_set or {})
             t0 = time.perf_counter()
             paths = run_micro(cfg, seed, work / f"ceiling_{model}")
             row = {**th52_criteria(paths), "wall_s": round(time.perf_counter() - t0, 2)}
@@ -832,6 +883,7 @@ def th52_ceiling(
         "model": model,
         "speed_factor": speed_factor,
         "fleet_from": None if fleet_from is None else str(fleet_from),
+        "weave_set": dict(weave_set or {}),
         "rows": rows,
     }
 
@@ -892,6 +944,13 @@ def main(argv: list[str] | None = None) -> None:
                 default="weave" if name == "ceiling" else "measured",
                 choices=("measured", "weave"),
             )
+            p.add_argument(
+                "--weave-set",
+                action="append",
+                default=None,
+                metavar="KEY=VALUE",
+                help="set a weave_params key on every weave block (--model weave only; repeatable)",
+            )
         if name == "check":
             p.add_argument("--seeds", default="3-7")
             p.add_argument("--n-boot", type=int, default=200)
@@ -928,6 +987,9 @@ def main(argv: list[str] | None = None) -> None:
             args.out.write_text(json.dumps(res, indent=1, default=float) + "\n")
             print(f"wrote {args.out}")
         return
+    weave_set = parse_weave_set(getattr(args, "weave_set", None))
+    if weave_set and args.model != "weave":
+        raise SystemExit("--weave-set applies to --model weave only (measured has fixed constants)")
     work = args.work_dir or Path(tempfile.mkdtemp(prefix="merge_model_selfcheck_"))
     work.mkdir(parents=True, exist_ok=True)
     cwd = Path.cwd()
@@ -943,7 +1005,13 @@ def main(argv: list[str] | None = None) -> None:
                 )
         elif args.cmd == "ceiling":
             result = th52_ceiling(
-                _seeds(args.seeds), work, args.model, args.speed_factor, args.keep, args.fleet_from
+                _seeds(args.seeds),
+                work,
+                args.model,
+                args.speed_factor,
+                args.keep,
+                args.fleet_from,
+                weave_set,
             )
         elif args.cmd == "grid":
             only = {s for s in args.only.split(",") if s}
@@ -952,12 +1020,12 @@ def main(argv: list[str] | None = None) -> None:
                 if only and name not in only:
                     continue
                 for seed in seeds:
-                    paths, row = run_one(name, seed, args.model, work)
+                    paths, row = run_one(name, seed, args.model, work, weave_set)
                     rows.append(row)
                     if not args.keep:
                         shutil.rmtree(paths.run_dir, ignore_errors=True)
                     print(json.dumps(row), flush=True)
-            result = {"model": args.model, "rows": rows}
+            result = {"model": args.model, "weave_set": weave_set, "rows": rows}
         else:
             from microsim import run_micro
 
@@ -967,7 +1035,7 @@ def main(argv: list[str] | None = None) -> None:
                 cfg = with_fleet(
                     mmt._th52_corridor_config(seed), args.speed_factor, args.fleet_from
                 )
-                cfg = to_model(cfg, args.model)
+                cfg = with_weave_params(to_model(cfg, args.model), weave_set)
                 t0 = time.perf_counter()
                 paths = run_micro(cfg, seed, work / f"th52_{args.model}")
                 row = {**th52_criteria(paths), "wall_s": round(time.perf_counter() - t0, 2)}
@@ -979,6 +1047,7 @@ def main(argv: list[str] | None = None) -> None:
                 "model": args.model,
                 "speed_factor": args.speed_factor,
                 "fleet_from": None if args.fleet_from is None else str(args.fleet_from),
+                "weave_set": weave_set,
                 "rows": rows,
             }
         if args.out is not None:

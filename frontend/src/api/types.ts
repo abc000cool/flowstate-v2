@@ -619,13 +619,23 @@ export interface CorridorLaneMismatch {
   hint: string;
 }
 
-export type SplitVerdict = 'ok' | 'wrong_side' | 'added_lane_wrong_side' | 'unknown';
+/** `CorridorSplitFindingOut.verdict` (`microsim.split_audit.Verdict`). The
+ * three defects are `split_audit.DEFECT_VERDICTS`; `through_lane_exit_only`
+ * (2026-10-07, docs/CONTRACTS.md "Split audit, lane by lane") is a split on
+ * the right side whose lane OSM draws as continuing was compiled exit-only. */
+export type SplitVerdict =
+  | 'ok'
+  | 'wrong_side'
+  | 'added_lane_wrong_side'
+  | 'through_lane_exit_only'
+  | 'unknown';
 
 /** Mirrors the API's `CorridorSplitFindingOut`: one exit leaving the corridor,
  * the side OSM draws it on versus the lanes the compiled network feeds it
- * from (`microsim.split_audit`). A `wrong_side` / `added_lane_wrong_side`
- * verdict traps through traffic in a lane that leads only to the exit; the
- * `remedy` names the fix in the engine's terms. Reported, never enforced. */
+ * from (`microsim.split_audit`). A `wrong_side` / `added_lane_wrong_side` /
+ * `through_lane_exit_only` verdict traps through traffic in a lane that leads
+ * only to the exit; the `remedy` names the fix in the engine's terms.
+ * Reported, never enforced. */
 export interface CorridorSplitFinding {
   from_edge: string;
   exit_edge: string;
@@ -649,6 +659,16 @@ export interface CorridorSplitFinding {
   continuing_lanes?: number | null;
   verdict: SplitVerdict;
   remedy: string;
+  /** Side on which the compiled edge gained lanes over the corridor edge
+   * feeding it. Additive (2026-10-07): absent from an older service. */
+  added_lane_side?: 'left' | 'right' | 'unknown';
+  /** Compiled lanes the map draws as continuing that lead only to the exit;
+   * non-empty exactly on a `through_lane_exit_only` finding. Additive
+   * (2026-10-07). */
+  trapped_lanes?: number[];
+  /** What says those lanes continue: `turn:lanes` or `lane count` (empty when
+   * none is trapped). Additive (2026-10-07). */
+  trapped_evidence?: string;
 }
 
 /** Mirrors the API's `CorridorSummaryOut`: what the onboarding discovered and

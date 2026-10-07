@@ -2597,6 +2597,16 @@ def _weave_short_section_rule(length_m: float, prm: dict[str, float]) -> dict[st
     }
 
 
+def _weave_entrant_giveup_m(prm: Mapping[str, float]) -> float | None:
+    """The entering give-up's distance (amendment W1, ``entrant_giveup_m``) [m].
+
+    ``None`` when the rule is off: the key unset (it has no default,
+    ``flowstate_core.config.WEAVE_OPTIONAL_KEYS``) or ``0``.
+    """
+    value = prm.get("entrant_giveup_m")
+    return float(value) if value is not None and value > 0.0 else None
+
+
 def _weave_step(
     mod: Any,
     tc: Any,
@@ -2720,6 +2730,20 @@ def _weave_step(
     held by SUMO at the end of a lane its route does not continue on, where
     it stopped the through lane behind it and the auxiliary lane beside it.
 
+    **The entering give-up** (2026-10-07, amendment W1 of
+    docs/WEAVE_LOSS_DIAGNOSIS.md §6.2; ``entrant_giveup_m``, a key of
+    ``WEAVE_OPTIONAL_KEYS``, unset = off). Its mirror: an entrant still owing
+    its change into section lane 1 that has come to a halt
+    (``HALTING_SPEED_MS``) within ``entrant_giveup_m`` of the auxiliary
+    lane's end (the exit gore), with no change to request this step (neither
+    the accepted gaps nor the forced guard pass), takes the paired exit: it
+    is rerouted (``vehicle.changeTarget`` to the off-ramp's last edge,
+    ``exit_target``), handed back at once, never taken under control again
+    (``took_exit``) and counted in ``n_missed`` and ``n_entrant_took_exit``
+    — instead of standing at the end of the exit-only lane, where every
+    exit-bound vehicle behind it stops (seed 4 of the T.H.52 section test:
+    nine, for 50 s). Off, nothing of it runs and nothing is written.
+
     **The exiters' early move** (2026-09-24, block 3, WP-62;
     :func:`_weave_exit_prepare_step`, ``exit_prepare``, off by default).
     The vacate rule's mirror: a vehicle bound for the paired exit in a lane
@@ -2790,6 +2814,10 @@ def _weave_step(
     rule = ws.get("rule") or _weave_short_section_rule(section_len, prm)
     step_s = float(ws["step_s"])
     veh = ws["veh"]
+    # amendment W1 (the entering give-up; None = off) and the entrants it
+    # rerouted to the exit, never driven again
+    entrant_giveup_m = _weave_entrant_giveup_m(prm)
+    took_exit: Collection[str] = ws.get("took_exit", ())
     pending: dict[str, int] = {}
     # entering vehicles still on the ramp within lookahead_m of the section:
     # gap choice and cooperation only (see the docstring, anticipation)
@@ -2859,7 +2887,7 @@ def _weave_step(
                 awaiting_exit.add(vid)
             if lane >= 1 and vid not in ws["gave_up"]:
                 pending[vid] = -1
-        elif lane == 0 and ws["exit_only"][road]:
+        elif lane == 0 and ws["exit_only"][road] and vid not in took_exit:
             pending[vid] = 1
     for lst in lanes.values():
         lst.sort()
@@ -3013,6 +3041,29 @@ def _weave_step(
             ws["n_missed"] += 1
             ws["n_missed_exit"] += 1
             continue
+        if (
+            d > 0
+            and entrant_giveup_m is not None
+            and remaining <= entrant_giveup_m
+            and v_ego < HALTING_SPEED_MS
+            and not (accepted or forced_ok)
+        ):
+            # amendment W1, the entering give-up: an entrant halted within
+            # entrant_giveup_m of the auxiliary lane's end with no change to
+            # request this step takes the paired exit (rerouted to the
+            # off-ramp's last edge; its lane already leads there) instead of
+            # standing at the end of the exit-only lane with every exit-bound
+            # vehicle behind it stopped (docs/WEAVE_LOSS_DIAGNOSIS.md §3.8,
+            # §6.2). Recorded with the rerouted vehicles (``gave_up``, for
+            # VEHICLES_FILE) and never taken under control again
+            mod.vehicle.changeTarget(vid, ws["exit_target"])
+            mod.vehicle.setLaneChangeMode(vid, st["lc_mode_orig"])
+            del veh[vid]
+            ws["took_exit"].add(vid)
+            ws["gave_up"].add(vid)
+            ws["n_missed"] += 1
+            ws["n_entrant_took_exit"] += 1
+            continue
         if vid in yielders:
             # yields to its released partner: no target, no request, the
             # gap commitment dropped (re-chosen next step)
@@ -3121,7 +3172,12 @@ def _weave_meta(ws: dict[str, Any], n_departed_by_route: dict[str, int]) -> dict
     runner itself rerouted through at the gore's end, halted (below
     ``HALTING_SPEED_MS``) still owing their change with no more than
     ``exit_giveup_m`` of section ahead — a subset of ``n_missed``, so the
-    identity above holds; ``n_exit_prepared`` (WP-62, the exiters' early
+    identity above holds; ``n_entrant_took_exit`` (amendment W1, written
+    only when ``entrant_giveup_m`` is on, right after ``n_missed_exit``) the
+    entrants the runner itself rerouted to the paired exit at the auxiliary
+    lane's end, halted still owing their change with no more than
+    ``entrant_giveup_m`` of section ahead — also a subset of ``n_missed``;
+    ``n_exit_prepared`` (WP-62, the exiters' early
     move) the vehicles bound for the paired exit that the rule asked, inside
     the vacate window, into the lane feeding section lane 1 and that were
     seen there before the section, each once (:func:`_weave_exit_prepare_step`;
@@ -3172,6 +3228,12 @@ def _weave_meta(ws: dict[str, Any], n_departed_by_route: dict[str, int]) -> dict
         "n_forced": ws["n_forced"],
         "n_missed": ws["n_missed"],
         "n_missed_exit": ws["n_missed_exit"],
+        # amendment W1: absent when the rule is off, so such a meta is as before
+        **(
+            {"n_entrant_took_exit": ws["n_entrant_took_exit"]}
+            if _weave_entrant_giveup_m(ws["params"]) is not None
+            else {}
+        ),
         "n_exit_prepared": ws["n_exit_prepared"],
         "n_forced_deferred": ws["n_forced_deferred"],
         "n_cooperations": ws["n_cooperations"],
@@ -5450,9 +5512,11 @@ DESTINATION_CORRIDOR_END: Final[str] = "corridor_end"
 #: corridor end); ``entry_*`` / ``last_*`` are the vehicle's first and last
 #: rows of ``trajectories.parquet`` (null when it has none); ``gave_up`` marks
 #: an exiter a weaving section rerouted through (``weave_sections[i]
-#: .n_missed_exit``) or a vehicle the lane-end give-up rerouted to its lane's
-#: own continuation (``lane_end_giveups``, WP-71), ``destination`` keeping its
-#: planned destination and ``destination_final`` the one it drove to.
+#: .n_missed_exit``), an entrant it rerouted to the paired exit (amendment W1,
+#: ``weave_sections[i].n_entrant_took_exit``) or a vehicle the lane-end
+#: give-up rerouted to its lane's own continuation (``lane_end_giveups``,
+#: WP-71), ``destination`` keeping its planned destination and
+#: ``destination_final`` the one it drove to.
 _VEHICLES_SCHEMA: Final[list[tuple[str, pa.DataType]]] = [
     ("veh_id", pa.string()),
     ("route", pa.string()),
@@ -5986,13 +6050,15 @@ def _vehicle_table(
         running: Vehicles still in the network when the run ended (not
             arrived).
         gave_up_s: Step time [s] at which a vehicle was first given up: a
-            weaving section rerouted an exiter through (``ws["gave_up"]``),
-            or the lane-end give-up (WP-71, :func:`_lane_end_step`) rerouted
-            a vehicle to its lane's own continuation.
+            weaving section rerouted an exiter through or an entrant to its
+            paired exit (``ws["gave_up"]``; the latter only under amendment
+            W1), or the lane-end give-up (WP-71, :func:`_lane_end_step`)
+            rerouted a vehicle to its lane's own continuation.
         destination_final: The destination label a lane-end give-up
-            rerouted each vehicle to (its last, when rerouted twice); a
-            given-up vehicle absent from it drove to the corridor's end (a
-            weaving section's give-up). ``None``: none.
+            rerouted each vehicle to (its last, when rerouted twice), or a
+            weaving section's entering give-up (amendment W1) its paired
+            exit; a given-up vehicle absent from it drove to the corridor's
+            end (a weaving section's exit give-up). ``None``: none.
         driver_gaps: The measured merge model's critical gaps per vehicle
             (2026-10-05, B§5.3: recorded in ``vehicles.parquet``); when given,
             the columns of :data:`DRIVER_GAP_COLUMNS` follow the contract's,
@@ -6603,6 +6669,13 @@ def run_micro(
                     # destination is the corridor's last edge
                     "gave_up": set(),
                     "through_target": chain_w[-1],
+                    # amendment W1 (entrant_giveup_m, off unless set): the
+                    # entrants rerouted to the paired exit at the auxiliary
+                    # lane's end, its counter and their new destination (the
+                    # off-ramp's last edge, where it leaves the network)
+                    "took_exit": set(),
+                    "n_entrant_took_exit": 0,
+                    "exit_target": exit_w.edges[-1],
                     "n_forced_deferred": 0,
                     "n_cooperations": 0,
                     "coop_decel_sum": 0.0,
@@ -7021,6 +7094,10 @@ def run_micro(
                     for vid in ws["gave_up"]:
                         gave_up_at.setdefault(vid, t)
                     n_gave_up_seen[n_ws] = len(ws["gave_up"])
+                    # amendment W1: an entrant that took the paired exit
+                    # drove to it, not to the corridor's end (VEHICLES_FILE)
+                    for vid in ws.get("took_exit", ()):
+                        lane_end_dest.setdefault(vid, ws["exit"])
             # The lane-end give-up (WP-71), after the sections' own rules.
             if lane_end is not None:
                 for vid, dest in _lane_end_step(

@@ -4,13 +4,14 @@
  * composer carries unmodelled preset fields through unchanged. */
 
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { clearAuthFailure, OFFLINE_WRITE_MESSAGE, setOfflineFallback } from '../api/client';
 import { AppStateProvider } from '../components/AppContext';
 import { Toasts } from '../components/toast';
 import { mockListRuns } from '../mocks/mockApi';
 import { ScenariosView } from '../views/ScenariosView';
+import { ContentFocusProbe, dropFocus } from './focus';
 
 const preset = {
   name: 'ring_sugiyama',
@@ -447,5 +448,103 @@ describe('ScenariosView with an OSM (onboarded) preset', () => {
     // clear of the warm-up by a measurable window: launchable again
     fireEvent.change(within(dialog).getByLabelText('Duration (s)'), { target: { value: '3600' } });
     expect(within(dialog).getByRole('button', { name: 'Launch run' })).toBeEnabled();
+  });
+});
+
+/** §9.1 "Busy": Create scenario and the launcher's Launch run are disabled
+ * while they post, which drops keyboard focus to <body>. A finished create
+ * hands it back to the button; a refused launch to the launcher's button (the
+ * dialog stays open); a launch that lands on Runs asks the shell to focus
+ * that page's content. */
+describe('ScenariosView keyboard focus after a busy action', () => {
+  const calls: Call[] = [];
+  /** When set, `POST /runs` is refused with this detail. */
+  let runRefusal: string | null = null;
+
+  beforeEach(() => {
+    setOfflineFallback(false);
+    clearAuthFailure();
+    calls.length = 0;
+    runRefusal = null;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+        const url = String(input);
+        const method = init?.method ?? 'GET';
+        calls.push({ url, method });
+        if (url.endsWith('/scenarios/preset')) return json([preset]);
+        if (url.endsWith('/scenarios') && method === 'GET') return json([]);
+        if (url.endsWith('/scenarios') && method === 'POST') {
+          return json({ scenario_id: 'scn_new', config_hash: preset.config_hash }, 201);
+        }
+        if (url.endsWith('/runs') && method === 'POST') {
+          if (runRefusal !== null) return json({ detail: runRefusal }, 422);
+          return json({ run_id: 'run_new', status: 'queued' }, 202);
+        }
+        if (url.endsWith('/runs')) return json([]);
+        return json({ detail: `unexpected ${method} ${url}` }, 404);
+      }),
+    );
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    setOfflineFallback(false);
+  });
+
+  function renderRouted(): void {
+    render(
+      <AppStateProvider>
+        <Toasts />
+        <MemoryRouter initialEntries={['/scenarios']}>
+          <Routes>
+            <Route path="/scenarios" element={<ScenariosView />} />
+            <Route path="/runs" element={<ContentFocusProbe label="runs page" />} />
+          </Routes>
+        </MemoryRouter>
+      </AppStateProvider>,
+    );
+  }
+
+  it('gives focus back to Create scenario once the request ends', async () => {
+    renderRouted();
+    expect(await screen.findByText('ring_sugiyama', {}, { timeout: 4000 })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Load in composer' }));
+    const create = screen.getByRole('button', { name: 'Create scenario' });
+    create.focus();
+    fireEvent.click(create);
+    expect(create).toBeDisabled();
+    dropFocus();
+    await waitFor(() => expect(create).toBeEnabled(), { timeout: 4000 });
+    expect(create).toHaveFocus();
+    expect(calls.some((c) => c.method === 'POST' && c.url.endsWith('/scenarios'))).toBe(true);
+  });
+
+  it("refocuses the launcher's button after a refused launch", async () => {
+    runRefusal = 'replicates: the queue is full';
+    renderRouted();
+    expect(await screen.findByText('ring_sugiyama', {}, { timeout: 4000 })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Run…' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Launch ring_sugiyama' });
+    const confirm = within(dialog).getByRole('button', { name: 'Launch run' });
+    expect(confirm).toHaveFocus();
+    fireEvent.click(confirm);
+    expect(confirm).toBeDisabled();
+    dropFocus();
+    await waitFor(() => expect(confirm).toBeEnabled(), { timeout: 4000 });
+    expect(confirm).toHaveFocus();
+    // refused: the launcher is still open, with nothing queued
+    expect(screen.getByRole('dialog', { name: 'Launch ring_sugiyama' })).toBeInTheDocument();
+  });
+
+  it('lands a launch on the runs page with its content focused', async () => {
+    renderRouted();
+    expect(await screen.findByText('ring_sugiyama', {}, { timeout: 4000 })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Run…' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Launch ring_sugiyama' });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Launch run' }));
+    expect(
+      await screen.findByText('runs page: content focus requested', {}, { timeout: 4000 }),
+    ).toBeInTheDocument();
   });
 });

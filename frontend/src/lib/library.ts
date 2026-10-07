@@ -11,6 +11,47 @@
 
 import { createScenario, listScenarios } from '../api/client';
 import type { PresetSummary, ScenarioSummary } from '../api/types';
+import { simMinutes } from './limits';
+
+/** The ring benchmark preset: the canonical emergence benchmark, and the only
+ * scenario in the repo that needs no data file on the machine
+ * (docs/QUICKSTART.md §4, CLAUDE.md §3.2.1). The guided first run uses it,
+ * and the Runs launcher opens on it. */
+export const RING_PRESET_FILENAME = 'ring_sugiyama.yaml';
+export const RING_PRESET_NAME = 'ring_sugiyama';
+
+/** The ring preset among the service's presets, by file name first. */
+export function findRingPreset(presets: PresetSummary[]): PresetSummary | undefined {
+  return (
+    presets.find((p) => p.filename === RING_PRESET_FILENAME) ??
+    presets.find((p) => p.name === RING_PRESET_NAME)
+  );
+}
+
+/** The preset a launcher opens on before anything is chosen: the ring
+ * benchmark when the service serves it, else the cheapest preset by what a
+ * launch would commit (replicates × duration; the first one on a tie).
+ *
+ * Not simply the first in file order: that is `corridor_10km`, 20 × 20 min
+ * ≈ 6.7 sim-hours, one click from being queued. Undefined without presets. */
+export function defaultPreset(presets: PresetSummary[]): PresetSummary | undefined {
+  const ring = findRingPreset(presets);
+  if (ring) return ring;
+  let best: PresetSummary | undefined;
+  let bestCost = Infinity;
+  for (const p of presets) {
+    const replicates = p.config?.replicates;
+    const duration = p.config?.sim?.duration_s;
+    // a config without the numbers is not "free" (simMinutes reads it as 0)
+    if (!Number.isFinite(replicates) || !Number.isFinite(duration)) continue;
+    const cost = simMinutes(replicates, duration);
+    if (cost < bestCost) {
+      best = p;
+      bestCost = cost;
+    }
+  }
+  return best;
+}
 
 /** A library card/option: a stored scenario, or a repo preset with no id yet. */
 export type LibraryItem = ScenarioSummary | PresetSummary;

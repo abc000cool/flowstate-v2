@@ -7,7 +7,10 @@
  * Layout and behavior: docs/design/DASHBOARD_DESIGN.md §9.15. Focus is taken
  * once, at mount; Tab and Shift+Tab cycle inside the dialog; Escape cancels;
  * the opener gets focus back on close; the app behind is `inert` while open
- * (the dialog is portalled to <body> so it is not inside the inert tree). */
+ * (the dialog is portalled to <body> so it is not inside the inert tree).
+ * The confirm button is disabled while `busy`, which drops focus to <body>;
+ * when `busy` clears with the dialog still open (a refused launch), focus
+ * goes back to it — never away from a field the user has moved to. */
 
 import { useEffect, useRef, type KeyboardEvent, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
@@ -81,6 +84,24 @@ export function ConfirmDialog({
       if (opener && opener.isConnected) opener.focus();
     };
   }, []);
+
+  // The confirm button is disabled while busy, and a disabled button loses
+  // focus to <body> — with the app behind inert, nowhere a Tab can recover
+  // from. When busy clears and the dialog is still open (the launch was
+  // refused), give focus back to the button that was pressed. Only from
+  // <body> or the button itself: a field typed into while the dialog was
+  // blocked keeps focus (the Scenarios launcher clears `busy` as a valid
+  // duration is typed).
+  const wasBusy = useRef(busy);
+  useEffect(() => {
+    const was = wasBusy.current;
+    wasBusy.current = busy;
+    if (!was || busy) return;
+    const active = document.activeElement;
+    if (active === null || active === document.body || active === confirmRef.current) {
+      confirmRef.current?.focus();
+    }
+  }, [busy]);
 
   // One listener for the life of the dialog: it calls whatever onCancel the
   // current render passed, so Escape after a re-render dismisses with the

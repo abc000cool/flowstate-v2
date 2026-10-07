@@ -57,8 +57,13 @@ import {
 import type { PresetSummary, ReportOut, RunDetail, RunMetrics } from '../api/types';
 import { saveText } from '../lib/download';
 import { failureReason } from '../lib/format';
-import { useAuthFailed, useOfflineFallback, usePoll } from '../lib/hooks';
-import { ensureStored } from '../lib/library';
+import { useAuthFailed, useBusyFocus, useOfflineFallback, usePoll } from '../lib/hooks';
+import {
+  ensureStored,
+  findRingPreset,
+  RING_PRESET_FILENAME,
+  RING_PRESET_NAME,
+} from '../lib/library';
 import { warmupProblem } from '../lib/limits';
 import { MIN_REPLICATES } from '../lib/metrics';
 import { ProgressBar, StatusChip, StatusGlyph } from './bits';
@@ -66,11 +71,9 @@ import { Icon } from './icons';
 import { PageHeader } from './PageHeader';
 import { toast, toastError } from './toast';
 
-/** The preset the walkthrough runs: the canonical emergence benchmark, and
- * the only scenario in the repo that needs no data file on the machine
- * (docs/QUICKSTART.md §4, CLAUDE.md §3.2.1). */
-export const RING_PRESET_FILENAME = 'ring_sugiyama.yaml';
-export const RING_PRESET_NAME = 'ring_sugiyama';
+/** The preset the walkthrough runs (defined in `lib/library`, which the Runs
+ * launcher shares; re-exported here, where it was first defined). */
+export { RING_PRESET_FILENAME, RING_PRESET_NAME };
 
 /** Replicates the guided launch commits to. Two, because the point is to
  * reach a result in a few clicks — and it is labelled a smoke test
@@ -228,6 +231,22 @@ export function GuidedFirstRun({
    * in-browser backend). */
   const [serverRuns, setServerRuns] = useState<number | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
+  // A step's button is disabled while its request runs, and a finished step
+  // removes it: either way keyboard focus falls to <body> (§9.1 Busy). A
+  // refusal hands focus back to the button; a success hands it to the step
+  // the user acts on next — its enabled button or link, else its title.
+  const busyFocus = useBusyFocus(busy !== null);
+  const stepsRef = useRef<HTMLOListElement>(null);
+  const stepTarget =
+    (key: string) =>
+    (): HTMLElement | null => {
+      const li = stepsRef.current?.querySelector<HTMLElement>(`[data-step="${key}"]`);
+      return (
+        li?.querySelector<HTMLElement>('button:not(:disabled), a[href]') ??
+        li?.querySelector<HTMLElement>('.g-title') ??
+        null
+      );
+    };
   /** The identifiers this sitting recorded, read once. Nothing here is state:
    * each one is a question put to the server by `restoreIds`. */
   const stored = useRef<GuidedIds>(readIds());
@@ -328,11 +347,7 @@ export function GuidedFirstRun({
     try {
       const presets = await listPresetScenarios();
       if (fromDemo) return;
-      setPreset(
-        presets.find((p) => p.filename === RING_PRESET_FILENAME) ??
-          presets.find((p) => p.name === RING_PRESET_NAME) ??
-          null,
-      );
+      setPreset(findRingPreset(presets) ?? null);
       setPresetsAnswered(true);
     } catch {
       /* transient; the connection is reported by the shell's status dot */
@@ -413,8 +428,9 @@ export function GuidedFirstRun({
 
   /* ---------------------------- actions ----------------------------- */
 
-  const storePreset = async (): Promise<void> => {
+  const storePreset = async (control: HTMLElement): Promise<void> => {
     if (preset === null) return;
+    busyFocus.begin(control);
     setBusy('preset');
     setError(null);
     try {
@@ -430,15 +446,18 @@ export function GuidedFirstRun({
           ? `preset ${preset.name} stored as ${scenario_id}`
           : `preset ${preset.name} already stored as ${scenario_id}`,
       );
+      busyFocus.after(stepTarget('run'));
     } catch (err) {
       fail('preset', err);
+      busyFocus.after(() => control);
     } finally {
       setBusy(null);
     }
   };
 
-  const launch = async (): Promise<void> => {
+  const launch = async (control: HTMLElement): Promise<void> => {
     if (scenarioId === null) return;
+    busyFocus.begin(control);
     setBusy('run');
     setError(null);
     try {
@@ -450,8 +469,10 @@ export function GuidedFirstRun({
       setStale((s) => ({ ...s, run: false }));
       rememberIds({ run_id: res.run_id });
       toast('ok', `run ${res.run_id} queued`);
+      busyFocus.after(stepTarget('watch'));
     } catch (err) {
       fail('run', err);
+      busyFocus.after(() => control);
     } finally {
       setBusy(null);
     }
@@ -474,8 +495,9 @@ export function GuidedFirstRun({
     }
   };
 
-  const generate = async (): Promise<void> => {
+  const generate = async (control: HTMLElement): Promise<void> => {
     if (runId === null) return;
+    busyFocus.begin(control);
     setBusy('report');
     setError(null);
     try {
@@ -488,15 +510,19 @@ export function GuidedFirstRun({
       setDownloaded(false);
       setStale((s) => ({ ...s, report: false }));
       rememberIds({ report_id: out.report_id });
+      // the download button when the report is already done, else the step
+      busyFocus.after(stepTarget('report'));
     } catch (err) {
       fail('report', err);
+      busyFocus.after(() => control);
     } finally {
       setBusy(null);
     }
   };
 
-  const download = async (): Promise<void> => {
+  const download = async (control: HTMLElement): Promise<void> => {
     if (report === null) return;
+    busyFocus.begin(control);
     setBusy('download');
     setError(null);
     try {
@@ -506,6 +532,7 @@ export function GuidedFirstRun({
     } catch (err) {
       fail('report', err);
     } finally {
+      busyFocus.after(() => control);
       setBusy(null);
     }
   };
@@ -592,7 +619,7 @@ export function GuidedFirstRun({
           <button
             className="btn sm primary"
             disabled={busy !== null || presetWhy !== null}
-            onClick={() => void storePreset()}
+            onClick={(e) => void storePreset(e.currentTarget)}
           >
             Use {RING_PRESET_NAME}
           </button>
@@ -625,7 +652,7 @@ export function GuidedFirstRun({
           <button
             className="btn sm primary"
             disabled={busy !== null || launchWhy !== null}
-            onClick={() => void launch()}
+            onClick={(e) => void launch(e.currentTarget)}
           >
             Launch {SMOKE_REPLICATES}-replicate smoke run
           </button>
@@ -746,7 +773,7 @@ export function GuidedFirstRun({
             <button
               className="btn sm primary"
               disabled={busy !== null || reportWhy !== null}
-              onClick={() => void generate()}
+              onClick={(e) => void generate(e.currentTarget)}
             >
               Generate report
             </button>
@@ -756,7 +783,7 @@ export function GuidedFirstRun({
               className="btn sm primary"
               disabled={busy !== null || !reportDone}
               title={reportDone ? undefined : `report ${report.status} — the markdown route answers 409 until it is done`}
-              onClick={() => void download()}
+              onClick={(e) => void download(e.currentTarget)}
             >
               Download report.md
             </button>
@@ -802,18 +829,22 @@ export function GuidedFirstRun({
           report bundle. Every step below is ticked by an answer from the API — never by demo
           data.
         </p>
-        <ol className="guided-steps">
+        <ol className="guided-steps" ref={stepsRef}>
           {steps.map((s, i) => {
             const state = stateOf(s);
             return (
-              <li key={s.key} className={`guided-step ${state}`}>
+              <li key={s.key} className={`guided-step ${state}`} data-step={s.key}>
                 <span className="g-num mono">
                   {state === 'done' && <Icon name="check" size={12} strokeWidth={2.5} />}
                   {i + 1}
                 </span>
                 <div className="g-main">
                   <div className="g-head">
-                    <span className="g-title">{s.title}</span>
+                    {/* focusable by script only: where focus lands when the
+                        step before finishes and this one has no control */}
+                    <span className="g-title" tabIndex={-1}>
+                      {s.title}
+                    </span>
                     <span className={`chip ${chipClass(state)}`}>
                       <StatusGlyph state={state} />
                       {state}

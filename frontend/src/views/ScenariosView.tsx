@@ -50,7 +50,13 @@ import { HashValue } from '../components/ui/CopyButton';
 import { EmptyState } from '../components/ui/EmptyState';
 import { ErrorCallout, isShellError } from '../components/ui/ErrorCallout';
 import { Skeleton } from '../components/ui/Skeleton';
-import { useAuthFailed, useOfflineFallback, usePoll } from '../lib/hooks';
+import {
+  FOCUS_CONTENT_STATE,
+  useAuthFailed,
+  useBusyFocus,
+  useOfflineFallback,
+  usePoll,
+} from '../lib/hooks';
 import {
   clampField,
   clampInt,
@@ -303,6 +309,12 @@ export function ScenariosView(): JSX.Element {
   const [launchTarget, setLaunchTarget] = useState<LibraryItem | null>(null);
   const [launchForm, setLaunchForm] = useState<LaunchForm>(DEFAULT_LAUNCH);
   const fileRef = useRef<HTMLInputElement>(null);
+  const createRef = useRef<HTMLButtonElement>(null);
+  // `Create scenario` is disabled while it posts, which drops keyboard focus
+  // to <body>; it gets focus back once the request ends (§9.1 Busy). The
+  // launch dialog does the same for its own button (ConfirmDialog), and a
+  // launch that lands on Runs hands focus to that page's content.
+  const busyFocus = useBusyFocus(busy);
   const navigate = useNavigate();
   const { setCorridor } = useAppState();
   const authFailed = useAuthFailed();
@@ -347,6 +359,7 @@ export function ScenariosView(): JSX.Element {
   const passthrough = passthroughFields(baseConfig, compose.kind);
 
   const submitCompose = async (): Promise<void> => {
+    busyFocus.begin(createRef.current);
     setBusy(true);
     try {
       const res = await createScenario(composeToConfig(compose, baseConfig));
@@ -355,6 +368,9 @@ export function ScenariosView(): JSX.Element {
     } catch (err) {
       toastError(err, 'compose');
     } finally {
+      // back to the button either way: on success the toast names the new
+      // scenario and the composer still holds the values for a variant
+      busyFocus.after(() => createRef.current);
       setBusy(false);
     }
   };
@@ -389,7 +405,7 @@ export function ScenariosView(): JSX.Element {
       setCorridor(s.name);
       setLaunchTarget(null);
       toast('ok', `run ${res.run_id} queued`);
-      navigate('/runs');
+      navigate('/runs', { state: FOCUS_CONTENT_STATE });
     } catch (err) {
       toastError(err, 'run');
     } finally {
@@ -670,7 +686,9 @@ export function ScenariosView(): JSX.Element {
                 {osmNet ? (
                   <div className="field span-2">
                     <span className="field-label">Imported network</span>
-                    <dl className="fact-list osm-facts" aria-label="imported network">
+                    {/* a group so the label is valid: a <dl> has no ARIA role,
+                        and a name on an element without one is ignored */}
+                    <dl className="fact-list osm-facts" role="group" aria-label="imported network">
                       <div className="fact">
                         <dt>OSM extract</dt>
                         <dd className="mono">
@@ -906,9 +924,11 @@ export function ScenariosView(): JSX.Element {
           </span>
           <div className="form-actions-buttons">
             <button
+              ref={createRef}
               type="button"
               className="btn primary"
               disabled={busy}
+              aria-busy={busy || undefined}
               onClick={() => void submitCompose()}
             >
               Create scenario

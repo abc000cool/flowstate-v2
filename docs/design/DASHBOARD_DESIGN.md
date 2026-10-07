@@ -1266,7 +1266,7 @@ background.
 | `.tag.noobs` | NO DATA | neutral |
 | `.tag.server` | SERVER | success |
 | `.tag.verdict-ok` | OK, ok | success |
-| `.tag.verdict-defect` | WRONG SIDE, ADDED LANE, WRONG SIDE, above n % | danger |
+| `.tag.verdict-defect` | WRONG SIDE, ADDED LANE, WRONG SIDE, THROUGH LANE EXIT-ONLY, above n % | danger |
 | `.tag.verdict-unknown` | UNKNOWN, no vehicles planned | neutral |
 
 ### 9.7 Status pills: `.chip` (kept) + `queued | running | done | failed | blocked`

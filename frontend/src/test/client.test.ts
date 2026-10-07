@@ -19,10 +19,12 @@ import {
   isAuthRetryScheduled,
   listCorridors,
   listCriteriaProfiles,
+  listPresetScenarios,
   listReports,
   listRuns,
   listScenarios,
   OFFLINE_WRITE_MESSAGE,
+  saveSettings,
   setOfflineFallback,
 } from '../api/client';
 import {
@@ -524,5 +526,91 @@ describe('demo backend criteria profiles', () => {
     await expect(mockCreateReport(['run-8f2c11'], undefined, 'not_a_profile')).rejects.toThrow(
       /unknown criteria profile/,
     );
+  });
+});
+
+/** `GET /scenarios/preset` costs a cold server a parse of every preset YAML,
+ * and the Runs launcher, the Scenarios library and the guided first run all
+ * ask for it on mount. Callers asking while a read is in flight share it;
+ * once it settles the next call reads again (so an edited preset shows), and
+ * a read made with other settings is never shared. */
+describe('listPresetScenarios in-flight sharing', () => {
+  const PRESETS = [{ name: 'ring_sugiyama', filename: 'ring_sugiyama.yaml' }];
+  let pending: Array<(r: Response) => void> = [];
+  const fetchMock = vi.fn(
+    () =>
+      new Promise<Response>((resolve) => {
+        pending.push(resolve);
+      }),
+  );
+
+  beforeEach(() => {
+    pending = [];
+    fetchMock.mockClear();
+    setOfflineFallback(false);
+    clearAuthFailure();
+    window.localStorage.clear();
+    vi.stubGlobal('fetch', fetchMock);
+  });
+
+  afterEach(() => {
+    // settle anything a test left open, so no read stays shared past it
+    for (const resolve of pending) resolve(fakeResponse([]));
+    vi.unstubAllGlobals();
+    window.localStorage.clear();
+  });
+
+  it('answers concurrent callers from one request, and reads again once it settles', async () => {
+    const a = listPresetScenarios();
+    const b = listPresetScenarios();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect((fetchMock.mock.calls[0] as unknown as [string])[0]).toBe(
+      `${DEFAULT_BASE_URL}/scenarios/preset`,
+    );
+    pending[0](fakeResponse(PRESETS));
+    // the response shape is untouched: both callers get the API's list
+    expect(await a).toEqual(PRESETS);
+    expect(await b).toEqual(PRESETS);
+
+    // settled: the next call is a new request, not a cached answer
+    const c = listPresetScenarios();
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    pending[1](fakeResponse([]));
+    expect(await c).toEqual([]);
+  });
+
+  it('shares a failure with the callers that waited on it, then retries', async () => {
+    const a = listPresetScenarios();
+    const b = listPresetScenarios();
+    pending[0]({
+      ok: false,
+      status: 404,
+      statusText: 'Not Found',
+      json: async () => ({ detail: 'Not Found' }),
+    } as unknown as Response);
+    await expect(a).rejects.toBeInstanceOf(ApiError);
+    await expect(b).rejects.toBeInstanceOf(ApiError);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    const c = listPresetScenarios();
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    pending[1](fakeResponse(PRESETS));
+    expect(await c).toEqual(PRESETS);
+  });
+
+  it('never shares a read made with other connection settings', async () => {
+    const a = listPresetScenarios();
+    saveSettings({ baseUrl: DEFAULT_BASE_URL, apiKey: 'a-new-key' });
+    const b = listPresetScenarios();
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    const keys = fetchMock.mock.calls.map((call) => {
+      const init = (call as unknown as [string, RequestInit])[1];
+      return (init.headers as Record<string, string>)['X-API-Key'];
+    });
+    expect(keys).toEqual([DEFAULT_API_KEY, 'a-new-key']);
+    pending[0](fakeResponse([]));
+    pending[1](fakeResponse(PRESETS));
+    expect(await a).toEqual([]);
+    expect(await b).toEqual(PRESETS);
   });
 });

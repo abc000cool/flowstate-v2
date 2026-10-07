@@ -35,12 +35,16 @@ function pct(fraction: number | null | undefined, digits = 1): string {
   return fraction == null ? '—' : `${formatNumber(100 * fraction, digits)} %`;
 }
 
-/** The verdict as a badge: OK green, a problem red, an empty plan grey. */
+/** The verdict as a badge: OK green, a problem red, an empty plan grey.
+ * A labelled group, not a bare span: ARIA ignores (and axe flags, as
+ * aria-prohibited-attr) a name on an element with no role, and a role that
+ * takes its name from the label alone (img, status text) would hide the
+ * verdict itself. As a group it is read "insertion verdict" then the text. */
 export function VerdictTag({ verdict, label }: { verdict: string; label: string }): JSX.Element {
   const kind =
     verdict === OK_VERDICT ? 'ok' : verdict === NO_PLAN_VERDICT ? 'unknown' : 'defect';
   return (
-    <span className={`tag verdict-${kind}`} aria-label={`${label} verdict`}>
+    <span className={`tag verdict-${kind}`} role="group" aria-label={`${label} verdict`}>
       {verdict}
     </span>
   );

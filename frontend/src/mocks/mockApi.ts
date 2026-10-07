@@ -1152,9 +1152,12 @@ const DEMO_CORRIDOR_SUMMARY: CorridorSummary = {
       hint: 'acceleration lane added by ramp guessing',
     },
   ],
-  // the split audit of 2026-09-24: one exit compiled on the drawn side, one
-  // fed from a lane ramp guessing added on the wrong side (the I-94 WB
-  // 12th Street shape), so the demo shows both a green and a red verdict
+  // the split audit: one exit compiled on the drawn side; one left exit on
+  // the drawn side whose OSM option lane was compiled exit-only because ramp
+  // guessing added its lane on the right (the I-94 WB 6th Street shape, the
+  // lane-by-lane check of 2026-10-07); and one fed from a lane ramp guessing
+  // added on the wrong side (the 12th Street shape) — so the demo shows a
+  // green verdict and both kinds of red one
   split_audit: [
     {
       from_edge: '42165869',
@@ -1178,6 +1181,34 @@ const DEMO_CORRIDOR_SUMMARY: CorridorSummary = {
       remedy: '',
     },
     {
+      from_edge: '45782590-AddedOffRampEdge',
+      exit_edge: '45782611',
+      continuing_edge: '45782590',
+      x_m: 6150,
+      osm_way: '45782611',
+      osm_lanes: 3,
+      turn_lanes: 'slight_left;through|none|none',
+      turn_lanes_side: 'left',
+      osm_side: 'left',
+      osm_offsets_m: [4.8, 10.9, 17.3],
+      compiled_lanes: 4,
+      exit_from_lanes: [3],
+      compiled_side: 'leftmost',
+      option_lanes: [],
+      added_lane: true,
+      exit_lanes: 1,
+      continuing_lanes: 3,
+      verdict: 'through_lane_exit_only',
+      remedy:
+        'lane(s) 3 lead only to the exit although OSM draws them continuing (by turn:lanes): ' +
+        'ramp guessing added a lane and shifted the through lanes; add ' +
+        '`--ramps.unset 45782590` to netconvert_extra (scripts/onboard_corridor.py applies it), ' +
+        'then re-audit',
+      added_lane_side: 'right',
+      trapped_lanes: [3],
+      trapped_evidence: 'turn:lanes',
+    },
+    {
       from_edge: '1001426896',
       exit_edge: '82150350',
       continuing_edge: '1001426897',
@@ -1199,9 +1230,10 @@ const DEMO_CORRIDOR_SUMMARY: CorridorSummary = {
       remedy: '--ramps.unset 1001426896 (the lane ramp guessing added feeds the exit from the left)',
     },
   ],
-  // the build switches of 2026-09-24: the 6th Street split above was a
+  // the build switches of 2026-09-24: the first split above was a
   // wrong_side defect before the fixes (compiled from the rightmost lane) and
-  // was patched; the 12th Street one is the defect that remains
+  // was patched; the trapped lane and the 12th Street one are the defects
+  // that remain
   split_audit_before_fixes: [
     {
       from_edge: '42165869',
@@ -1223,6 +1255,34 @@ const DEMO_CORRIDOR_SUMMARY: CorridorSummary = {
       continuing_lanes: 3,
       verdict: 'wrong_side',
       remedy: 'patch_files connection restating the split from lane 3',
+    },
+    {
+      from_edge: '45782590-AddedOffRampEdge',
+      exit_edge: '45782611',
+      continuing_edge: '45782590',
+      x_m: 6150,
+      osm_way: '45782611',
+      osm_lanes: 3,
+      turn_lanes: 'slight_left;through|none|none',
+      turn_lanes_side: 'left',
+      osm_side: 'left',
+      osm_offsets_m: [4.8, 10.9, 17.3],
+      compiled_lanes: 4,
+      exit_from_lanes: [3],
+      compiled_side: 'leftmost',
+      option_lanes: [],
+      added_lane: true,
+      exit_lanes: 1,
+      continuing_lanes: 3,
+      verdict: 'through_lane_exit_only',
+      remedy:
+        'lane(s) 3 lead only to the exit although OSM draws them continuing (by turn:lanes): ' +
+        'ramp guessing added a lane and shifted the through lanes; add ' +
+        '`--ramps.unset 45782590` to netconvert_extra (scripts/onboard_corridor.py applies it), ' +
+        'then re-audit',
+      added_lane_side: 'right',
+      trapped_lanes: [3],
+      trapped_evidence: 'turn:lanes',
     },
     {
       from_edge: '1001426896',
@@ -1249,9 +1309,9 @@ const DEMO_CORRIDOR_SUMMARY: CorridorSummary = {
   ramp_guessing: true,
   split_fixes: true,
   split_fixes_applied: 1,
-  split_defects_remaining: 1,
+  split_defects_remaining: 2,
   split_patch_file: 'data/osm/demo_corridor.splits.con.xml',
-  applied: 'ramp guessing on; split fixes: 1 applied, 1 remaining',
+  applied: 'ramp guessing on; split fixes: 1 applied, 2 remaining',
   inflow_peak_veh_h: 4275,
   ramps: [
     {

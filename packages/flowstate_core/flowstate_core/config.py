@@ -288,8 +288,28 @@ capacity fixture's no-lock pin fails at seed 5 (3 exits missed against at most
 The weave's other switches, all off or unset by default, were deleted on
 2026-10-06 (:data:`REMOVED_WEAVE_KEYS`; docs/WEAVE_MODEL_PLAN.md has their
 derivations and measurements; reproduce results made with them with release
-2.5.0)."""
-WEAVE_KEYS = frozenset(WEAVE_DEFAULTS)
+2.5.0). Keys with no default are in :data:`WEAVE_OPTIONAL_KEYS`."""
+
+#: ``weave_params`` keys with no default: unset is off. Kept out of
+#: :data:`WEAVE_DEFAULTS` so that a run that does not set one has exactly the
+#: physics, ``meta.json`` and pinned default snapshot
+#: (``tests/golden/config_defaults.json``) it had before the key existed.
+#:
+#: ``entrant_giveup_m`` (2026-10-07, amendment W1 of
+#: docs/WEAVE_LOSS_DIAGNOSIS.md §6.2, opt-in): the entering mirror of
+#: ``exit_giveup_m``. An entrant still owing its change from the auxiliary
+#: lane into section lane 1 that has come to a halt (below SUMO's halting
+#: speed, 0.1 m/s) with no more than this much of the section ahead of its
+#: front, and no accepted or guard-passing forced change that step, takes the
+#: paired exit: it is rerouted (``vehicle.changeTarget``) to the off-ramp's
+#: last edge, handed back and counted in ``n_missed`` and
+#: ``n_entrant_took_exit`` (``microsim.runner._weave_step``), instead of being
+#: held at the end of the exit-only lane, where it stops every exit-bound
+#: vehicle behind it. The pre-registered opt-in value is 5 m (one vehicle
+#: length, as ``exit_giveup_m``). Unset or ``0`` is off. Not a fitted value;
+#: not set by any committed scenario (adoption is a separate decision).
+WEAVE_OPTIONAL_KEYS: Final[frozenset[str]] = frozenset({"entrant_giveup_m"})
+WEAVE_KEYS = frozenset(WEAVE_DEFAULTS) | WEAVE_OPTIONAL_KEYS
 
 #: The merge switches deleted on 2026-10-06 (docs/MERGE_MODEL.md, amendment
 #: A4): each was off or unset by default, set by no committed scenario or
@@ -362,8 +382,9 @@ class WeaveSpec(BaseModel):
     ``None`` = measured from the compiled network. Recorded in
     ``meta.json["weave_sections"]`` beside the measured length."""
     weave_params: dict[str, float] = Field(default_factory=dict)
-    """Overrides of :data:`WEAVE_DEFAULTS`; unknown keys are rejected, and a
-    key of :data:`REMOVED_WEAVE_KEYS` is refused by name."""
+    """Overrides of :data:`WEAVE_DEFAULTS`, plus the keys of
+    :data:`WEAVE_OPTIONAL_KEYS` (no default; unset is off); unknown keys are
+    rejected, and a key of :data:`REMOVED_WEAVE_KEYS` is refused by name."""
 
     @model_validator(mode="after")
     def _check_params(self) -> Self:
@@ -373,6 +394,8 @@ class WeaveSpec(BaseModel):
         unknown = set(self.weave_params) - WEAVE_KEYS
         if unknown:
             raise ValueError(f"unknown weave_params keys: {sorted(unknown)}")
+        if self.weave_params.get("entrant_giveup_m", 0.0) < 0.0:
+            raise ValueError("weave_params entrant_giveup_m must be >= 0 (0 or unset = off)")
         return self
 
 

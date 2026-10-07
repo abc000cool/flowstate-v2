@@ -9,7 +9,10 @@
  * `CONFIRM_SIM_MINUTES`) take an explicit second click. It offers the repo
  * presets beside the stored scenarios and stores the chosen preset before
  * running it (`lib/library.ensureStored`), because a fresh install has no
- * stored scenario and an empty launcher is a dead end.
+ * stored scenario and an empty launcher is a dead end. Until the user picks
+ * one it opens on the cheap `ring_sugiyama` preset, or the cheapest preset
+ * when the service has no ring (`lib/library.defaultPreset`), never on
+ * whatever sorts first (`corridor_10km`: 20 × 20 min ≈ 6.7 sim-hours).
  *
  * Two honesty rules, the same ones the Scenarios cards follow: a failed run
  * shows the service's own reason rather than a bare status chip, and a row
@@ -46,7 +49,14 @@ import { SkeletonRows } from '../components/ui/Skeleton';
 import { DEMO_HASH_LABEL, DEMO_ROW_TITLE } from '../lib/demo';
 import { failureReason } from '../lib/format';
 import { useAuthFailed, useOfflineFallback, usePoll } from '../lib/hooks';
-import { ensureStored, isPreset, itemKey, mergeLibrary, type LibraryItem } from '../lib/library';
+import {
+  defaultPreset,
+  ensureStored,
+  isPreset,
+  itemKey,
+  mergeLibrary,
+  type LibraryItem,
+} from '../lib/library';
 import {
   clampInt,
   describeSimMinutes,
@@ -89,6 +99,10 @@ export function RunsView(): JSX.Element {
    * captured at fetch time (the client decides mock vs live per call). */
   const [runsDemo, setRunsDemo] = useState(false);
   const [library, setLibrary] = useState<LibraryItem[]>([]);
+  /** The presets of the last library load, kept apart from the merged
+   * library: a preset already stored shows there as the stored scenario, and
+   * the launcher's default is chosen among presets either way. */
+  const [presets, setPresets] = useState<PresetSummary[]>([]);
   const [launchKey, setLaunchKey] = useState('');
   const [launchTier, setLaunchTier] = useState<'micro' | 'macro'>('micro');
   const [repsRaw, setRepsRaw] = useState('');
@@ -149,13 +163,14 @@ export function RunsView(): JSX.Element {
     try {
       // a service older than `GET /scenarios/preset` answers 404: the presets
       // are then unavailable, which must not empty the stored list with them
-      const [presets, stored] = await Promise.all([
+      const [loadedPresets, stored] = await Promise.all([
         listPresetScenarios().catch(() => [] as PresetSummary[]),
         listScenarios(),
       ]);
       if (seq < libraryApplied.current) return;
       libraryApplied.current = seq;
-      setLibrary(mergeLibrary(presets, stored));
+      setPresets(loadedPresets);
+      setLibrary(mergeLibrary(loadedPresets, stored));
     } catch {
       /* retried by usePoll; connectivity is surfaced by the status dot */
     }
@@ -179,6 +194,8 @@ export function RunsView(): JSX.Element {
   // merged library then lists it as the stored scenario under a new key: follow
   // the config there instead of leaving the select on an option that no longer
   // exists (the select would show its first option while Launch stayed off).
+  // With nothing shown yet, open on the cheap default preset (or its stored
+  // copy, same config hash), and only then on whatever is listed first.
   const lastHash = useRef<string | null>(null);
   useEffect(() => {
     if (selected) lastHash.current = selected.config_hash;
@@ -186,8 +203,10 @@ export function RunsView(): JSX.Element {
   useEffect(() => {
     if (library.length === 0 || library.some((s) => itemKey(s) === launchKey)) return;
     const same = library.find((s) => s.config_hash === lastHash.current);
-    setLaunchKey(itemKey(same ?? library[0]));
-  }, [library, launchKey]);
+    const fallbackHash = defaultPreset(presets)?.config_hash;
+    const cheap = library.find((s) => s.config_hash === fallbackHash);
+    setLaunchKey(itemKey(same ?? cheap ?? library[0]));
+  }, [library, presets, launchKey]);
 
   // Show the scenario's own values as the starting point, once per selected
   // config: the scenario poll hands back fresh objects every tick, so keying
@@ -245,6 +264,11 @@ export function RunsView(): JSX.Element {
     // the button is disabled while busy, which drops keyboard focus to <body>;
     // put it back afterwards when the launch started from the button
     const fromButton = document.activeElement === launchRef.current;
+    // a launch confirmed in the dialog closes it while this button is still
+    // disabled, so the dialog's own focus restore to its opener finds nothing
+    // to focus: hand focus back here once the button is enabled again. (A
+    // refused launch keeps the dialog open; it refocuses its own button.)
+    const fromDialog = confirming;
     setBusy(true);
     try {
       // a preset is a repo YAML: it has to be stored before a run can name it
@@ -253,6 +277,7 @@ export function RunsView(): JSX.Element {
       const res = await createRun(buildRequest(scenario_id));
       toast('ok', `run ${res.run_id} queued`);
       setConfirming(false);
+      if (fromDialog) refocusLaunch.current = true;
       await poll();
       await loadLibrary(); // a stored preset joins the library immediately
     } catch (err) {

@@ -1,0 +1,874 @@
+[
+ {
+  "fx": "ruth_entr",
+  "seed": 3,
+  "coll_ref": 0,
+  "coll_w1": 0,
+  "lock_ref": false,
+  "lock_w1": false,
+  "took": [
+   0
+  ],
+  "ent_dep": [
+   128
+  ],
+  "max_share": 0.0,
+  "gaveup_ref": 0,
+  "gaveup_w1": 0,
+  "hb_ref": 0,
+  "hb_w1": 0,
+  "dep_ref": 1472,
+  "dep_w1": 1472,
+  "low_ref": 10.40053312911169,
+  "low_w1": 10.40053312911169,
+  "same": false
+ },
+ {
+  "fx": "ruth_entr",
+  "seed": 4,
+  "coll_ref": 0,
+  "coll_w1": 0,
+  "lock_ref": false,
+  "lock_w1": false,
+  "took": [
+   0
+  ],
+  "ent_dep": [
+   128
+  ],
+  "max_share": 0.0,
+  "gaveup_ref": 0,
+  "gaveup_w1": 0,
+  "hb_ref": 0,
+  "hb_w1": 0,
+  "dep_ref": 1477,
+  "dep_w1": 1477,
+  "low_ref": 18.792348156811084,
+  "low_w1": 18.792348156811084,
+  "same": false
+ },
+ {
+  "fx": "ruth_entr",
+  "seed": 5,
+  "coll_ref": 0,
+  "coll_w1": 0,
+  "lock_ref": false,
+  "lock_w1": false,
+  "took": [
+   0
+  ],
+  "ent_dep": [
+   128
+  ],
+  "max_share": 0.0,
+  "gaveup_ref": 0,
+  "gaveup_w1": 0,
+  "hb_ref": 0,
+  "hb_w1": 0,
+  "dep_ref": 1477,
+  "dep_w1": 1477,
+  "low_ref": 16.90050877194361,
+  "low_w1": 16.90050877194361,
+  "same": false
+ },
+ {
+  "fx": "ruth_exit",
+  "seed": 3,
+  "coll_ref": 0,
+  "coll_w1": 0,
+  "lock_ref": false,
+  "lock_w1": false,
+  "took": [
+   1
+  ],
+  "ent_dep": [
+   73
+  ],
+  "max_share": 0.0137,
+  "gaveup_ref": 1,
+  "gaveup_w1": 1,
+  "hb_ref": 0,
+  "hb_w1": 0,
+  "dep_ref": 1014,
+  "dep_w1": 1014,
+  "low_ref": 16.626623625255412,
+  "low_w1": 16.626623625255412,
+  "same": false
+ },
+ {
+  "fx": "ruth_exit",
+  "seed": 4,
+  "coll_ref": 0,
+  "coll_w1": 0,
+  "lock_ref": false,
+  "lock_w1": false,
+  "took": [
+   0
+  ],
+  "ent_dep": [
+   73
+  ],
+  "max_share": 0.0,
+  "gaveup_ref": 1,
+  "gaveup_w1": 1,
+  "hb_ref": 1,
+  "hb_w1": 1,
+  "dep_ref": 1014,
+  "dep_w1": 1014,
+  "low_ref": 18.658005345658914,
+  "low_w1": 18.658005345658914,
+  "same": false
+ },
+ {
+  "fx": "ruth_exit",
+  "seed": 5,
+  "coll_ref": 0,
+  "coll_w1": 0,
+  "lock_ref": false,
+  "lock_w1": false,
+  "took": [
+   0
+  ],
+  "ent_dep": [
+   73
+  ],
+  "max_share": 0.0,
+  "gaveup_ref": 0,
+  "gaveup_w1": 0,
+  "hb_ref": 0,
+  "hb_w1": 0,
+  "dep_ref": 1014,
+  "dep_w1": 1014,
+  "low_ref": 20.082286409353447,
+  "low_w1": 20.082286409353447,
+  "same": false
+ },
+ {
+  "fx": "ruth_entr_fleet",
+  "seed": 3,
+  "coll_ref": 0,
+  "coll_w1": 0,
+  "lock_ref": false,
+  "lock_w1": false,
+  "took": [
+   2
+  ],
+  "ent_dep": [
+   128
+  ],
+  "max_share": 0.0156,
+  "gaveup_ref": 1,
+  "gaveup_w1": 0,
+  "hb_ref": 0,
+  "hb_w1": 0,
+  "dep_ref": 1477,
+  "dep_w1": 1477,
+  "low_ref": 13.128200809977852,
+  "low_w1": 16.658817453932198,
+  "same": false
+ },
+ {
+  "fx": "ruth_entr_fleet",
+  "seed": 4,
+  "coll_ref": 0,
+  "coll_w1": 0,
+  "lock_ref": false,
+  "lock_w1": false,
+  "took": [
+   1
+  ],
+  "ent_dep": [
+   128
+  ],
+  "max_share": 0.0078,
+  "gaveup_ref": 1,
+  "gaveup_w1": 0,
+  "hb_ref": 0,
+  "hb_w1": 0,
+  "dep_ref": 1477,
+  "dep_w1": 1477,
+  "low_ref": 12.072755689566183,
+  "low_w1": 18.543122556046153,
+  "same": false
+ },
+ {
+  "fx": "ruth_entr_fleet",
+  "seed": 5,
+  "coll_ref": 0,
+  "coll_w1": 0,
+  "lock_ref": true,
+  "lock_w1": false,
+  "took": [
+   1
+  ],
+  "ent_dep": [
+   128
+  ],
+  "max_share": 0.0078,
+  "gaveup_ref": 0,
+  "gaveup_w1": 0,
+  "hb_ref": 0,
+  "hb_w1": 0,
+  "dep_ref": 1477,
+  "dep_w1": 1477,
+  "low_ref": 8.904308228626348,
+  "low_w1": 18.196553054138576,
+  "same": false
+ },
+ {
+  "fx": "ruth_exit_fleet",
+  "seed": 3,
+  "coll_ref": 0,
+  "coll_w1": 0,
+  "lock_ref": false,
+  "lock_w1": false,
+  "took": [
+   3
+  ],
+  "ent_dep": [
+   73
+  ],
+  "max_share": 0.0411,
+  "gaveup_ref": 12,
+  "gaveup_w1": 6,
+  "hb_ref": 0,
+  "hb_w1": 0,
+  "dep_ref": 1014,
+  "dep_w1": 1014,
+  "low_ref": 6.6330235194949605,
+  "low_w1": 12.118219929672813,
+  "same": false
+ },
+ {
+  "fx": "ruth_exit_fleet",
+  "seed": 4,
+  "coll_ref": 0,
+  "coll_w1": 0,
+  "lock_ref": false,
+  "lock_w1": false,
+  "took": [
+   1
+  ],
+  "ent_dep": [
+   73
+  ],
+  "max_share": 0.0137,
+  "gaveup_ref": 2,
+  "gaveup_w1": 3,
+  "hb_ref": 0,
+  "hb_w1": 0,
+  "dep_ref": 1014,
+  "dep_w1": 1014,
+  "low_ref": 10.688341508527465,
+  "low_w1": 10.580651538921252,
+  "same": false
+ },
+ {
+  "fx": "ruth_exit_fleet",
+  "seed": 5,
+  "coll_ref": 0,
+  "coll_w1": 0,
+  "lock_ref": false,
+  "lock_w1": false,
+  "took": [
+   3
+  ],
+  "ent_dep": [
+   73
+  ],
+  "max_share": 0.0411,
+  "gaveup_ref": 4,
+  "gaveup_w1": 4,
+  "hb_ref": 0,
+  "hb_w1": 0,
+  "dep_ref": 1014,
+  "dep_w1": 1014,
+  "low_ref": 13.419817282150978,
+  "low_w1": 12.15920344513044,
+  "same": false
+ },
+ {
+  "fx": "ruth_exit_fleet_271",
+  "seed": 3,
+  "coll_ref": 0,
+  "coll_w1": 0,
+  "lock_ref": false,
+  "lock_w1": false,
+  "took": [
+   5
+  ],
+  "ent_dep": [
+   73
+  ],
+  "max_share": 0.0685,
+  "gaveup_ref": 7,
+  "gaveup_w1": 8,
+  "hb_ref": 0,
+  "hb_w1": 0,
+  "dep_ref": 1013,
+  "dep_w1": 1013,
+  "low_ref": 8.086553775606395,
+  "low_w1": 9.566280724911724,
+  "same": false
+ },
+ {
+  "fx": "ruth_exit_fleet_271",
+  "seed": 4,
+  "coll_ref": 0,
+  "coll_w1": 0,
+  "lock_ref": false,
+  "lock_w1": false,
+  "took": [
+   2
+  ],
+  "ent_dep": [
+   73
+  ],
+  "max_share": 0.0274,
+  "gaveup_ref": 2,
+  "gaveup_w1": 5,
+  "hb_ref": 0,
+  "hb_w1": 0,
+  "dep_ref": 1014,
+  "dep_w1": 1014,
+  "low_ref": 9.484258011876378,
+  "low_w1": 9.630883985267833,
+  "same": false
+ },
+ {
+  "fx": "ruth_exit_fleet_271",
+  "seed": 5,
+  "coll_ref": 0,
+  "coll_w1": 0,
+  "lock_ref": false,
+  "lock_w1": false,
+  "took": [
+   2
+  ],
+  "ent_dep": [
+   73
+  ],
+  "max_share": 0.0274,
+  "gaveup_ref": 14,
+  "gaveup_w1": 3,
+  "hb_ref": 0,
+  "hb_w1": 0,
+  "dep_ref": 1014,
+  "dep_w1": 1014,
+  "low_ref": 5.933984153608388,
+  "low_w1": 12.81761565611641,
+  "same": false
+ },
+ {
+  "fx": "th52_corridor_demand",
+  "seed": 3,
+  "coll_ref": 0,
+  "coll_w1": 0,
+  "lock_ref": false,
+  "lock_w1": false,
+  "took": [
+   0
+  ],
+  "ent_dep": [
+   403
+  ],
+  "max_share": 0.0,
+  "gaveup_ref": 1,
+  "gaveup_w1": 1,
+  "hb_ref": 1,
+  "hb_w1": 1,
+  "dep_ref": 1514,
+  "dep_w1": 1514,
+  "low_ref": 8.237435954813089,
+  "low_w1": 8.237435954813089,
+  "same": false
+ },
+ {
+  "fx": "th52_corridor_demand",
+  "seed": 4,
+  "coll_ref": 0,
+  "coll_w1": 0,
+  "lock_ref": false,
+  "lock_w1": false,
+  "took": [
+   0
+  ],
+  "ent_dep": [
+   388
+  ],
+  "max_share": 0.0,
+  "gaveup_ref": 0,
+  "gaveup_w1": 0,
+  "hb_ref": 2,
+  "hb_w1": 2,
+  "dep_ref": 1544,
+  "dep_w1": 1544,
+  "low_ref": 10.428890256125936,
+  "low_w1": 10.428890256125936,
+  "same": false
+ },
+ {
+  "fx": "th52_corridor_demand",
+  "seed": 5,
+  "coll_ref": 0,
+  "coll_w1": 0,
+  "lock_ref": false,
+  "lock_w1": false,
+  "took": [
+   1
+  ],
+  "ent_dep": [
+   410
+  ],
+  "max_share": 0.0024,
+  "gaveup_ref": 5,
+  "gaveup_w1": 3,
+  "hb_ref": 1,
+  "hb_w1": 0,
+  "dep_ref": 1489,
+  "dep_w1": 1542,
+  "low_ref": 5.829480723989714,
+  "low_w1": 9.304592153977524,
+  "same": false
+ },
+ {
+  "fx": "th52_capacity",
+  "seed": 3,
+  "coll_ref": 0,
+  "coll_w1": 0,
+  "lock_ref": false,
+  "lock_w1": false,
+  "took": [
+   0
+  ],
+  "ent_dep": [
+   395
+  ],
+  "max_share": 0.0,
+  "gaveup_ref": 1,
+  "gaveup_w1": 1,
+  "hb_ref": 2,
+  "hb_w1": 2,
+  "dep_ref": 1566,
+  "dep_w1": 1566,
+  "low_ref": 9.880914706724536,
+  "low_w1": 9.880914706724536,
+  "same": false
+ },
+ {
+  "fx": "th52_capacity",
+  "seed": 4,
+  "coll_ref": 0,
+  "coll_w1": 0,
+  "lock_ref": false,
+  "lock_w1": false,
+  "took": [
+   0
+  ],
+  "ent_dep": [
+   401
+  ],
+  "max_share": 0.0,
+  "gaveup_ref": 1,
+  "gaveup_w1": 1,
+  "hb_ref": 2,
+  "hb_w1": 2,
+  "dep_ref": 1548,
+  "dep_w1": 1548,
+  "low_ref": 8.654571125570248,
+  "low_w1": 8.654571125570248,
+  "same": false
+ },
+ {
+  "fx": "th52_capacity",
+  "seed": 5,
+  "coll_ref": 0,
+  "coll_w1": 0,
+  "lock_ref": false,
+  "lock_w1": false,
+  "took": [
+   0
+  ],
+  "ent_dep": [
+   373
+  ],
+  "max_share": 0.0,
+  "gaveup_ref": 1,
+  "gaveup_w1": 1,
+  "hb_ref": 0,
+  "hb_w1": 0,
+  "dep_ref": 1556,
+  "dep_w1": 1556,
+  "low_ref": 8.401009419337317,
+  "low_w1": 8.401009419337317,
+  "same": false
+ },
+ {
+  "fx": "th52_upstream",
+  "seed": 3,
+  "coll_ref": 0,
+  "coll_w1": 0,
+  "lock_ref": false,
+  "lock_w1": false,
+  "took": [
+   0
+  ],
+  "ent_dep": [
+   417
+  ],
+  "max_share": 0.0,
+  "gaveup_ref": 3,
+  "gaveup_w1": 3,
+  "hb_ref": 2,
+  "hb_w1": 2,
+  "dep_ref": 1668,
+  "dep_w1": 1668,
+  "low_ref": 6.4423811436596115,
+  "low_w1": 6.4423811436596115,
+  "same": false
+ },
+ {
+  "fx": "th52_upstream",
+  "seed": 4,
+  "coll_ref": 0,
+  "coll_w1": 0,
+  "lock_ref": false,
+  "lock_w1": false,
+  "took": [
+   0
+  ],
+  "ent_dep": [
+   399
+  ],
+  "max_share": 0.0,
+  "gaveup_ref": 3,
+  "gaveup_w1": 3,
+  "hb_ref": 0,
+  "hb_w1": 0,
+  "dep_ref": 1651,
+  "dep_w1": 1651,
+  "low_ref": 8.54420904583868,
+  "low_w1": 8.54420904583868,
+  "same": false
+ },
+ {
+  "fx": "th52_upstream",
+  "seed": 5,
+  "coll_ref": 0,
+  "coll_w1": 0,
+  "lock_ref": false,
+  "lock_w1": false,
+  "took": [
+   0
+  ],
+  "ent_dep": [
+   407
+  ],
+  "max_share": 0.0,
+  "gaveup_ref": 1,
+  "gaveup_w1": 1,
+  "hb_ref": 0,
+  "hb_w1": 0,
+  "dep_ref": 1646,
+  "dep_w1": 1646,
+  "low_ref": 9.47460907863202,
+  "low_w1": 9.47460907863202,
+  "same": false
+ },
+ {
+  "fx": "th52_upstream_fleet",
+  "seed": 3,
+  "coll_ref": 0,
+  "coll_w1": 0,
+  "lock_ref": false,
+  "lock_w1": false,
+  "took": [
+   1
+  ],
+  "ent_dep": [
+   365
+  ],
+  "max_share": 0.0027,
+  "gaveup_ref": 4,
+  "gaveup_w1": 2,
+  "hb_ref": 0,
+  "hb_w1": 0,
+  "dep_ref": 1635,
+  "dep_w1": 1637,
+  "low_ref": 8.498853212468767,
+  "low_w1": 11.07250002128504,
+  "same": false
+ },
+ {
+  "fx": "th52_upstream_fleet",
+  "seed": 4,
+  "coll_ref": 0,
+  "coll_w1": 0,
+  "lock_ref": false,
+  "lock_w1": false,
+  "took": [
+   0
+  ],
+  "ent_dep": [
+   377
+  ],
+  "max_share": 0.0,
+  "gaveup_ref": 0,
+  "gaveup_w1": 0,
+  "hb_ref": 0,
+  "hb_w1": 0,
+  "dep_ref": 1602,
+  "dep_w1": 1602,
+  "low_ref": 11.522630052446198,
+  "low_w1": 11.522630052446198,
+  "same": false
+ },
+ {
+  "fx": "th52_upstream_fleet",
+  "seed": 5,
+  "coll_ref": 0,
+  "coll_w1": 0,
+  "lock_ref": false,
+  "lock_w1": false,
+  "took": [
+   0
+  ],
+  "ent_dep": [
+   355
+  ],
+  "max_share": 0.0,
+  "gaveup_ref": 2,
+  "gaveup_w1": 2,
+  "hb_ref": 0,
+  "hb_w1": 0,
+  "dep_ref": 1640,
+  "dep_w1": 1640,
+  "low_ref": 11.85369795764829,
+  "low_w1": 11.85369795764829,
+  "same": false
+ },
+ {
+  "fx": "weave_moderate",
+  "seed": 3,
+  "coll_ref": 0,
+  "coll_w1": 0,
+  "lock_ref": false,
+  "lock_w1": false,
+  "took": [
+   0
+  ],
+  "ent_dep": [
+   45
+  ],
+  "max_share": 0.0,
+  "gaveup_ref": 0,
+  "gaveup_w1": 0,
+  "hb_ref": 0,
+  "hb_w1": 0,
+  "dep_ref": 135,
+  "dep_w1": 135,
+  "low_ref": 22.020870435931805,
+  "low_w1": 22.020870435931805,
+  "same": false
+ },
+ {
+  "fx": "weave_golden",
+  "seed": 3,
+  "coll_ref": 0,
+  "coll_w1": 0,
+  "lock_ref": false,
+  "lock_w1": false,
+  "took": [
+   0
+  ],
+  "ent_dep": [
+   28
+  ],
+  "max_share": 0.0,
+  "gaveup_ref": 0,
+  "gaveup_w1": 0,
+  "hb_ref": 0,
+  "hb_w1": 0,
+  "dep_ref": 105,
+  "dep_w1": 105,
+  "low_ref": 15.695266782105485,
+  "low_w1": 15.695266782105485,
+  "same": false
+ },
+ {
+  "fx": "merge_golden",
+  "seed": 3,
+  "coll_ref": 0,
+  "coll_w1": 0,
+  "lock_ref": true,
+  "lock_w1": true,
+  "took": [],
+  "ent_dep": [],
+  "max_share": 0.0,
+  "gaveup_ref": 0,
+  "gaveup_w1": 0,
+  "hb_ref": 1,
+  "hb_w1": 1,
+  "dep_ref": 255,
+  "dep_w1": 255,
+  "low_ref": 10.51672115179281,
+  "low_w1": 10.51672115179281,
+  "same": true
+ },
+ {
+  "fx": "mcknight",
+  "seed": 3,
+  "coll_ref": 0,
+  "coll_w1": 0,
+  "lock_ref": false,
+  "lock_w1": false,
+  "took": [],
+  "ent_dep": [],
+  "max_share": 0.0,
+  "gaveup_ref": 0,
+  "gaveup_w1": 0,
+  "hb_ref": 2,
+  "hb_w1": 2,
+  "dep_ref": 1170,
+  "dep_w1": 1170,
+  "low_ref": 18.523736028017925,
+  "low_w1": 18.523736028017925,
+  "same": true
+ },
+ {
+  "fx": "mcknight",
+  "seed": 4,
+  "coll_ref": 0,
+  "coll_w1": 0,
+  "lock_ref": false,
+  "lock_w1": false,
+  "took": [],
+  "ent_dep": [],
+  "max_share": 0.0,
+  "gaveup_ref": 0,
+  "gaveup_w1": 0,
+  "hb_ref": 3,
+  "hb_w1": 3,
+  "dep_ref": 1170,
+  "dep_w1": 1170,
+  "low_ref": 16.631813464237094,
+  "low_w1": 16.631813464237094,
+  "same": true
+ },
+ {
+  "fx": "mcknight",
+  "seed": 5,
+  "coll_ref": 0,
+  "coll_w1": 0,
+  "lock_ref": false,
+  "lock_w1": false,
+  "took": [],
+  "ent_dep": [],
+  "max_share": 0.0,
+  "gaveup_ref": 0,
+  "gaveup_w1": 0,
+  "hb_ref": 3,
+  "hb_w1": 3,
+  "dep_ref": 1170,
+  "dep_w1": 1170,
+  "low_ref": 19.031757376078424,
+  "low_w1": 19.031757376078424,
+  "same": true
+ },
+ {
+  "fx": "th52_corridor",
+  "seed": 3,
+  "coll_ref": 0,
+  "coll_w1": 0,
+  "lock_ref": false,
+  "lock_w1": false,
+  "took": [
+   2
+  ],
+  "ent_dep": [
+   381
+  ],
+  "max_share": 0.0052,
+  "gaveup_ref": 1,
+  "gaveup_w1": 4,
+  "hb_ref": 0,
+  "hb_w1": 0,
+  "dep_ref": 1530,
+  "dep_w1": 1571,
+  "low_ref": 11.166936247426337,
+  "low_w1": 9.656817489767702,
+  "same": false
+ },
+ {
+  "fx": "th52_corridor",
+  "seed": 4,
+  "coll_ref": 0,
+  "coll_w1": 0,
+  "lock_ref": false,
+  "lock_w1": false,
+  "took": [
+   2
+  ],
+  "ent_dep": [
+   334
+  ],
+  "max_share": 0.006,
+  "gaveup_ref": 1,
+  "gaveup_w1": 4,
+  "hb_ref": 0,
+  "hb_w1": 0,
+  "dep_ref": 1478,
+  "dep_w1": 1489,
+  "low_ref": 10.902397813643926,
+  "low_w1": 6.580891055040618,
+  "same": false
+ },
+ {
+  "fx": "th52_corridor",
+  "seed": 5,
+  "coll_ref": 0,
+  "coll_w1": 0,
+  "lock_ref": false,
+  "lock_w1": false,
+  "took": [
+   1
+  ],
+  "ent_dep": [
+   330
+  ],
+  "max_share": 0.003,
+  "gaveup_ref": 4,
+  "gaveup_w1": 2,
+  "hb_ref": 0,
+  "hb_w1": 0,
+  "dep_ref": 1462,
+  "dep_w1": 1435,
+  "low_ref": 4.815620109790114,
+  "low_w1": 7.843419546728308,
+  "same": false
+ },
+ {
+  "fx": "th61",
+  "seed": 3,
+  "coll_ref": 0,
+  "coll_w1": 0,
+  "lock_ref": false,
+  "lock_w1": false,
+  "took": [
+   0
+  ],
+  "ent_dep": [
+   837
+  ],
+  "max_share": 0.0,
+  "gaveup_ref": 5,
+  "gaveup_w1": 5,
+  "hb_ref": 0,
+  "hb_w1": 0,
+  "dep_ref": 2565,
+  "dep_w1": 2565,
+  "low_ref": 8.74693053751565,
+  "low_w1": 8.74693053751565,
+  "same": false
+ }
+]

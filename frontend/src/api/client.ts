@@ -376,9 +376,28 @@ export function listScenarios(): Promise<ScenarioSummary[]> {
   return request<ScenarioSummary[]>('/scenarios');
 }
 
+/** The preset read in flight, if any (see `listPresetScenarios`). */
+let presetsInFlight: { key: string; promise: Promise<PresetSummary[]> } | null = null;
+
+/** `GET /scenarios/preset`. Several views read it at once (the Runs launcher,
+ * the Scenarios library, the guided first run) and a cold server parses every
+ * preset YAML to answer, so callers that ask while a read is in flight share
+ * it. Nothing is kept once it settles: the next call reads again and sees an
+ * edited preset. Shared only under the same base URL and key, so a request
+ * made with old settings never answers for new ones. Callers get the same
+ * array and must not mutate it. */
 export function listPresetScenarios(): Promise<PresetSummary[]> {
   if (isMockActive()) return mock.mockListPresets();
-  return request<PresetSummary[]>('/scenarios/preset');
+  const { baseUrl, apiKey } = getSettings();
+  const key = `${baseUrl}\u0000${apiKey}`;
+  if (presetsInFlight !== null && presetsInFlight.key === key) return presetsInFlight.promise;
+  const entry = { key, promise: request<PresetSummary[]>('/scenarios/preset') };
+  presetsInFlight = entry;
+  const settle = (): void => {
+    if (presetsInFlight === entry) presetsInFlight = null;
+  };
+  entry.promise.then(settle, settle);
+  return entry.promise;
 }
 
 /** Write: the demo backend answers only under VITE_MOCK, never under the

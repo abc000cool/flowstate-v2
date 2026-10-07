@@ -123,6 +123,88 @@ describe('SplitAuditTable', () => {
     expect(screen.queryByText(/^remedy:/)).toBeNull();
   });
 
+  // 2026-10-07: an exit compiled on the drawn side can still trap a lane the
+  // map draws as continuing (the I-94 WB 6th Street exit; docs/CONTRACTS.md
+  // "Split audit, lane by lane"). It is a defect with its own badge, its
+  // trapped lanes stated, and the --ramps.unset remedy under the row.
+  it('shows a through lane compiled exit-only as a defect with its remedy', () => {
+    const remedy =
+      'lane(s) 3 lead only to the exit although OSM draws them continuing (by turn:lanes): ' +
+      'ramp guessing added a lane and shifted the through lanes; add `--ramps.unset 45782590` ' +
+      'to netconvert_extra (scripts/onboard_corridor.py applies it), then re-audit';
+    render(
+      <SplitAuditTable
+        findings={[
+          finding({
+            from_edge: '45782590-AddedOffRampEdge',
+            exit_edge: '42165869',
+            osm_side: 'left',
+            turn_lanes: 'slight_left;through|none|none',
+            compiled_side: 'leftmost',
+            compiled_lanes: 4,
+            exit_from_lanes: [3],
+            added_lane: true,
+            added_lane_side: 'right',
+            trapped_lanes: [3],
+            trapped_evidence: 'turn:lanes',
+            verdict: 'through_lane_exit_only',
+            remedy,
+          }),
+        ]}
+      />,
+    );
+    const badge = screen.getByText('THROUGH LANE EXIT-ONLY');
+    expect(badge).toHaveClass('tag', 'verdict-defect');
+    expect(badge).not.toHaveClass('verdict-ok');
+    expect(badge).toHaveAttribute('title', expect.stringContaining('through_lane_exit_only:'));
+    // the lanes column names the side the lane was added on and the trapped lane
+    expect(
+      screen.getByText('leftmost · lane 3 of 4 +1 added on the right · trapped 3 (by turn:lanes)'),
+    ).toBeInTheDocument();
+    const remedies = screen.getAllByText(/^remedy:/);
+    expect(remedies).toHaveLength(1);
+    expect(remedies[0]).toHaveTextContent('--ramps.unset 45782590');
+    // the exit is on the drawn side, so the summary does not call it the wrong one
+    const summary = screen.getByText(/split audit: 1 exit checked/);
+    expect(summary).toHaveTextContent('1 with a through lane compiled exit-only');
+    expect(summary).not.toHaveTextContent('wrong side');
+    expect(summary).not.toHaveTextContent('none compiled');
+  });
+
+  it('counts side defects and trapped lanes apart in the summary', () => {
+    render(
+      <SplitAuditTable
+        findings={[
+          finding({ verdict: 'wrong_side', exit_edge: 'e-wrong' }),
+          finding({
+            verdict: 'through_lane_exit_only',
+            exit_edge: 'e-trap-1',
+            trapped_lanes: [2],
+            trapped_evidence: 'lane count',
+          }),
+          finding({
+            verdict: 'through_lane_exit_only',
+            exit_edge: 'e-trap-2',
+            trapped_lanes: [3],
+            trapped_evidence: 'turn:lanes',
+          }),
+          finding({ verdict: 'ok', exit_edge: 'e-ok', remedy: '' }),
+        ]}
+      />,
+    );
+    expect(screen.getByText(/split audit: 4 exits checked/)).toHaveTextContent(
+      '1 compiled on the wrong side, 2 with through lanes compiled exit-only',
+    );
+    expect(screen.getAllByText('THROUGH LANE EXIT-ONLY')).toHaveLength(2);
+    expect(screen.getAllByText(/^remedy:/)).toHaveLength(3);
+    expect(screen.getByText(/trapped 2 \(by lane count\)$/)).toBeInTheDocument();
+  });
+
+  it('treats the trapped-lane verdict as a defect in the helpers', () => {
+    expect(verdictClass('through_lane_exit_only')).toBe('verdict-defect');
+    expect(isSplitDefect('through_lane_exit_only')).toBe(true);
+  });
+
   it('exposes the verdict helpers the view relies on', () => {
     expect(verdictClass('ok')).toBe('verdict-ok');
     expect(verdictClass('wrong_side')).toBe('verdict-defect');

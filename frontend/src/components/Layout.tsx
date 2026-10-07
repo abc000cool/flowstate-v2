@@ -25,7 +25,7 @@ import {
   isMockEnv,
   setOfflineFallback,
 } from '../api/client';
-import { useAuthFailed, usePoll } from '../lib/hooks';
+import { useAuthFailed, usePoll, wantsContentFocus } from '../lib/hooks';
 import { nextThemePref, setThemePref, THEME_PREF_LABELS, useThemePref } from '../lib/theme';
 import { useAppState } from './AppContext';
 import { Icon, type IconName } from './icons';
@@ -201,7 +201,8 @@ export function Layout(): JSX.Element {
   const authFailed = useAuthFailed();
   const railed = useMediaQuery(RAIL_QUERY);
   const drawerMode = useMediaQuery(DRAWER_QUERY);
-  const { pathname } = useLocation();
+  const location = useLocation();
+  const { pathname } = location;
   const sidebarRef = useRef<HTMLElement>(null);
   const mainRef = useRef<HTMLDivElement>(null);
   const menuRef = useRef<HTMLButtonElement>(null);
@@ -215,6 +216,14 @@ export function Layout(): JSX.Element {
 
   // the drawer closes on navigation and when the window grows out of it
   useEffect(() => setNavOpen(false), [pathname]);
+
+  // a view that navigates away after one of its actions (a launch landing on
+  // Runs, a report request landing on Reports) asks for focus on the new
+  // page's content: the control that had it went with the old page, and
+  // focus would otherwise fall to <body> (lib/hooks FOCUS_CONTENT_STATE)
+  useEffect(() => {
+    if (wantsContentFocus(location.state)) document.getElementById('content')?.focus();
+  }, [location]);
   useEffect(() => {
     if (!drawerMode) setNavOpen(false);
   }, [drawerMode]);

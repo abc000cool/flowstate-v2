@@ -59,7 +59,13 @@ import { EmptyState } from '../components/ui/EmptyState';
 import { ErrorCallout, isShellError } from '../components/ui/ErrorCallout';
 import { SkeletonRows } from '../components/ui/Skeleton';
 import { formatDistKm, formatNumber } from '../lib/format';
-import { useAuthFailed, useOfflineFallback, usePoll } from '../lib/hooks';
+import {
+  FOCUS_CONTENT_STATE,
+  useAuthFailed,
+  useBusyFocus,
+  useOfflineFallback,
+  usePoll,
+} from '../lib/hooks';
 
 const CORRIDOR_POLL_MS = 2000;
 const RUN_POLL_MS = 3000;
@@ -311,6 +317,16 @@ export function OnboardView(): JSX.Element {
   // be rebuilt by its own result — a tight fetch loop, not a 2 s poll.
   const corridorIdRef = useRef<string | null>(null);
   const runIdRef = useRef<string | null>(null);
+  // Every write here disables its button while it runs, which drops keyboard
+  // focus to <body> (§9.1 Busy). A refusal hands it back to the button; an
+  // onboarding started (or a corridor picked) hands it to the Progress panel
+  // it fills; a launch or a report request lands on another page, whose
+  // content takes it (FOCUS_CONTENT_STATE).
+  const busyFocus = useBusyFocus(busy);
+  const onboardRef = useRef<HTMLButtonElement>(null);
+  const progressTitleRef = useRef<HTMLHeadingElement>(null);
+  const runSeedsRef = useRef<HTMLButtonElement>(null);
+  const reportRef = useRef<HTMLButtonElement>(null);
 
   const trackCorridor = useCallback((next: CorridorOut) => {
     corridorIdRef.current = next.corridor_id;
@@ -457,7 +473,8 @@ export function OnboardView(): JSX.Element {
    * reconstruction of it. A run this browser launched for that same corridor
    * is picked up with it, so "Report against observations" is offered exactly
    * when there is a finished run to score. */
-  async function selectCorridor(row: CorridorRow): Promise<void> {
+  async function selectCorridor(row: CorridorRow, control: HTMLElement): Promise<void> {
+    busyFocus.begin(control);
     setBusy(true);
     try {
       const fetched = await getCorridor(row.corridor_id);
@@ -474,8 +491,12 @@ export function OnboardView(): JSX.Element {
           /* the run is gone; the panel simply offers a fresh launch */
         }
       }
+      // this row's button is now disabled (the selected corridor): focus goes
+      // to the panel that shows it
+      busyFocus.after(() => progressTitleRef.current);
     } catch (err) {
       toastError(err, 'Corridor');
+      busyFocus.after(() => control);
     } finally {
       setBusy(false);
     }
@@ -506,6 +527,7 @@ export function OnboardView(): JSX.Element {
     form.set('split_fixes', splitFixes ? 'true' : 'false');
     if (detectors) form.set('detectors', detectors);
     if (stations) form.set('stations', stations);
+    busyFocus.begin(onboardRef.current);
     setBusy(true);
     try {
       const created = await createCorridor(form);
@@ -514,8 +536,10 @@ export function OnboardView(): JSX.Element {
       setRun(null);
       writeLast({ corridor_id: created.corridor_id });
       toast('info', `Onboarding ${created.name} — ${created.corridor_id}`);
+      busyFocus.after(() => progressTitleRef.current);
     } catch (err) {
       toastError(err, 'Onboarding refused');
+      busyFocus.after(() => onboardRef.current);
     } finally {
       setBusy(false);
     }
@@ -523,6 +547,7 @@ export function OnboardView(): JSX.Element {
 
   async function launchRun(): Promise<void> {
     if (!corridor?.scenario_id) return;
+    busyFocus.begin(runSeedsRef.current);
     setBusy(true);
     try {
       const created = await createRun({
@@ -532,9 +557,10 @@ export function OnboardView(): JSX.Element {
       trackRun(await getRun(created.run_id));
       writeLast({ corridor_id: corridor.corridor_id, run_id: created.run_id });
       toast('ok', `Launched ${REPORT_SEEDS} seeds — ${created.run_id}`);
-      navigate('/runs');
+      navigate('/runs', { state: FOCUS_CONTENT_STATE });
     } catch (err) {
       toastError(err, 'Launch refused');
+      busyFocus.after(() => runSeedsRef.current);
     } finally {
       setBusy(false);
     }
@@ -542,6 +568,7 @@ export function OnboardView(): JSX.Element {
 
   async function reportAgainstObservations(): Promise<void> {
     if (!corridor?.observations_path || !run) return;
+    busyFocus.begin(reportRef.current);
     setBusy(true);
     try {
       await createReport(
@@ -551,9 +578,10 @@ export function OnboardView(): JSX.Element {
         corridor.observations_path,
       );
       toast('ok', 'Report requested — scored against the uploaded observations');
-      navigate('/reports');
+      navigate('/reports', { state: FOCUS_CONTENT_STATE });
     } catch (err) {
       toastError(err, 'Report refused');
+      busyFocus.after(() => reportRef.current);
     } finally {
       setBusy(false);
     }
@@ -891,10 +919,12 @@ export function OnboardView(): JSX.Element {
           </span>
           <div className="form-actions-buttons">
             <button
+              ref={onboardRef}
               type="button"
               className="btn primary"
               onClick={() => void onboard()}
               disabled={problem !== null || busy || offline}
+              aria-busy={busy || undefined}
               aria-describedby="onboard-hint"
             >
               Onboard corridor
@@ -906,7 +936,12 @@ export function OnboardView(): JSX.Element {
       {corridor && (
         <section className="panel" aria-labelledby="ob-progress-title">
           <div className="panel-head">
-            <h2 className="panel-title" id="ob-progress-title">
+            <h2
+              className="panel-title"
+              id="ob-progress-title"
+              tabIndex={-1}
+              ref={progressTitleRef}
+            >
               Progress
             </h2>
             <StatusChip status={corridor.status} />
@@ -1132,6 +1167,7 @@ export function OnboardView(): JSX.Element {
             </span>
             <div className="form-actions-buttons">
               <button
+                ref={reportRef}
                 type="button"
                 className="btn"
                 onClick={() => void reportAgainstObservations()}
@@ -1148,6 +1184,7 @@ export function OnboardView(): JSX.Element {
                 Report against observations
               </button>
               <button
+                ref={runSeedsRef}
                 type="button"
                 className="btn primary"
                 onClick={() => void launchRun()}
@@ -1277,7 +1314,7 @@ export function OnboardView(): JSX.Element {
                               ? 'Load this corridor: its summary, and the run and report actions'
                               : 'Load this corridor — it installed no scenario, so there is nothing to run on it'
                         }
-                        onClick={() => void selectCorridor(row)}
+                        onClick={(e) => void selectCorridor(row, e.currentTarget)}
                       >
                         Use
                       </button>

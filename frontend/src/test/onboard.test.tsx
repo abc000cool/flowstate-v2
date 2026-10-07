@@ -16,6 +16,7 @@ import { clearAuthFailure, OFFLINE_WRITE_MESSAGE, setOfflineFallback } from '../
 import { AppStateProvider, useAppState } from '../components/AppContext';
 import { ERROR_TOAST_MS, TOAST_MS, Toasts, toast } from '../components/toast';
 import { OnboardView, parseBbox } from '../views/OnboardView';
+import { ContentFocusProbe, dropFocus } from './focus';
 
 const CORRIDOR_ID = 'cor_9f21ab77cd10';
 const SCENARIO_ID = 'scn_onboarded01';
@@ -543,6 +544,92 @@ describe('OnboardView', () => {
       run_ids: [RUN_ID],
       title: 'mndot_i94_wb against its detectors',
       observations_path: OBSERVATIONS,
+    });
+  });
+
+  // §9.1 "Busy": each write disables its button while it runs, which drops
+  // keyboard focus to <body>. Focus goes to the panel an onboarding fills,
+  // back to the button after a refusal, and to the content of the page a
+  // launch lands on.
+  describe('keyboard focus after a busy action', () => {
+    /** Refuse one write with HTTP 4xx, passing every other call through. */
+    function refuse(path: string, status: number, detail: string): void {
+      const base = globalThis.fetch;
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+          if (String(input).endsWith(path) && (init?.method ?? 'GET') === 'POST') {
+            return json({ detail }, status);
+          }
+          return base(input, init);
+        }),
+      );
+    }
+
+    function renderWithProbes(): void {
+      render(
+        <MemoryRouter initialEntries={['/onboard']}>
+          <Routes>
+            <Route path="/onboard" element={<OnboardView />} />
+            <Route path="/runs" element={<ContentFocusProbe label="runs view" />} />
+            <Route path="/reports" element={<ContentFocusProbe label="reports view" />} />
+          </Routes>
+        </MemoryRouter>,
+      );
+    }
+
+    it('hands focus to the Progress panel once an onboarding starts', async () => {
+      renderView();
+      fillForm();
+      const button = screen.getByRole('button', { name: 'Onboard corridor' });
+      button.focus();
+      fireEvent.click(button);
+      expect(button).toBeDisabled();
+      dropFocus();
+      const progress = await screen.findByRole('heading', { name: 'Progress' }, { timeout: 4000 });
+      await waitFor(() => expect(progress).toHaveFocus());
+    });
+
+    it('gives focus back to Onboard corridor after a refusal', async () => {
+      refuse('/corridors', 409, 'a corridor named mndot_i94_wb already exists');
+      renderView();
+      fillForm();
+      const button = screen.getByRole('button', { name: 'Onboard corridor' });
+      button.focus();
+      fireEvent.click(button);
+      expect(button).toBeDisabled();
+      dropFocus();
+      await waitFor(() => expect(button).toBeEnabled(), { timeout: 4000 });
+      expect(button).toHaveFocus();
+      expect(screen.queryByRole('heading', { name: 'Progress' })).toBeNull();
+    });
+
+    it('gives focus back to Run 20 seeds after a refused launch', async () => {
+      refuse('/runs', 422, 'replicates: the queue is full');
+      renderView();
+      fillForm();
+      corridorDone = true;
+      fireEvent.click(screen.getByRole('button', { name: 'Onboard corridor' }));
+      const launch = await screen.findByRole('button', { name: 'Run 20 seeds' }, { timeout: 4000 });
+      launch.focus();
+      fireEvent.click(launch);
+      expect(launch).toBeDisabled();
+      dropFocus();
+      await waitFor(() => expect(launch).toBeEnabled(), { timeout: 4000 });
+      expect(launch).toHaveFocus();
+    });
+
+    it('lands the 20-seed launch on Runs with its content focused', async () => {
+      renderWithProbes();
+      fillForm();
+      corridorDone = true;
+      fireEvent.click(screen.getByRole('button', { name: 'Onboard corridor' }));
+      fireEvent.click(
+        await screen.findByRole('button', { name: 'Run 20 seeds' }, { timeout: 4000 }),
+      );
+      expect(
+        await screen.findByText('runs view: content focus requested', {}, { timeout: 4000 }),
+      ).toBeInTheDocument();
     });
   });
 });

@@ -610,3 +610,149 @@ describe('RunsView on reconnect', () => {
     expect(within(table).queryByText('scn_72b91153417c')).toBeNull();
   }, 15000);
 });
+
+/** The launcher used to open on whatever the library listed first — on a
+ * live service that is the `corridor_10km` preset (file order), 20 × 20 min
+ * ≈ 6.7 sim-hours one click from the queue. Until the user picks a scenario
+ * it opens on the ring benchmark, or on the cheapest preset when the service
+ * has no ring. */
+describe('RunsView default scenario', () => {
+  function presetOf(name: string, replicates: number, duration_s: number): unknown {
+    return {
+      name,
+      filename: `${name}.yaml`,
+      config_hash: `hash-${name}`,
+      preset: true,
+      config: {
+        name,
+        tier: 'micro',
+        network: { kind: 'corridor', length_m: 10000, lanes: 1, inflow: [[0, 0.55]] },
+        fleet: { model: 'IDM' },
+        av: { penetration: 0, compliance: 1, controller: null },
+        sim: { duration_s },
+        seed: 42,
+        replicates,
+      },
+    };
+  }
+
+  /** How many times the preset list was read (a library load). */
+  let presetReads = 0;
+
+  function serve(presets: unknown[], stored: unknown[] = []): void {
+    presetReads = 0;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL): Promise<Response> => {
+        const url = String(input);
+        if (url.endsWith('/scenarios/preset')) {
+          presetReads += 1;
+          return json(presets);
+        }
+        if (url.endsWith('/scenarios')) return json(stored);
+        if (url.endsWith('/runs')) return json([]);
+        return json({ detail: `unexpected ${url}` }, 404);
+      }),
+    );
+  }
+
+  beforeEach(() => {
+    setOfflineFallback(false);
+    clearAuthFailure();
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    clearAuthFailure();
+  });
+
+  it('opens on ring_sugiyama, not the first preset in file order', async () => {
+    serve([
+      presetOf('corridor_10km', 20, 1200),
+      presetOf('corridor_10km_workzone', 20, 1200),
+      presetOf('ring_sugiyama', 20, 600),
+    ]);
+    render(
+      <MemoryRouter>
+        <RunsView />
+      </MemoryRouter>,
+    );
+    const select = await screen.findByLabelText('Scenario', {}, { timeout: 4000 });
+    await waitFor(() => expect(select).toHaveDisplayValue('ring_sugiyama (preset)'), {
+      timeout: 4000,
+    });
+    // and the launcher is prefilled from the ring's own config
+    await waitFor(() => expect(screen.getByLabelText('Duration (s)')).toHaveValue(600));
+  });
+
+  it('opens on the stored copy of the ring when the preset is already stored', async () => {
+    const ring = presetOf('ring_sugiyama', 20, 600) as { config_hash: string; config: unknown };
+    serve(
+      [presetOf('corridor_10km', 20, 1200), ring],
+      [
+        {
+          scenario_id: 'scn_big',
+          name: 'i24_replica',
+          config_hash: 'hash-i24',
+          created_at: 't',
+          config: scenario.config,
+        },
+        {
+          scenario_id: 'scn_ring',
+          name: 'ring_sugiyama',
+          config_hash: ring.config_hash,
+          created_at: 't',
+          config: ring.config,
+        },
+      ],
+    );
+    render(
+      <MemoryRouter>
+        <RunsView />
+      </MemoryRouter>,
+    );
+    const select = await screen.findByLabelText('Scenario', {}, { timeout: 4000 });
+    // the stored copy has no "(preset)" suffix: it is the same config by hash
+    await waitFor(() => expect(select).toHaveDisplayValue('ring_sugiyama'), { timeout: 4000 });
+  });
+
+  it('opens on the cheapest preset when the service has no ring', async () => {
+    serve([
+      presetOf('corridor_10km', 20, 1200),
+      presetOf('i24_replica', 20, 7800),
+      presetOf('corridor_smoke', 3, 600),
+    ]);
+    render(
+      <MemoryRouter>
+        <RunsView />
+      </MemoryRouter>,
+    );
+    const select = await screen.findByLabelText('Scenario', {}, { timeout: 4000 });
+    await waitFor(() => expect(select).toHaveDisplayValue('corridor_smoke (preset)'), {
+      timeout: 4000,
+    });
+  });
+
+  it('keeps the scenario the user picked across library refreshes', async () => {
+    serve([presetOf('corridor_10km', 20, 1200), presetOf('ring_sugiyama', 20, 600)]);
+    render(
+      <MemoryRouter>
+        <RunsView />
+      </MemoryRouter>,
+    );
+    const select = await screen.findByLabelText('Scenario', {}, { timeout: 4000 });
+    await waitFor(() => expect(select).toHaveDisplayValue('ring_sugiyama (preset)'), {
+      timeout: 4000,
+    });
+    fireEvent.change(select, { target: { value: 'preset:corridor_10km.yaml' } });
+    expect(select).toHaveDisplayValue('corridor_10km (preset)');
+    // a reconnect re-reads the library at once, handing back fresh objects
+    // (the idle refresh is 30 s away); the choice stands
+    const before = presetReads;
+    act(() => setOfflineFallback(true));
+    act(() => setOfflineFallback(false));
+    await waitFor(() => expect(presetReads).toBeGreaterThan(before), { timeout: 4000 });
+    await waitFor(() => expect(screen.getByLabelText('Duration (s)')).toHaveValue(1200));
+    expect(select).toHaveDisplayValue('corridor_10km (preset)');
+  }, 10000);
+});

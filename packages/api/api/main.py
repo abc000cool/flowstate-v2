@@ -31,12 +31,14 @@ configuration (CLAUDE.md §0.5).
 
 from __future__ import annotations
 
+import hashlib
 import io
 import json
 import logging
 import re
 import secrets
 import shutil
+import threading
 import time
 import uuid
 import zipfile
@@ -354,24 +356,79 @@ def list_scenarios(request: Request) -> list[ScenarioOut]:
     return [_scenario_out(row) for row in _store(request).list_scenarios()]
 
 
+#: One parsed preset file: the sha256 of its bytes, and the preset those bytes
+#: give (None for a file that is not a valid scenario).
+_PresetEntry = tuple[str, PresetOut | None]
+
+#: Parsed presets per scenarios directory, by file name (see :func:`load_presets`).
+#: The entries are shared between requests and are never mutated.
+_preset_cache: dict[Path, dict[str, _PresetEntry]] = {}
+_preset_cache_lock = threading.Lock()
+
+
+def _parse_preset(filename: str, raw: bytes) -> PresetOut | None:
+    """The preset a scenario YAML's bytes describe, or None when they do not
+    describe a valid scenario (a broken preset must not break the listing).
+
+    Parses as :meth:`ScenarioConfig.from_yaml` does, from bytes already read,
+    so the digest the cache keys on is the digest of what was parsed.
+    """
+    try:
+        doc = yaml.safe_load(raw.decode("utf-8"))
+        if not isinstance(doc, dict):
+            return None
+        cfg = ScenarioConfig.model_validate(doc)
+    except (ValueError, ValidationError, yaml.YAMLError):
+        return None
+    return PresetOut(
+        name=cfg.name,
+        filename=filename,
+        config_hash=config_hash(cfg),
+        config=cfg.model_dump(mode="json"),
+    )
+
+
+def load_presets(scenarios_dir: Path) -> list[PresetOut]:
+    """The ``*.yaml`` scenarios in ``scenarios_dir`` as presets, in file-name order.
+
+    Parsing them is the cost of ``GET /scenarios/preset``: with about thirty
+    presets, some carrying long demand profiles, pure-Python YAML takes
+    0.5–1 s, and several dashboard views ask at once. So each file's parse is
+    kept in process, keyed on the sha256 of its bytes. Every call still globs
+    the directory and reads every file (milliseconds), so a preset edited,
+    added or removed — by hand or by an onboarding installing one — shows on
+    the very next call, and only a changed file is parsed again. The key is
+    the content rather than the mtime, so a copy that keeps mtimes
+    (``cp -p``, ``rsync -a``) cannot serve a stale parse. The lock makes
+    concurrent calls wait for one parse instead of each doing their own.
+    """
+    key = scenarios_dir.resolve()
+    with _preset_cache_lock:
+        previous = _preset_cache.get(key, {})
+        current: dict[str, _PresetEntry] = {}
+        for path in sorted(scenarios_dir.glob("*.yaml")):
+            try:
+                raw = path.read_bytes()
+            except OSError:
+                continue  # removed between the glob and the read
+            digest = hashlib.sha256(raw).hexdigest()
+            entry = previous.get(path.name)
+            if entry is None or entry[0] != digest:
+                entry = (digest, _parse_preset(path.name, raw))
+            current[path.name] = entry
+        # replaced wholesale: a file that is gone leaves no entry behind
+        _preset_cache[key] = current
+    return [preset for _, preset in current.values() if preset is not None]
+
+
 @router.get("/scenarios/preset", response_model=list[PresetOut])
 def list_presets(request: Request) -> list[PresetOut]:
-    """The repo's versioned ``scenarios/*.yaml`` as selectable presets."""
-    presets: list[PresetOut] = []
-    for path in sorted(_settings(request).scenarios_dir.glob("*.yaml")):
-        try:
-            cfg = ScenarioConfig.from_yaml(path)
-        except (ValueError, ValidationError, yaml.YAMLError):
-            continue  # a broken preset must not break the listing
-        presets.append(
-            PresetOut(
-                name=cfg.name,
-                filename=path.name,
-                config_hash=config_hash(cfg),
-                config=cfg.model_dump(mode="json"),
-            )
-        )
-    return presets
+    """The repo's versioned ``scenarios/*.yaml`` as selectable presets.
+
+    Parsed once per file content and reused (:func:`load_presets`); an edit
+    to a preset file is picked up by the next request.
+    """
+    return load_presets(_settings(request).scenarios_dir)
 
 
 @router.get("/scenarios/{scenario_id}", response_model=ScenarioOut, responses=_NOT_FOUND_RESPONSE)

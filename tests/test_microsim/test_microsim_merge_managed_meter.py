@@ -2206,6 +2206,11 @@ def _weave_state(**params) -> dict:
         "n_missed_exit": 0,
         "gave_up": set(),
         "through_target": "z",
+        # amendment W1 (entrant_giveup_m, off unless set): entrants rerouted
+        # to the paired exit, their counter and the exit ramp's last edge
+        "took_exit": set(),
+        "n_entrant_took_exit": 0,
+        "exit_target": "x2",
         "n_forced_deferred": 0,
         "n_cooperations": 0,
         "coop_decel_sum": 0.0,
@@ -3224,6 +3229,179 @@ class TestWeaveExitPriority:
                 assert ws["veh"]["e"]["target"] is None and not held, t
             else:
                 assert ws["veh"]["e"]["target"] == "f" and held and held[0][1] == "f", t
+
+
+class TestWeaveEntrantGiveup:
+    """Amendment W1 (docs/WEAVE_LOSS_DIAGNOSIS.md §6.2; ``entrant_giveup_m``,
+    no default, unset = off): an entrant halted at the end of the auxiliary
+    lane still owing its change, with no change to request that step, takes
+    the paired exit — the entering mirror of the exit give-up
+    (:class:`TestWeaveExitPriority`)."""
+
+    @staticmethod
+    def _stranded(**params):
+        """Entrant ``n`` halted 0.5 m before the section end in lane 0, the
+        lane-1 vehicle ``l`` beside it (front 1.5 m behind n's front, so no
+        gap is acceptable and the forced guard refuses); the forced change is
+        due at once (``force_after_s`` = 0), as in
+        ``test_an_entrant_halted_at_the_lane_end_is_never_given_up``."""
+        from microsim.runner import NEIGHBOR_LEFT_LEADERS
+
+        ws = _weave_state(**{"force_after_s": 0.0, **params})
+        veh = _WeaveVehicle({"n": 0.0, "l": 0.0}, {("n", NEIGHBOR_LEFT_LEADERS): (("l", -2.0),)})
+        veh.lc_modes["n"] = 1621
+        mod = _WeaveMod(veh)
+        res = {"n": _res("b", 0, 99.5, 0.0), "l": _res("b", 1, 98.0, 0.0)}
+        return ws, veh, mod, res
+
+    def test_a_stranded_entrant_takes_the_exit_when_set(self):
+        """Rerouted to the exit ramp's last edge, its lane-change mode restored,
+        handed back at once, counted in ``n_missed`` and
+        ``n_entrant_took_exit`` (not in ``n_missed_exit``), recorded with the
+        rerouted vehicles, and never driven again although it is still in
+        lane 0 of the exit-only edge on the next step."""
+        from microsim.runner import _weave_meta, _weave_step
+
+        ws, veh, mod, res = self._stranded(entrant_giveup_m=5.0)
+        _weave_step(mod, _tc, ws, res, 0.0)
+        assert ("target", "n", "x2") in veh.calls
+        assert not [c for c in veh.calls if c[0] == "change"]
+        assert veh.lc_modes["n"] == 1621 and "n" not in ws["veh"]
+        assert ws["n_entrant_took_exit"] == 1 and ws["n_missed"] == 1
+        assert ws["n_missed_exit"] == 0 and ws["n_forced_deferred"] == 0
+        assert ws["took_exit"] == {"n"} and ws["gave_up"] == {"n"}
+        assert ws["n_entered"] == ws["n_changed_in"] + ws["n_changed_out"] + ws["n_missed"]
+        veh.calls.clear()
+        res["n"] = _res("b", 0, 99.8, 0.4)  # moving off towards the exit
+        _weave_step(mod, _tc, ws, res, 0.5)
+        assert "n" not in ws["veh"] and ws["n_entered"] == 1
+        assert not [c for c in veh.calls if c[1] == "n"]
+        meta = _weave_meta(ws, {"on0": 1})
+        assert meta["n_entrant_took_exit"] == 1 and meta["n_missed"] == 1
+        keys = list(meta)
+        assert keys.index("n_entrant_took_exit") == keys.index("n_missed_exit") + 1
+        assert meta["params"]["entrant_giveup_m"] == 5.0
+
+    def test_unset_or_zero_changes_nothing(self):
+        """Unset (the default) or 0: the stranded entrant is deferred every step,
+        never rerouted, and ``meta.json`` has no ``n_entrant_took_exit`` —
+        exactly what the runner did before the key existed."""
+        from microsim.runner import _weave_meta, _weave_step
+
+        for params in ({}, {"entrant_giveup_m": 0.0}):
+            ws, veh, mod, res = self._stranded(**params)
+            for t in (0.0, 0.5, 1.0):
+                _weave_step(mod, _tc, ws, res, t)
+            assert not [c for c in veh.calls if c[0] == "target"], params
+            assert ws["n_missed"] == 0 and ws["n_entrant_took_exit"] == 0
+            assert ws["n_forced_deferred"] == 3 and "n" in ws["veh"]
+            assert ws["took_exit"] == set() and ws["gave_up"] == set()
+            assert "n_entrant_took_exit" not in _weave_meta(ws, {"on0": 1})
+
+    def test_only_a_halted_entrant_within_the_distance_takes_the_exit(self):
+        """Still rolling within the distance, or halted farther back: kept."""
+        from microsim.runner import _weave_step
+
+        ws, veh, mod, res = self._stranded(entrant_giveup_m=5.0)
+        veh.speeds["n"] = 0.5
+        res["n"] = _res("b", 0, 99.0, 0.5)
+        _weave_step(mod, _tc, ws, res, 0.0)
+        assert "n" in ws["veh"] and ws["n_entrant_took_exit"] == 0
+        veh.speeds["n"] = 0.0
+        res["n"] = _res("b", 0, 94.0, 0.0)  # 6 m before the end
+        res["l"] = _res("b", 1, 92.5, 0.0)
+        _weave_step(mod, _tc, ws, res, 0.5)
+        assert "n" in ws["veh"] and ws["n_entrant_took_exit"] == 0
+        assert not [c for c in veh.calls if c[0] == "target"]
+
+    def test_a_halted_entrant_that_can_change_changes(self):
+        """Halted at the lane end with lane 1 clear beside it, the change is
+        requested (accepted gaps) and the entrant is not given up."""
+        from microsim.runner import LC_MODE_SCRIPTED_FORCE, _weave_step
+
+        ws = _weave_state(force_after_s=0.0, entrant_giveup_m=5.0)
+        veh = _WeaveVehicle({"n": 0.0})
+        mod = _WeaveMod(veh)
+        _weave_step(mod, _tc, ws, {"n": _res("b", 0, 99.5, 0.0)}, 0.0)
+        assert ("change", "n", 1, ws["step_s"]) in veh.calls
+        assert not [c for c in veh.calls if c[0] == "target"]
+        assert veh.lc_modes["n"] == LC_MODE_SCRIPTED_FORCE and ws["n_entrant_took_exit"] == 0
+
+    def test_schema(self):
+        """A key with no default: accepted in ``weave_params``, absent from
+        ``WEAVE_DEFAULTS`` (and so from the pinned default snapshot), negative
+        refused; a weave config that does not set it hashes as before."""
+        from flowstate_core.config import WEAVE_KEYS, WEAVE_OPTIONAL_KEYS, WeaveSpec
+
+        assert "entrant_giveup_m" in WEAVE_OPTIONAL_KEYS <= WEAVE_KEYS
+        assert "entrant_giveup_m" not in WEAVE_DEFAULTS
+        spec = WeaveSpec(exit_ramp="x", weave_params={"entrant_giveup_m": 5.0})
+        assert spec.weave_params == {"entrant_giveup_m": 5.0}
+        WeaveSpec(exit_ramp="x", weave_params={"entrant_giveup_m": 0.0})
+        with pytest.raises(ValueError, match="entrant_giveup_m must be >= 0"):
+            WeaveSpec(exit_ramp="x", weave_params={"entrant_giveup_m": -1.0})
+        raw = _th52_corridor_config(3).model_dump(mode="json")
+        base = config_hash(ScenarioConfig.model_validate(raw))
+        raw["network"]["ramps"][0]["weave"]["weave_params"] = {"entrant_giveup_m": 5.0}
+        assert config_hash(ScenarioConfig.model_validate(raw)) != base
+
+    @staticmethod
+    def _th52_dc(seed: int, weave_params: dict | None) -> ScenarioConfig:
+        """The T.H.52 section test's fixture with the calibrated I-94 drivers
+        (``scenarios/mndot_i94_wb_stpaul_weave_dc.yaml``'s fleet block), as
+        ``scripts/merge_model_selfcheck.py th52 --fleet-from`` runs it."""
+        import yaml
+
+        raw = _th52_corridor_config(seed).model_dump(mode="json")
+        dc = Path(__file__).parents[2] / "scenarios" / "mndot_i94_wb_stpaul_weave_dc.yaml"
+        raw["fleet"] = dict(yaml.safe_load(dc.read_text())["fleet"])
+        if weave_params is not None:
+            raw["network"]["ramps"][0]["weave"]["weave_params"] = weave_params
+        return ScenarioConfig.model_validate(raw)
+
+    def test_on_the_th52_fixture_a_stranded_entrant_takes_the_exit(self, tmp_path):
+        """SUMO, the T.H.52 section with the calibrated drivers (seed 4: an
+        entrant stood at the auxiliary lane's end from 101.5 s for 50 s with
+        nine exit-bound vehicles stopped behind it, docs/WEAVE_LOSS_DIAGNOSIS.md
+        §3.8; seed 15: the longest such stand, 62.5 s). With
+        ``entrant_giveup_m`` 5 the stranded entrants take the paired exit: each
+        is an entrant (not a ramp-to-exit vehicle), recorded as given up in
+        ``vehicles.parquet`` with ``destination_final`` the exit, the counter
+        matches them and is part of ``n_missed``, and no collision. Unset, no
+        entrant is rerouted and ``meta.json`` has no counter; ``0`` writes
+        byte-identical outputs to unset (only the config hash differs)."""
+        import hashlib
+
+        def run(seed: int, params: dict | None, tag: str):
+            paths = run_micro(self._th52_dc(seed, params), seed, tmp_path / tag)
+            meta = json.loads(paths.meta.read_text())
+            veh = pd.read_parquet(paths.run_dir / "vehicles.parquet")
+            return paths, meta, veh
+
+        took = 0
+        for seed in (4, 15):
+            _, meta, veh = run(seed, {"entrant_giveup_m": 5.0}, f"w1_{seed}")
+            (z,) = meta["weave_sections"]
+            rerouted = veh[veh.gave_up & veh.route.str.startswith("on0")]
+            assert z["n_entrant_took_exit"] == len(rerouted), seed
+            assert z["n_entrant_took_exit"] + z["n_missed_exit"] <= z["n_missed"], seed
+            assert (rerouted.route != "on0_off1").all()  # ramp-to-exit vehicles never cross
+            assert (rerouted.destination_final == "th52 exit").all()
+            assert rerouted.gave_up_s.notna().all()
+            assert meta["n_collisions"] == 0
+            took += z["n_entrant_took_exit"]
+        assert took >= 1, "no stranded entrant took the exit at seeds 4 and 15"
+        p_unset, meta, veh = run(4, None, "unset")
+        assert "n_entrant_took_exit" not in meta["weave_sections"][0]
+        assert not (veh.gave_up & veh.route.str.startswith("on0")).any()
+        p_zero, meta_zero, _ = run(4, {"entrant_giveup_m": 0.0}, "zero")
+        assert "n_entrant_took_exit" not in meta_zero["weave_sections"][0]
+        for name in ("trajectories.parquet", "vehicles.parquet", "edges.parquet"):
+            a, b = (
+                hashlib.sha256((p.run_dir / name).read_bytes()).hexdigest()
+                for p in (p_unset, p_zero)
+            )
+            assert a == b, name
 
 
 class TestMeterStopPlacementReview:
