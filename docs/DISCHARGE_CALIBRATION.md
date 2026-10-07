@@ -71,5 +71,24 @@ test's ceiling (docs/MERGE_MODEL.md A3).
 
 ## 3. The calibration
 
-Under docs/FRISCO_PROTOCOL.md Amendment 1 (grid, targets and rule fixed
-before any run). Results: to be added.
+Under docs/FRISCO_PROTOCOL.md Amendment 1 and its clarifications (grid,
+targets, definitions and rule fixed before any run).
+
+**Tools (2026-10-06, before any run).** `scripts/derive_population.py` wrote
+the derived populations (`artifacts/idm_i24_capacity_amax_k{0.25,0.5,0.75,1.0}.json`:
+mean `a_max` 1.1620 / 1.2691 / 1.3762 / 1.4833 m/s², = 1.0549 + k × 0.4284;
+covariance and the other means unchanged; k = 0 is `idm_i24_capacity.json`,
+which both corridors' fleets run). `scripts/calibrate_driver_grid.py` runs the
+25-pair grid (I-24 `i24_replica_flow_speedcal`, one seed; I-94 the 35-minute
+slice under the reference configuration, two seeds; pair (0, 0) is the
+reference with the same hash) and applies the rule
+(`validation.driver_calibration`); lane use and discharge are read by
+`validation.lane_use`. I-24: vehicle-time shares on data x 0–5,500 m,
+06:30–08:30 (observed 30.33 / 24.16 / 20.06 / 25.46 %), discharge at 2,200 /
+3,200 m against 6,626 / 6,639 veh/h. I-94: detector crossing shares by lane
+at the selected stations whose simulated cross-section has the station's lane
+count (at least 25 m from a lane-count change), 07:05–07:35 on the five
+calibration days, quality-masked (IRIS lane n = SUMO lane n − 1, both from the
+right); discharge S97 against 4,490.5 veh/h.
+
+**Results:** to be added.

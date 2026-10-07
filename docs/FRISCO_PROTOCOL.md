@@ -346,3 +346,20 @@ one whose discharge error is smallest; ties go to the smaller change (k, then
 grid in an artifact before any acceptance run, and the acceptance runs (the
 baseline gate) use them unchanged. If no pair improves lane use or discharge
 against the current setting, the current setting stays and the report says so.
+
+**Clarifications of Amendment 1 — 2026-10-06, before any grid run** (found
+while implementing it; neither changes a target value):
+- *I-24 lane-use segment.* "The Old Hickory merge area as the 2026-09
+  calibration measured it" is read as that calibration's measured segment —
+  the whole measured span, data x 0–5,500 m, 06:30–08:30, lanes 1–4 counted
+  from the left, the auxiliary lane dropped and the four renormalised — the
+  only segment that gives the quoted 30/24/20/26 % (exactly 30.33 / 24.16 /
+  20.06 / 25.46 %). The merge area alone (750–2,000 m: 28.0 / 23.4 / 19.0 /
+  29.6 %) is reported beside it, not scored.
+- *I-94 "while the bottleneck is active".* On the calibration-day mean S790
+  is below 40 mph in every scored window of the slice, but S97 is never the
+  §5 test's 20 mph faster; the slice's fixed window (07:05–07:35) is used as
+  the discharge window, against S97's observed mean of 4,490.5 veh/h there,
+  and the per-window activity flags are reported, not used to select windows.
+- *"Improves"* means a strictly smaller error than the current setting (k = 0,
+  `lc_keep_right` = 0), with no noise band.

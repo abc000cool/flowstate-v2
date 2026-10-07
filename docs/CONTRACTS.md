@@ -3584,3 +3584,16 @@ Supersedes the WP-104 lines "simulated station speeds are segment means" and
   `n_spread_withheld`, `n_outlet_spared`, `n_onset_priority`,
   `n_anticipation_exiter_spared`, `n_opposing_deferred`; readers treat them as
   absent.
+
+## Driver calibration grid (Amendment 1) — 2026-10-06
+
+Pure modules `validation.lane_use` (lane shares by vehicle-time and by
+crossings, lane-numbering conversions, RMSE in percentage points) and
+`validation.driver_calibration` (the Amendment-1 selection rule). Schemas
+`flowstate.driver_calibration/1` (grid table, targets, selection, provenance)
+and `flowstate.observed_lane_shares/1`. Run tree
+`<out>/<pair>/<config hash>/<seed>/{readings.json, meta.json}` plus
+`MANIFEST.json` and `LANES.json`. Derived populations
+`artifacts/idm_i24_capacity_amax_k*.json` carry their provenance in `notes`
+and no `.calibration.json` sidecar (which tools read as a T-scaling record).
+No config field added.

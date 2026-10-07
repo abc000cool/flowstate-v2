@@ -88,6 +88,9 @@ make_archive() {  # make_archive light|full — atomic replace of $ARCHIVE, then
   # 20d's trees: per-run metrics/meta (five levels), the design and the tuning manifests, comparison tables
   extra="$extra $(ls runs/p1_unc/DESIGN.json runs/p1_unc/*/*/*/*/metrics.json runs/p1_unc/*/*/*/*/meta.json runs/p1_tune/*.json runs/p1_tune/*.md runs/p1_tune/*/MANIFEST.json runs/p1_tune/*/*/*/*/metrics.json runs/p1_tune/*/*/*/*/meta.json 2>/dev/null | tr '\n' ' ')"
   extra="$extra $(ls runs/p1b_unc/DESIGN.json runs/p1b_unc/*/*/*/*/metrics.json runs/p1b_unc/*/*/*/*/meta.json runs/p1b_tune/*.json runs/p1b_tune/*.md runs/p1b_tune/*/MANIFEST.json runs/p1b_tune/*/*/*/*/metrics.json runs/p1b_tune/*/*/*/*/meta.json 2>/dev/null | tr '\n' ' ')"
+  # stage 22's grids (<root>/<pair>/<config hash>/<seed>/: readings and meta of every run, the manifest, the lane geometry)
+  # and the per-lane data-quality report the observed I-94 lane shares were masked with; the artifacts ride in artifacts/*.json
+  extra="$extra $(ls runs/p3/grid_*/*/*/*/readings.json runs/p3/grid_*/*/*/*/meta.json runs/p3/grid_*/MANIFEST.json runs/p3/grid_*/LANES.json runs/p3/dq_lanes/data_quality.json runs/p3/dq_lanes/data_quality.md 2>/dev/null | tr '\n' ' ')"
   # shellcheck disable=SC2086
   tar czf "$ARCHIVE.part" --exclude=net artifacts/*.json scenarios/*.yaml logs $extra 2>/dev/null \
     || tar czf "$ARCHIVE.part" artifacts/*.json scenarios/*.yaml logs 2>/dev/null || { rm -f "$ARCHIVE.part"; return 1; }
@@ -1043,6 +1046,39 @@ stage p2_gate_c bash -c "$RUN scripts/merge_model_selfcheck.py colliding-pairs \
     --uncertainty-artifact artifacts/uncertainty_mndot_i94_wb_stpaul_p1_rehearsal.json \
     --out-root runs/merge_model_gate_c --population-dir runs/merge_model_gate_c/populations \
     --out artifacts/merge_model_gate_c.json" || say "p2_gate_c failed; continuing"
+
+# 22. Amendment-1 driver calibration grid (docs/FRISCO_PROTOCOL.md Amendment 1, docs/DISCHARGE_CALIBRATION.md §3; 2026-10-06,
+#     grid, targets, calibration data and selection rule fixed before any run). Mean a_max at the measured mean + k sd,
+#     k 0 / 0.25 / 0.5 / 0.75 / 1 (artifacts/idm_i24_capacity_amax_k*.json, scripts/derive_population.py; k 0 is
+#     artifacts/idm_i24_capacity.json itself) x lc_keep_right 0 / 0.1 / 0.25 / 0.5 / 1: every pair run as a variant of the
+#     corridor's reference (only the fleet's population and keep-right change; pair (0, 0) is the reference, same hash),
+#     scored on lane use and discharge, and the amendment's rule applied by scripts/calibrate_driver_grid.py, which writes
+#     artifacts/driver_calibration_{i24,i94}.json (grid table, rule, choice, provenance). The script chooses; nobody else.
+#     Needs no data set (launch with --data-set none): every input is tracked, and the MnDOT per-lane cache is fetched here.
+#   22a. I-24: scenarios/i24_replica_flow_speedcal.yaml, one seed (spawn_seeds(42, 20)[0]), 25 runs of 2 h 10 min; about
+#        9 GB each (stage 11's measurement), so the pool is capped at 12 on the 125 GB machine (the script also caps it by
+#        the available memory).
+#   22b. I-94: the 35-minute slice under the reference configuration (xlsfg, stage p2_gate_b's recipe, built in the script),
+#        two seeds, 50 runs. First the per-lane 30-s cache for all nine dates (the per-lane data-quality check needs every
+#        day for its day-outlier rule; loop 3240 excluded as in every MnDOT stage), then the observed lane shares on the
+#        five calibration days of the committed split (artifacts/p1_rehearsal_2026-10-04/day_split.json), quality-masked.
+P3=runs/p3
+stage p3_grid_i24 bash -c "set -e; \
+  $RUN scripts/calibrate_driver_grid.py --corridor i24 --plan-only; \
+  $RUN scripts/calibrate_driver_grid.py --corridor i24 --procs $(( PROCS < 12 ? PROCS : 12 )) \
+    --out $P3/grid_i24 --artifact artifacts/driver_calibration_i24.json" || say "p3_grid_i24 failed; continuing"
+stage p3_grid_i94 bash -c "set -e; mkdir -p $P3; \
+  $RUN scripts/data_quality_report.py --corridor-dir data/mndot/$MNDOT --lanes-from-cache data/mndot/cache \
+    --metro-config data/mndot/config/metro_config.xml.gz --allow-fetch --exclude-detectors 3240 \
+    --start 05:30 --end 09:30 --out $P3/dq_lanes; \
+  $RUN scripts/calibrate_driver_grid.py --corridor i94 \
+    --build-observed-lanes artifacts/driver_calibration_i94_observed_lanes.json \
+    --lanes-from-cache data/mndot/cache --metro-config data/mndot/config/metro_config.xml.gz \
+    --day-split artifacts/p1_rehearsal_2026-10-04/day_split.json --quality $P3/dq_lanes/data_quality.json \
+    --exclude-detectors 3240 --allow-fetch; \
+  $RUN scripts/calibrate_driver_grid.py --corridor i94 --plan-only; \
+  $RUN scripts/calibrate_driver_grid.py --corridor i94 --procs $(( PROCS < 16 ? PROCS : 16 )) \
+    --out $P3/grid_i94 --artifact artifacts/driver_calibration_i94.json" || say "p3_grid_i94 failed; continuing"
 
 # 9. Done marker; the EXIT trap builds the final archives (light, then full with the first-seed replicates).
 echo "PIPELINE_DONE $(date -u +%FT%TZ)" > logs/PIPELINE_DONE
