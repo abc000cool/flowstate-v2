@@ -11,7 +11,9 @@ TMP="$(mktemp -d)"
 # "hardlink pointing to itself" and skips them (the first copy is extracted). Not fatal.
 tar xzf "$TGZ" -C "$TMP" 2>"$TMP/tar.err" || echo "tar: $(grep -c . "$TMP/tar.err") warnings (hardlink duplicates are harmless)"
 echo "== archive contents"; find "$TMP" -maxdepth 2 | head -20
-mkdir -p logs/pipeline_vm
+# every destination exists before anything is copied: GNU rsync and cp on Linux do not create missing parents
+# (macOS rsync does; 2026-10-07, the CI failures of the stage-23 ingest test)
+mkdir -p logs/pipeline_vm artifacts scenarios docs/reports runs runs/i24_validation
 [ -d "$TMP/docs/reports" ] && rsync -a "$TMP/docs/reports/" docs/reports/ && echo "docs/reports updated"
 [ -f "$TMP/data/i24motion/processed/i24_wb_episode_positions.json" ] && cp "$TMP/data/i24motion/processed/i24_wb_episode_positions.json" data/i24motion/processed/ && echo "episode positions sidecar installed"
 [ -f "$TMP/data/i24motion/processed/i24_wb_lane_change_gaps.parquet" ] && cp "$TMP/data/i24motion/processed/i24_wb_lane_change_gaps.parquet" data/i24motion/processed/ && echo "lane-change gap records installed"
@@ -40,7 +42,6 @@ for f in "$TMP"/scenarios/*_dc.yaml "$TMP"/scenarios/*_dc_refit.yaml; do
   [ -f "$f" ] && cp "$f" scenarios/ && echo "scenario $(basename "$f")"
 done
 # first-seed replicates (figures / lane profiles)
-mkdir -p runs runs/i24_validation   # GNU rsync (Linux) does not create missing parents
 [ -d "$TMP/runs/i24_validation_zip" ] && rsync -a "$TMP/runs/i24_validation_zip/" runs/i24_validation_zip/ && echo "runs: i24_validation_zip"
 [ -d "$TMP/runs/i24_validation/speedcal_heavy" ] && rsync -a "$TMP/runs/i24_validation/speedcal_heavy/" runs/i24_validation/speedcal_heavy/ && echo "runs: speedcal_heavy"
 [ -d "$TMP/runs/i24_validation_flow" ] && rsync -a "$TMP/runs/i24_validation_flow/" runs/i24_validation_flow/ && echo "runs: i24_validation_flow"
