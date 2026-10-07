@@ -60,6 +60,10 @@ Labels:
         0.09–0.14 % of entrance departures.
       - Adoption needs the corridor round (§10.11, written, not launched) and
         the owner's decision. The key stays off.
+      - **Superseded (2026-10-07):** the corridor round ran (stage p9, §11)
+        and passed every pre-registered criterion: locked runs 3 of 20 → 0 of
+        20 (read with §11's note on lock counting), no collision, no
+        measurable throughput cost. The key stays off until the owner adopts it.
 
 ## 1. Setup and provenance
 
@@ -1400,8 +1404,12 @@ no release, and every run identical to its reference.
 
 The corridor round (§10.6, §10.11) and the owner's decision remain. The key
 stays off in every committed scenario.
+**Superseded (2026-10-07):** the corridor round ran and passed (§11); the owner's decision
+remains.
 
 ### 10.11 The corridor round (cloud; written, not launched)
+
+**Superseded (2026-10-07):** launched the same day as stage p9; results in §11.
 
 **What it tests.** It measures W1b on the corridor where the locks were seen
 (3 of 20 four-hour replicates), against the criteria fixed in §10.6.
@@ -1564,3 +1572,10 @@ Beside the criteria: link-flow GEH < 5 on 56.1 % of link-hours against 52.3 %, l
 0.889, and the battery's own `no_locks` row (validation.locks) PASS against FAIL. **W1b removes every lock with no
 measurable throughput cost and no collision.** It stays opt-in until the owner adopts it (a default change is a
 config-hash change under policy v3).
+
+**Note (2026-10-07):** both batteries' `validation.locks` records (`per_seed[i].locks`, `locks`, the `no_locks`
+row) were scored on b066935, before the second regression review made one standing queue one lock (CHANGELOG
+2026-10-07, "Second regression review"). The reference's record lists 6, 5 and 3 lock heads in its three locked
+runs, the extra ones upstream of the weave, so its `by_section` table names the McKnight Rd merge (on-ramp
+178547099) in all three. The run-level counts (3 of 20, 0 of 20) and the weave heads agree with C4b's reader;
+the per-run lists would read differently under today's code.

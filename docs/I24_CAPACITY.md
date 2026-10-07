@@ -200,6 +200,13 @@ Three things follow.
    kilometres, while the recording holds 30–38 km/h everywhere with the
    ramp open. Everything the replica gets right downstream of 2.2 km is
    congestion that spills from this one merge.
+
+   **Superseded (2026-10-07):** the Old Hickory merge is not what limits the
+   replica. A fixture of I-24's 4-lane merge geometry with free outflow
+   discharges 6,620 ± 62 veh/h with this population, about the recorded 6,626,
+   and the peak-section ceiling is set at the downstream end: how the measured
+   boundary is imposed, partly the Hickory Hollow weave
+   (docs/I24_DISCHARGE_DIAGNOSIS.md §4–§6, §8.1).
 2. **The ramp's inflow is not the overshoot.** At the tracked (uncorrected)
    ramp level the upstream error shrinks from −34% to −22%, but every
    segment from 1.6 to 3.3 km turns 7–43% too fast and the RMSPE does not

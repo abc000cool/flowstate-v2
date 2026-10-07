@@ -38,6 +38,12 @@ Labels:
   corrected with one average, so the peak sections' 6,626 is probably too high
   by a few hundred veh/h (an estimate). That needs a data check, not a model
   change.
+  - **Superseded (2026-10-07):** the data check ran (stage p11, §8.4.2) and
+    overturned this. The section targets 6,626 / 6,639 stand; by the rule fixed
+    in §8.4.1 the non-conservation is explained by through traffic in the on-ramp
+    counts (14 % at Old Hickory, 35 % at Hickory Hollow), so the whole
+    peak-section shortfall is the model's: the boundary representation and the
+    ramp inputs built from those counts.
 - **Why more `a_max` stopped helping.** On the calibration grid the corridor
   was simply carrying all the demand it was given from +0.25 sd on. With more
   demand it hits the far-end ceiling. More `a_max` would lift that ceiling a
@@ -60,6 +66,9 @@ Labels:
     $3) is the owner's call.
   - Check the peak sections' counts against the ramps with a data-only cloud
     stage before they are used again as a discharge target (§8.4).
+    **Superseded (2026-10-07):** done (stage p11, §8.4.2): the targets stand,
+    the ramp counts carry through traffic, and Amendment B2 (§8.4.3) follows
+    from it.
   - Stop pushing `a_max` and merge rules for discharge (§8.2).
 
 ## 1. Setup and provenance
@@ -148,6 +157,11 @@ The three committed 20-seed I-24 batteries ran the same seeds: `flow_speedcal_re
   section flow should change by about +61; it changes by −286 (347 tracked veh/h,
   about 8 % of the section flow). Coverage differs by section by several per
   cent [estimate], and the peak sections' targets carry it.
+  **Superseded (2026-10-07):** measured in stage p11 (§8.4.2), coverage is
+  higher at 2,200 and 3,200 m than at 5,400 m, but restating each section at its
+  own coverage does not explain the residual (+294 against −403 veh/h, the sign
+  flips); the through traffic counted in the ramp lanes does (−191), and the
+  targets stand.
 
 ## 3. The original fixture does not reproduce the plateau (batch R) [run]
 
@@ -447,6 +461,14 @@ boundaries and under overpasses"), while the validator divides every section by
 one pooled coverage per window. Until it is measured, about half of the peak
 sections' shortfall belongs to the target, not to the model.
 
+**Superseded (2026-10-07):** it was measured (stage p11, §8.4.2), and this
+reading did not survive. Per-section coverage does not explain the
+non-conservation; the through traffic counted in the ramp lanes does, so the
+section targets stand and the net-exit gap in the table above is on the model's
+side: its ramp inputs carry that through traffic, so its net exits are too
+small. By the rule fixed in §8.4.1 the whole peak-section shortfall (580–656
+veh/h) is the model's.
+
 **Why `a_max` stopped helping.** Not because the downstream end ignores it — my
 pre-registered expectation, which failed (§7.6): under the measured schedule the
 downstream end's ceiling rises with `a_max` (DS992 at 2,200 m: 5,833 / 5,992 /
@@ -659,6 +681,13 @@ two (§6):
    sections' 6,626 / 6,639 are not consistent with the downstream sections; how
    much of the 6,626 is real is unmeasured.
 
+   **Superseded (2026-10-07):** measured by the count check (stage p11, §8.4.2):
+   the peak-section targets stand, and the inconsistency is through traffic in
+   the on-ramp counts (14 % and 35 %), which the model's ramp inputs carry. There
+   is no target-side half: by the rule fixed in §8.4.1 the whole shortfall is the
+   model's, in the boundary representation (item 1) and the ramp volumes
+   (Amendment B2, §8.4.3).
+
 **Why `a_max` beyond +0.5 sd stopped helping.** On the driver grid the corridor
 was demand-limited from k = 0.25 (departed 0.995–0.996): the plateau was the
 0.800 demand scale. With more demand (refit) the downstream ceiling binds at
@@ -679,7 +708,8 @@ the measured range and every step costs waves (§7.6).
   change). `lcAssertive` 1.25 (+74) is smaller than the target's own uncertainty
   (8.4) and adds emergency braking; not worth a corridor run on its own.
 - **Do not judge discharge on the peak sections alone** until their coverage is
-  checked (8.4).
+  checked (8.4). **Superseded (2026-10-07):** checked (§8.4.2); the
+  peak-section targets stand.
 
 ### 8.3 Proposed amendment B1 — an equilibrium-consistent boundary limit
 
@@ -795,6 +825,9 @@ any discharge calibration uses them. Cost: minutes of a small VM [estimate].
 #### 8.4.1 Count-consistency check (built, not run)
 
 *Built 2026-10-07; the reading rules below are fixed now, before any run.*
+**Superseded (2026-10-07):** "not run" and "not yet in `scripts/gcp/pipeline_i24.sh`"
+no longer hold: the stage is in the pipeline script and ran the same day; its
+result is §8.4.2.
 `scripts/i24_count_consistency.py` (tests: `tests/test_scripts/test_i24_count_consistency.py`,
 synthetic tables only), opt-in stage `p11_i24_count_check`
 (`artifacts/i24_discharge_2026-10-07/stage_p11_count_check.sh.txt`, not yet in
@@ -953,6 +986,9 @@ fails it). The `_dc_refit` + B1 + B2 arm waits for stage `p12_i24_b1`. Cost: abo
   refit's plateau as "a merge/discharge shortfall". It is a downstream-end
   ceiling (the boundary representation and the Hickory Hollow sections) plus a
   target inconsistency; the merge passes more than the ceiling.
+  **Superseded (2026-10-07):** drop "plus a target inconsistency": the count
+  check kept the targets, and the inconsistency is in the ramp counts behind the
+  model's inputs (§8.4.2).
 - docs/MERGE_MODEL.md (last section) moved the question "downstream of the
   merge, in how the queue discharges": confirmed for the location, but the
   binding element is the boundary representation, not the population's queue
@@ -972,6 +1008,9 @@ fails it). The `_dc_refit` + B1 + B2 arm waits for stage `p12_i24_b1`. Cost: abo
   coverage-corrected with one pooled factor; that section coverage varies is
   read from the conservation residuals and docs/I24_DATA.md §4, not measured
   here (8.4).
+  **Superseded (2026-10-07):** measured in §8.4.2: per-section coverage
+  does not explain the residuals and the targets stand, so there is no
+  target-side half.
 - **L5's factor uses the mean driver** and a coverage-corrected flow; a
   heterogeneous platoon sits below the mean driver's equilibrium, which is why
   the zone stays 10 km/h slow.

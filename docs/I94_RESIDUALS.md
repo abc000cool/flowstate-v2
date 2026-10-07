@@ -78,6 +78,13 @@ stated.
   - Getting C1 to 85 % and C3 to 15 % also needs the T.H.52 throughput at the
     peak, which no calibration knob reaches. It needs a measurement and an
     amendment.
+  - **Superseded (2026-10-07):** stage p8 ran consistent inputs on the
+    calibration days (`_dc_cal`: the rules of fix 1 that need no amendment, (b)
+    and (c) not applied; docs/I94_CALIBRATION_DAYS.md §3). C1 on calibration
+    days fell from 61.8 % to 34.4 %, about −27 points, not +7 to +10, because the
+    inflated Mounds Blvd exit had hidden the T.H.52 weave's shortfall; the speed
+    factor (1.3026) read C3 43.6 % against 41.7 % without it, not −3 to −4 pp
+    (docs/I94_CALIBRATION_DAYS.md, Results of stage p8).
 - **Two current inputs use validation days:** the demand was built from all
   nine days, and the driver check that recommends the speed factor read all
   nine days. Both should be rebuilt on the five calibration days before
@@ -545,6 +552,10 @@ $0.5, a 20-seed four-hour battery about $1.5.
 - **Together they do not pass the gate:** about 69–72 % on C1 and about
   28–32 % on C3 on calibration days [estimate]. The gate's 06:00 anchoring
   will move the C1 figure.
+  - **Superseded (2026-10-07):** measured in stage p8 (the rules of fix 1
+    that need no amendment; fix 2 at 1.3026): C1 34.4 % and C3 41.7 % with the
+    inputs alone, 34.6 % and 43.6 % with the speed factor
+    (docs/I94_CALIBRATION_DAYS.md, Results of stage p8).
 - **Fixes 4 and 5 correct how two checks are measured**, not the model.
   - They are cheap, but they change checks after results have been seen.
   - The case for each rests on evidence independent of passing: for C4, the

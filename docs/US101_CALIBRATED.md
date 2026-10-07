@@ -282,6 +282,13 @@ the point of running it twice without retuning.
    parameters the I-24 merge diagnostic named (`lc_cooperative`,
    `lc_assertive`, `lc_speed_gain`, now exposed in `FleetSpec`) fitted the
    same way — first half in, second half out.
+
+   **Superseded (2026-10-07):** the I-24 half of this item follows
+   I24_CAPACITY.md §6's reading that the Old Hickory merge is the replica's
+   bottleneck. A fixture of I-24's 4-lane merge passes about the recorded flow,
+   and the replica's ceiling is at the downstream end (the boundary
+   representation, partly the Hickory Hollow weave;
+   docs/I24_DISCHARGE_DIAGNOSIS.md §4–§6, §8.1). The US-101 half is unaffected.
 3. **The wave-speed criterion is not moved by either step** on this site,
    as WAVE_SPEED_DIAGNOSIS.md predicted; a criterion that a 640 m window
    cannot measure is not a calibration target.

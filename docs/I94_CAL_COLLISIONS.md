@@ -99,6 +99,9 @@ follows from the files and the code but is not observed; **[hypothesis]** not sh
   collision replicates plus one paired control in one wave on one n2-standard-16, with trajectories kept, check
   each against p8's logged collision, and read the window before each contact. This costs about
   **$0.60–0.75**, capped at about $1.00 (§10).
+  - **Superseded (2026-10-07):** p8c ran the same day (§15; about $0.40). All six collisions reproduced exactly;
+    two of the three T.H.52 collisions are opposing entries (the third a late cut-in from the right), and one
+    Ruth St rear car was pinned at its comfortable deceleration while the other two braked beyond it, late.
 
 ## 1. The two edges
 
@@ -561,6 +564,7 @@ trajectories kept.**
 
 **Implemented 2026-10-07: stage `p8c_i94_cal_collisions`** in `scripts/gcp/pipeline_i24.sh`, after p8, opt-in.
 Not launched and not committed: the launcher runs only stages of a pushed commit, so the launch is the owner's call.
+**Superseded (2026-10-07):** committed and launched the same day; results in §15.
 
 - **The runs: `scripts/run_pairs.py`.** One call runs the seven (scenario, seed) pairs in one spawn pool of at most
   7 processes (one wave). Each runs exactly as the battery runs a replicate (`microsim.runner._replicate_worker`)
@@ -1221,6 +1225,9 @@ owner's decision.
 **The readout.** `harness/corridor_w2.py` applies CW1–CW5, reusing W1b's `corridor_w1b.py` front-row reader. It was
 checked on the committed p9 batteries: it reproduces W1b's C1/C2 intervals (+7.2 [−9.6, +23.9] veh/h). Its meta
 reading was checked on a synthetic battery.
+
+**Superseded (2026-10-07):** "Not added to the script" below no longer holds: the stage is in
+`scripts/gcp/pipeline_i24.sh` as `p10_i94_cal_w1b_w2` (opt-in, not in the default list); no run of it is recorded.
 
 **Proposed stage text** for `scripts/gcp/pipeline_i24.sh`, after p8's block, since it calls `p8_one`. Not added to
 the script; another session is editing it. Also in `harness/stage_p10_proposed.sh.txt`:

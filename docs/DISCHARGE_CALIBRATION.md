@@ -127,6 +127,10 @@ What the grid says, beyond the rule's pick:
   the peak sections at 6,047 / 5,983 veh/h and built a backlog (§4), so the
   plateau is a merge/discharge shortfall, not a demand limit. The fixture
   projection of 6,480–6,640 veh/h at +1 sd was not reached.
+  **Superseded (2026-10-07):** docs/I24_DISCHARGE_DIAGNOSIS.md §6 and §8.1
+  read the grid's plateau as its demand after all (departed 0.995–0.996 from
+  k = 0.25, at scale 0.800), and the refit's extra demand as meeting a ceiling
+  at the downstream end, not at the merge.
 - **I-94: the gain is real but the gap stays large.** S97 rises from 3,321 to
   3,680–3,764 veh/h (target 4,490.5); the remaining shortfall is the T.H.52
   weave (§1), which `a_max` was not expected to fix. The seed-to-seed spread at
@@ -280,3 +284,5 @@ Nothing here is a pass: neither corridor passes its acceptance criteria.
 **Update 2026-10-07 (docs/I24_DISCHARGE_DIAGNOSIS.md, fixtures only):** the I-24 peak-section ceiling (about 6,050 veh/h with the calibrated drivers) is not set by the Old Hickory merge — in I-24's own 4-lane geometry with free outflow the merge discharges 6,620 ± 62 veh/h (old drivers) and 6,979 ± 49 (calibrated), above the recording's 6,626. The ceiling comes from downstream: mostly the representation of the measured downstream boundary (its speed applied as every driver's desired speed over the 992-m last edge: drivers travel at about 33 km/h and pass 5,743 veh/h where the road passed 6,009), partly the Hickory Hollow weave, and about half of the remaining gap looks like an inconsistency between the recorded section counts and ramp counts. A proposed, opt-in boundary correction (Amendment B1) is not yet run on the corridor; until it is, statements here about a merge or queue-discharge shortfall at I-24 should be read as superseded.
 
 What this changes in §1–§4: the §1 fixture diagnosis measured merge discharge on a 2-lane fixture whose per-lane figure does not scale to I-24's 4 lanes; the "merge/discharge shortfall" reading of §4 is right that more demand does not raise the peak sections, but wrong about where the limit is. The driver calibration's I-24 discharge target (6,626 / 6,639) should not be reused before the data-only check of the peak sections' counts against the ramp counts that docs/I24_DISCHARGE_DIAGNOSIS.md proposes.
+
+**Superseded (2026-10-07):** the count check ran (stage p11, docs/I24_DISCHARGE_DIAGNOSIS.md §8.4.2). The peak-section targets 6,626 / 6,639 stand, and the count inconsistency is through traffic in the on-ramp counts (14 % at Old Hickory, 35 % at Hickory Hollow), so "about half of the remaining gap" above is not in the target: the shortfall is the model's, in the boundary representation and in ramp inputs built from those counts.

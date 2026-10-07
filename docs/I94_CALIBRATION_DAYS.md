@@ -51,6 +51,11 @@ from committed files and the tracked 30-s cache (§8 reproduces it).
   report (`_dc_cal`, `_dc_cal_sf`, and `_dc_cal_netfix`, which the netfix
   probe now qualifies). About 1.7–2.4 h billed on an n2-standard-32, about $3
   (§6).
+  - **Superseded (2026-10-07):** p8 ran the same day (one n2-standard-16,
+    about $2.50; "Results of stage p8" below): C1 on calibration days fell from
+    61.8 % to 34.4–35.0 %, runs locked, two arms collided, and none of the three
+    scenarios is adopted. The netfix rule that qualified the third arm holds only
+    through one collapsed probe run (docs/I94_COLLAPSE_DIAGNOSIS.md §5).
 
 ## 1. The leak, precisely
 
@@ -351,6 +356,10 @@ Implications:
    speed factor is about −3 to −4 pp on C3. The free-flow cells it targets are
    read at 103–115 km/h, so the order holds at 1.30. It is not a route to the
    gate.
+   **Superseded (2026-10-07):** measured in p8, the factor did not lower C3:
+   43.6 % with it against 41.7 % without on calibration days (`_dc_cal_sf`
+   against `_dc_cal`, "Results of stage p8" below), and its arm had the worst
+   lock (lowest realised demand 0.200).
 4. **Not a fix.** The measured merge model honours the factor
    (docs/MERGE_MODEL.md) but is not accepted; nothing here changes a merge
    model.
@@ -374,6 +383,11 @@ Added to `scripts/gcp/pipeline_i24.sh` (opt-in, after p7), modelled on
    compare, the fixed network has a lower lane-share RMSE, an S97 discharge
    error no larger than the as-built one, and no collision. Today it holds: 8.22 → 7.26 pp,
    0.326 → 0.163, 0 collisions. So all three run.
+   **Superseded (2026-10-07):** the discharge condition holds on the committed
+   artifact only through the one collapsed as-built probe run; at the three seeds
+   where neither arm locked the errors are 0.167 against 0.166 and it fails
+   (docs/I94_COLLAPSE_DIAGNOSIS.md §5). p8 ran all three batteries under the rule
+   as committed ("Results of stage p8" below).
 4. **Outputs** per scenario name N (`mndot_i94_wb_stpaul_weave_xlsfg_dc_cal`,
    `…_dc_cal_sf`, `…_dc_cal_netfix`): `artifacts/validation_N.json`,
    `artifacts/baseline_gate_N.json`, `artifacts/validation_N_gated.json`,
@@ -437,7 +451,8 @@ On an n2-standard-16: `--machine n2-standard-16 --cap-min 480 --pipeline-args
 7. **The Mounds Blvd and 6th St exits are an uncertain input.** §8.5 asks for
    a sensitivity test of how much the results depend on them; it is not run.
 8. **Commit, push and launch p8** (about $3 on an n2-standard-32). Not done
-   here.
+   here. **Superseded (2026-10-07):** done the same day, on an n2-standard-16
+   for about $2.50 ("Results of stage p8" below).
 
 ## 8. Reproduce
 

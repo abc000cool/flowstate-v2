@@ -399,6 +399,9 @@ What the table shows:
   holds, 0.163 against 0.326, only because of the lock. At the three seeds where neither arm locked, netfix
   reads 3,740 veh/h against 3,746, an error of 0.167 against 0.166, and the condition fails.
 - p8 has not run; no `_dc_cal*` artifact is committed.
+  **Superseded (2026-10-07):** p8 ran later the same day, all three batteries including `_dc_cal_netfix`
+  under the rule as committed (docs/I94_CALIBRATION_DAYS.md, "Results of stage p8"). The netfix arm locked
+  (lowest realised demand 0.761) and recorded 4 collisions (docs/I94_CAL_COLLISIONS.md).
 - Whether to run `_dc_cal_netfix` should therefore rest on the fix being the correction of an input defect,
   which docs/I94_LANE_SHARES.md already argues, not on this rule. That decision is the owner's.
 

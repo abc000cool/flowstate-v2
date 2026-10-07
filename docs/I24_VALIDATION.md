@@ -64,6 +64,15 @@ count table (§0.5(b); against the apparent-coverage table the arms were
 first scored on they cost five). The residual is
 still the Old Hickory merge queue (§0.3).
 
+**Superseded (2026-10-07):** the reading that the failing rows trace to the Old Hickory merge
+(here, and in §0.3, §0.5 and §0.7–§0.12) does not hold for the flow row. A fixture of I-24's
+4-lane merge geometry with free outflow discharges 6,620 ± 62 veh/h with this population,
+about the recorded 6,626, and the replica's peak-section ceiling is set at the downstream
+end: how the measured boundary is imposed, partly the Hickory Hollow weave
+(docs/I24_DISCHARGE_DIAGNOSIS.md §4–§6, §8.1). The count check there (§8.4.2) keeps the
+targets, so the shortfall is the model's; the speed row's attribution to the merge was not
+re-measured.
+
 ## 0. Rerun on the capacity-calibrated population (four arms)
 
 All arms use `artifacts/idm_i24_capacity.json` (mean T 1.322 s,
@@ -288,6 +297,13 @@ discharges less than the road, and that is a bottleneck property, not a
 counting one. (The scorer now writes all three tables; the criteria rows in
 §0.1 are the re-scored ones.)
 
+**Superseded (2026-10-07):** the bottleneck is not the Old Hickory merge, which on a fixture
+of I-24's 4-lane geometry alone passes about the recorded flow; the ceiling is at the
+downstream end (docs/I24_DISCHARGE_DIAGNOSIS.md §4–§6, §8.1). The count check there (stage
+p11, §8.4.2) keeps the targets 6,626 / 6,639, so the shortfall is the model's as read here,
+but it found 14 % and 35 % through traffic in the two on-ramp counts the replica's ramp
+inputs are built from.
+
 **(c) Where the error is, lane by lane.** The segment criterion averages
 over lanes; kept apart (250 m bins, 06:30–08:30, lane 1 = leftmost, lane 5
 = auxiliary), the recording and the fitted arm's first seed disagree in a
@@ -503,6 +519,9 @@ irreducible parts are measured:
   and that ten points is the merge.
 * The flow row's target is now the best available estimate (b); the
   12–13% shortfall at the peak sections is the merge's discharge.
+  **Superseded (2026-10-07):** the shortfall is set at the downstream end,
+  not by the merge's discharge (the note under (b); docs/I24_DISCHARGE_DIAGNOSIS.md
+  §8.1).
 * The merge crawl is a lane-discrete lane-change artefact — a merge lock —
   and not the acceleration-lane length (d, e), the strategic eagerness (e),
   the ramp vehicles' own eagerness (f), gap acceptance (f), cooperation (f),
@@ -794,6 +813,14 @@ of docs/MERGE_ROUND6_PLAN.md §3 the merge is recorded as a model-form limitatio
 simulator as configured, with its residual published here, and the flagship's record stays
 at 5 of 7 rows on every congested arm.
 
+**Superseded (2026-10-07):** "the merge's own discharge … is the ceiling" and "the queue that
+shortfall builds is the whole of the two failing rows" do not hold. A fixture of I-24's
+4-lane merge geometry with free outflow discharges 6,620 ± 62 veh/h with this population,
+well above the 5,880 read here, and the ceiling is set at the downstream end: how the
+measured boundary is imposed, partly the Hickory Hollow weave
+(docs/I24_DISCHARGE_DIAGNOSIS.md §4.1, §5, §8.1). The 5-of-7 record stands; its attribution
+to the merge does not.
+
 ### 0.12 The discharge-capacity question: a merge-zone population (cloud, 2026-09-17, evening)
 
 §0.11 left one question: does the calibrated car-following population fail to discharge
@@ -843,6 +870,13 @@ calibration will move the two failing rows. The honest next step, if the merge i
 reproduced, is a merge model with measured gap acceptance from the recording's
 lane-change events, a research task outside the product's current scope; the product's
 record stays at 5 of 7 rows with the residual stated.
+
+**Superseded (2026-10-07):** the 5,880 veh/h here is the corridor's ceiling, not the merge's
+discharge: with the capacity-scaled population a fixture of the merge in I-24's 4-lane
+geometry with free outflow passes 6,620 ± 62 veh/h (docs/I24_DISCHARGE_DIAGNOSIS.md §4.1),
+and the ceiling is at the downstream end (§5–§6, §8.1 there). So "the merging itself" is not
+what holds the peak sections; the entrants' measured speed mismatch at the gore remains a
+realism item for speeds near it (§8.2 there).
 
 **Reports regenerated.** The same VM re-ran the five canonical batteries and both US-101
 arms (every criteria value and every metric mean reproduced to the digit against the
