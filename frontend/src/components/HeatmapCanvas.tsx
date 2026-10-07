@@ -12,7 +12,9 @@
  * Inspect: hover, or focus the plot and use the arrow keys (Shift = 10 bins,
  * Home/End = the time edges). Either way the readout row under the legend
  * shows `t · x · value`; it is a polite live region only while the plot has
- * focus. The binned field is also downloadable as CSV (the table-view twin).
+ * focus. The binned field is also downloadable as CSV (the table-view twin),
+ * headed by `#` provenance lines: run, tier ("screening" for a macro run),
+ * seed and replicate, config hash, units, bin sizes and export time.
  * The plot follows its container through a ResizeObserver, so it tracks a
  * sidebar collapse, not only window resizes. */
 
@@ -25,13 +27,14 @@ import {
   type KeyboardEvent as ReactKeyboardEvent,
   type MouseEvent as ReactMouseEvent,
 } from 'react';
-import type { HeatField, Heatmap } from '../api/types';
+import type { HeatField, Heatmap, RunDetail, Tier } from '../api/types';
 import {
   binColor,
   rampGradientCSS,
   stopsFor,
   WAVE_THRESHOLD_DEFAULT_KMH,
 } from '../lib/colormap';
+import { DEMO_HASH_LABEL } from '../lib/demo';
 import { saveText } from '../lib/download';
 import {
   distUnit,
@@ -78,7 +81,8 @@ export function heatmapExtent(h: Heatmap): { t0: number; t1: number; x0: number;
 
 /** The binned field as CSV in SI units: `t_s,x_m,speed_ms` (or
  * `density_vehm`), one row per bin, empty for a bin with no vehicle. Exactly
- * the values already on screen; nothing is fetched or computed. */
+ * the values already on screen; nothing is fetched or computed. This is the
+ * data block only: the exported file puts `heatmapCSVHeader` ahead of it. */
 export function heatmapCSV(h: Heatmap, field: HeatField): string {
   const col = field === 'speed' ? 'speed_ms' : 'density_vehm';
   const lines = [`t_s,x_m,${col}`];
@@ -92,14 +96,145 @@ export function heatmapCSV(h: Heatmap, field: HeatField): string {
   return `${lines.join('\n')}\n`;
 }
 
-/** `flowstate-{run_id}-{field}.csv`. */
-export function heatmapCSVFilename(runId: string, field: HeatField): string {
-  return `flowstate-${runId}-${field}.csv`;
+/** What the page knows about an exported field beyond the field itself. */
+export interface HeatmapExportContext {
+  runId: string;
+  /** The run on screen: its seed list places the replicate, its `seeded`
+   * label travels with the file, and its tier and hash stand in when the
+   * heatmap answer leaves them out (an older service). */
+  run?: Pick<RunDetail, 'tier' | 'config_hash' | 'seeds' | 'seeded'> | null;
+  /** The field was served by the in-browser demo backend. */
+  demo?: boolean;
+  /** When the file is written; defaults to now. */
+  exportedAt?: Date;
+}
+
+/** Where an exported field came from. Every value is one the API answered
+ * (or the run record it came with); an unknown stays null, never a guess. */
+export interface HeatmapProvenance {
+  runId: string;
+  field: HeatField;
+  /** The replicate's RNG seed (`HeatmapOut.seed`). */
+  seed: number | null;
+  /** 1-based position of `seed` in the run's seed list, and its length. */
+  replicate: { index: number; of: number } | null;
+  configHash: string | null;
+  tier: Tier | null;
+  seeded: boolean | null;
+  demo: boolean;
+  exportedAt: Date;
+}
+
+export function heatmapProvenance(
+  h: Heatmap,
+  field: HeatField,
+  ctx: HeatmapExportContext,
+): HeatmapProvenance {
+  const seed = h.seed ?? null;
+  const seeds = ctx.run?.seeds ?? [];
+  const at = seed === null ? -1 : seeds.indexOf(seed);
+  return {
+    runId: ctx.runId,
+    field,
+    seed,
+    replicate: at < 0 ? null : { index: at + 1, of: seeds.length },
+    configHash: h.config_hash ?? ctx.run?.config_hash ?? null,
+    tier: h.tier ?? ctx.run?.tier ?? null,
+    seeded: ctx.run?.seeded ?? null,
+    demo: ctx.demo ?? false,
+    exportedAt: ctx.exportedAt ?? new Date(),
+  };
+}
+
+/** The spacing of bin centres: one number when uniform, else what it is. */
+function binSpacing(centers: number[]): string {
+  if (centers.length < 2) return centers.length === 1 ? 'unknown (one bin)' : 'unknown (no bins)';
+  let lo = Infinity;
+  let hi = -Infinity;
+  for (let i = 1; i < centers.length; i++) {
+    const step = centers[i] - centers[i - 1];
+    lo = Math.min(lo, step);
+    hi = Math.max(hi, step);
+  }
+  const tidy = (v: number): string => String(Number(v.toPrecision(6)));
+  const tol = 1e-6 * Math.max(Math.abs(lo), Math.abs(hi), 1);
+  return hi - lo <= tol ? tidy(lo) : `irregular (${tidy(lo)} to ${tidy(hi)})`;
+}
+
+const TIER_LINE: Record<Tier, string> = {
+  micro: 'micro (SUMO microsimulation)',
+  macro: 'screening (macro CTM run: a screening result, it cannot support validation claims)',
+};
+
+const FIELD_LINE: Record<HeatField, { field: string; unit: string }> = {
+  speed: { field: 'speed (mean speed in each bin)', unit: 'speed_ms = m/s' },
+  density: { field: 'density (mean density in each bin)', unit: 'density_vehm = veh/m' },
+};
+
+/** The `#` comment lines ahead of the data block: `# key: value`, one per
+ * line, the convention `pandas.read_csv(comment="#")`, `numpy.loadtxt` and
+ * R's `read.csv(comment.char = "#")` skip. Ends with a newline. */
+export function heatmapCSVHeader(h: Heatmap, p: HeatmapProvenance): string {
+  const unknown = 'unknown (the service did not report it)';
+  const lines: [string, string][] = [
+    ['run_id', p.runId],
+    [
+      'source',
+      p.demo
+        ? 'DEMO (built-in demo data from the in-browser backend, not a server answer: no server ran this run)'
+        : `server (GET /runs/${p.runId}/heatmap)`,
+    ],
+    ['tier', p.tier === null ? unknown : TIER_LINE[p.tier]],
+    ['seeded', p.seeded === null ? 'unknown' : String(p.seeded)],
+    ['seed', p.seed === null ? 'unknown (the service did not say which replicate this is)' : String(p.seed)],
+    [
+      'replicate',
+      p.seed === null
+        ? "unknown (one replicate's field, not a mean over the run)"
+        : p.replicate === null
+          ? "the seed above (one replicate's field, not a mean over the run)"
+          : `${p.replicate.index} of ${p.replicate.of} (this replicate's field alone, not a mean over the run)`,
+    ],
+    ['config_hash', p.demo ? DEMO_HASH_LABEL : (p.configHash ?? unknown)],
+    ['field', FIELD_LINE[p.field].field],
+    [
+      'units',
+      `t_s = s, x_m = m (bin centres); ${FIELD_LINE[p.field].unit}; empty = no data for the bin`,
+    ],
+    ['t_bin_s', binSpacing(h.t_bins)],
+    ['x_bin_m', binSpacing(h.x_bins)],
+    ['exported_at', p.exportedAt.toISOString()],
+  ];
+  const title =
+    '# FlowState space-time field, one replicate, binned. Lines starting with # are metadata.';
+  return `${[title, ...lines.map(([k, v]) => `# ${k}: ${v}`)].join('\n')}\n`;
+}
+
+/** `flowstate-{run_id}-{field}-seed{seed}-{tier}.csv`, the tier being
+ * `screening` for a macro run; `-demo` marks a demo export, and an unknown
+ * seed or tier says so rather than being left out. */
+export function heatmapCSVFilename(
+  p: Pick<HeatmapProvenance, 'runId' | 'field' | 'seed' | 'tier' | 'demo'>,
+): string {
+  const seed = p.seed === null ? 'seed-unknown' : `seed${p.seed}`;
+  const tier = p.tier === null ? 'tier-unknown' : p.tier === 'macro' ? 'screening' : p.tier;
+  return `flowstate-${p.runId}-${p.field}-${seed}-${tier}${p.demo ? '-demo' : ''}.csv`;
+}
+
+/** The exported file: provenance header, then the unchanged data block. */
+export function heatmapExport(
+  h: Heatmap,
+  field: HeatField,
+  ctx: HeatmapExportContext,
+): { filename: string; text: string } {
+  const p = heatmapProvenance(h, field, ctx);
+  return { filename: heatmapCSVFilename(p), text: heatmapCSVHeader(h, p) + heatmapCSV(h, field) };
 }
 
 /** Save the field on screen as CSV (lib/download.saveText; no new API). */
-export function downloadHeatmapCSV(h: Heatmap, field: HeatField, runId: string): void {
-  saveText(heatmapCSV(h, field), heatmapCSVFilename(runId, field), 'text/csv');
+export function downloadHeatmapCSV(h: Heatmap, field: HeatField, ctx: HeatmapExportContext): void {
+  const { filename, text } = heatmapExport(h, field, ctx);
+  saveText(text, filename, 'text/csv');
 }
 
 /** The value readout for one bin: `47 km/h (29 mph)`, `38 veh/km (61 veh/mi)`

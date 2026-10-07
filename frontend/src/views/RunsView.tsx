@@ -23,7 +23,11 @@
  * pill), the launcher as a form grid with a cost/reason action bar, then the
  * runs table, whose run id is a real link. The table renders skeleton rows on
  * first load, an error callout if that first read fails, an empty state, then
- * rows; later poll errors stay silent and keep the last render. */
+ * rows. A later poll error keeps the last render in the table, but the header
+ * stops calling it live: the Live pill becomes "Stale — last update hh:mm:ss"
+ * with the service's error beside it, until a poll lands again. (`/health`
+ * can answer while `GET /runs` fails — a locked store, a 502 from the front
+ * end — so the shell's offline banner does not cover this.) */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { MouseEvent as ReactMouseEvent } from 'react';
@@ -47,7 +51,7 @@ import { HashValue } from '../components/ui/CopyButton';
 import { EmptyState } from '../components/ui/EmptyState';
 import { SkeletonRows } from '../components/ui/Skeleton';
 import { DEMO_HASH_LABEL, DEMO_ROW_TITLE } from '../lib/demo';
-import { failureReason } from '../lib/format';
+import { failureReason, formatClockTime, formatFetchError } from '../lib/format';
 import { useAuthFailed, useOfflineFallback, usePoll } from '../lib/hooks';
 import {
   defaultPreset,
@@ -110,10 +114,12 @@ export function RunsView(): JSX.Element {
   const [seedRaw, setSeedRaw] = useState('');
   const [confirming, setConfirming] = useState(false);
   const [busy, setBusy] = useState(false);
-  /** Why the first read of the runs list failed, while nothing is on screen
-   * yet. Cleared by the next successful poll; errors after a first answer
-   * stay silent and keep the last render. */
+  /** Why the newest read of the runs list failed; null once a poll lands.
+   * With nothing on screen yet it is the table's error callout; after a first
+   * answer the rows stay and the header reads stale instead of live. */
   const [loadError, setLoadError] = useState<string | null>(null);
+  /** When the rows on screen were read: the stale pill's "last update". */
+  const [updatedAt, setUpdatedAt] = useState<Date | null>(null);
   const navigate = useNavigate();
   const authFailed = useAuthFailed();
   // POST /runs never falls back to the demo backend, so the launcher says so
@@ -143,13 +149,14 @@ export function RunsView(): JSX.Element {
       setRuns(rows);
       setRunsDemo(fromDemo);
       setLoadError(null);
+      setUpdatedAt(new Date());
     } catch (err) {
-      // toast once per failure burst would spam at 2 s cadence; stay quiet,
-      // the status line + banner already surface connectivity (and a
-      // rejected key pauses this poll entirely). Only a first load that has
-      // nothing to show says why, in the table, instead of a skeleton forever.
+      // a toast per failed poll would spam at 2 s cadence (and a rejected key
+      // pauses this poll entirely). A first load that has nothing to show says
+      // why in the table, instead of a skeleton forever; after that the rows
+      // stay and the header says they are stale, with this error.
       if (seq !== runsSeq.current) return;
-      setLoadError(err instanceof Error ? err.message : String(err));
+      setLoadError(formatFetchError(err));
     }
   }, []);
   usePoll(poll, authFailed ? null : RUNS_POLL_MS);
@@ -425,6 +432,8 @@ export function RunsView(): JSX.Element {
     );
   }
 
+  // set together with the rows, so known whenever there are rows to be stale
+  const lastUpdate = updatedAt ? formatClockTime(updatedAt) : 'unknown';
   let meta: JSX.Element;
   if (authFailed) {
     meta = <span className="meta-warning">paused — API key rejected</span>;
@@ -438,6 +447,20 @@ export function RunsView(): JSX.Element {
           <span className="tag demo" title={DEMO_ROW_TITLE}>
             DEMO DATA
           </span>
+        ) : runs !== null && loadError !== null ? (
+          // the newest polls failed: the rows are the last answer, not live
+          <>
+            <span
+              className="meta-stale"
+              title={`GET /runs is failing, so the table shows the answer read at ${lastUpdate}. Retrying every 2 s.`}
+            >
+              <Icon name="triangle-alert" size={12} className="meta-stale-icon" />
+              {`Stale — last update ${lastUpdate}`}
+            </span>
+            <span className="meta-stale-reason mono" title={loadError}>
+              {loadError}
+            </span>
+          </>
         ) : (
           runs !== null && (
             <span className="meta-live" title="Polling every 2 s">

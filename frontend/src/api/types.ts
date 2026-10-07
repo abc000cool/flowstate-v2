@@ -356,8 +356,18 @@ export interface MergeDiagnostics {
   weave_sections: WeaveSectionDiagnostics[];
 }
 
-/** Mirrors the API's `HeatmapOut`: bin CENTERS, not edges. */
+/** Mirrors the API's `HeatmapOut`: bin CENTERS, not edges. The field is ONE
+ * replicate's (the run's first seed unless the request named another), not a
+ * mean over the run. The provenance fields are optional so an older service
+ * and the demo fixtures still type-check; nothing may assume them. */
 export interface Heatmap {
+  run_id?: string;
+  config_hash?: string;
+  /** The replicate's RNG seed. */
+  seed?: number;
+  field?: HeatField;
+  /** `macro` is the CTM screening tier (CLAUDE.md §5.6). */
+  tier?: Tier;
   /** Time bin centers [s], length nt. */
   t_bins: number[];
   /** Position bin centers [m], length nx. */

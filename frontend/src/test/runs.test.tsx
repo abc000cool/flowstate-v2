@@ -756,3 +756,65 @@ describe('RunsView default scenario', () => {
     expect(select).toHaveDisplayValue('corridor_10km (preset)');
   }, 10000);
 });
+
+/** The header's "Live" pill claims the rows are current. When `GET /runs`
+ * starts failing after a first answer (a 503 from the front end, a locked
+ * store) while `/health` still answers, the table keeps the last answer —
+ * and the header must stop calling it live: it says when that answer came
+ * and why the newer reads failed, and turns back to Live once a poll lands. */
+describe('RunsView when GET /runs starts failing', () => {
+  let runsFail = false;
+
+  beforeEach(() => {
+    setOfflineFallback(false);
+    clearAuthFailure();
+    runsFail = false;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL): Promise<Response> => {
+        const url = String(input);
+        if (url.endsWith('/scenarios/preset')) return json([]);
+        if (url.endsWith('/scenarios')) return json([scenario]);
+        if (url.endsWith('/runs')) {
+          return runsFail ? json({ detail: 'database is locked' }, 503) : json([run]);
+        }
+        return json({ detail: `unexpected ${url}` }, 404);
+      }),
+    );
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    clearAuthFailure();
+  });
+
+  it('swaps Live for a stale pill naming the last update and the error', async () => {
+    render(
+      <MemoryRouter>
+        <RunsView />
+      </MemoryRouter>,
+    );
+    const table = await screen.findByRole('table', { name: 'runs' }, { timeout: 4000 });
+    await within(table).findByText('run-a41d09', {}, { timeout: 4000 });
+    expect(screen.getByText('Live')).toHaveAttribute('title', 'Polling every 2 s');
+
+    runsFail = true;
+    const stale = await screen.findByText(
+      /^Stale — last update \d{2}:\d{2}:\d{2}$/,
+      {},
+      { timeout: 4000 },
+    );
+    expect(screen.queryByText('Live')).toBeNull();
+    expect(stale.getAttribute('title')).toMatch(/GET \/runs is failing/);
+    // the service's own words, with the status, beside the pill
+    expect(screen.getByText('HTTP 503 — database is locked')).toBeInTheDocument();
+    // the rows stay on screen: the last answer, now labelled as such
+    expect(within(table).getByText('run-a41d09')).toBeInTheDocument();
+
+    // and a poll that lands again makes the header live again
+    runsFail = false;
+    expect(await screen.findByText('Live', {}, { timeout: 4000 })).toBeInTheDocument();
+    expect(screen.queryByText(/^Stale — last update/)).toBeNull();
+    expect(screen.queryByText('HTTP 503 — database is locked')).toBeNull();
+  }, 15000);
+});

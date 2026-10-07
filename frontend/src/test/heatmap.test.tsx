@@ -12,6 +12,7 @@ import {
   HeatmapCanvas,
   heatmapCSV,
   heatmapCSVFilename,
+  heatmapExport,
   heatmapExtent,
   heatmapHeight,
   isEmptyHeatmap,
@@ -122,7 +123,6 @@ describe('heatmap helpers', () => {
     expect(lines[2]).toBe('30,750,');
     expect(lines[6]).toBe('150,750,0');
     expect(heatmapCSV(FIELD, 'density').split('\n')[0]).toBe('t_s,x_m,density_vehm');
-    expect(heatmapCSVFilename('run-a41d09', 'density')).toBe('flowstate-run-a41d09-density.csv');
   });
 
   it('extends bin centers by half a bin to the field edges', () => {
@@ -141,5 +141,107 @@ describe('heatmap helpers', () => {
     expect(heatmapHeight(720)).toBe(302);
     expect(heatmapHeight(600)).toBe(252);
     expect(heatmapHeight(400)).toBe(240);
+  });
+});
+
+/** The CSV is one replicate's field, and a file outlives the page it came
+ * from: without the seed, config hash and tier it cannot be traced to the run
+ * that produced it (CLAUDE.md §0.5), and a macro export loses the
+ * "screening" label every CTM output must carry (§5.6). The provenance rides
+ * in `#` comment lines ahead of the unchanged data block, and the file name
+ * carries the seed and the tier. */
+describe('heatmap CSV provenance', () => {
+  const AT = new Date('2026-10-07T14:02:31Z');
+  /** What `GET /runs/{id}/heatmap` answers: the field plus its provenance. */
+  const MACRO: Heatmap = {
+    ...FIELD,
+    run_id: 'run-m1',
+    config_hash: '3f9a0b1c2d3e',
+    seed: 43,
+    field: 'speed',
+    tier: 'macro',
+  };
+  const MACRO_RUN = { tier: 'macro' as const, config_hash: '3f9a0b1c2d3e', seeds: [42, 43, 44], seeded: false };
+
+  const metaOf = (text: string): string[] => text.split('\n').filter((l) => l.startsWith('#'));
+  const valueOf = (text: string, key: string): string | undefined =>
+    metaOf(text)
+      .find((l) => l.startsWith(`# ${key}: `))
+      ?.slice(`# ${key}: `.length);
+
+  it('labels a macro export screening, with its seed, replicate, hash, units, bins and time', () => {
+    const { filename, text } = heatmapExport(MACRO, 'speed', {
+      runId: 'run-m1',
+      run: MACRO_RUN,
+      exportedAt: AT,
+    });
+    expect(filename).toBe('flowstate-run-m1-speed-seed43-screening.csv');
+    expect(valueOf(text, 'run_id')).toBe('run-m1');
+    expect(valueOf(text, 'tier')).toMatch(/^screening \(macro/);
+    expect(valueOf(text, 'seed')).toBe('43');
+    expect(valueOf(text, 'replicate')).toMatch(/^2 of 3 /);
+    expect(valueOf(text, 'seeded')).toBe('false');
+    expect(valueOf(text, 'config_hash')).toBe('3f9a0b1c2d3e');
+    expect(valueOf(text, 'field')).toMatch(/^speed/);
+    expect(valueOf(text, 'units')).toMatch(/t_s = s.*x_m = m.*speed_ms = m\/s/);
+    expect(valueOf(text, 't_bin_s')).toBe('60');
+    expect(valueOf(text, 'x_bin_m')).toBe('500');
+    expect(valueOf(text, 'exported_at')).toBe('2026-10-07T14:02:31.000Z');
+    expect(valueOf(text, 'source')).toMatch(/^server/);
+
+    // the data block is exactly the unchanged CSV, right after the metadata
+    const meta = metaOf(text);
+    expect(text.split('\n').slice(0, meta.length)).toEqual(meta);
+    expect(text.split('\n').slice(meta.length).join('\n')).toBe(heatmapCSV(MACRO, 'speed'));
+  });
+
+  it('names a micro export by seed and tier', () => {
+    const micro: Heatmap = { ...MACRO, tier: 'micro', seed: 2000 };
+    const { filename, text } = heatmapExport(micro, 'density', {
+      runId: 'run-a41d09',
+      run: { ...MACRO_RUN, tier: 'micro', seeds: [2000, 2001] },
+      exportedAt: AT,
+    });
+    expect(filename).toBe('flowstate-run-a41d09-density-seed2000-micro.csv');
+    expect(heatmapCSVFilename({ runId: 'run-a41d09', field: 'density', seed: 2000, tier: 'micro', demo: false })).toBe(
+      filename,
+    );
+    expect(valueOf(text, 'tier')).toMatch(/^micro/);
+    expect(valueOf(text, 'units')).toMatch(/density_vehm = veh\/m/);
+    expect(text).toContain('\nt_s,x_m,density_vehm\n');
+  });
+
+  it('falls back to the run for tier and hash, and never invents a seed', () => {
+    // an older service answers the bare field
+    const { filename, text } = heatmapExport(FIELD, 'speed', {
+      runId: 'run-m1',
+      run: MACRO_RUN,
+      exportedAt: AT,
+    });
+    expect(filename).toBe('flowstate-run-m1-speed-seed-unknown-screening.csv');
+    expect(valueOf(text, 'seed')).toMatch(/^unknown/);
+    expect(valueOf(text, 'replicate')).toMatch(/^unknown/);
+    expect(valueOf(text, 'tier')).toMatch(/^screening/);
+    expect(valueOf(text, 'config_hash')).toBe('3f9a0b1c2d3e');
+  });
+
+  it('marks a demo export and prints no demo hash as provenance', () => {
+    const { filename, text } = heatmapExport(MACRO, 'speed', {
+      runId: 'run-m1',
+      run: MACRO_RUN,
+      demo: true,
+      exportedAt: AT,
+    });
+    expect(filename).toBe('flowstate-run-m1-speed-seed43-screening-demo.csv');
+    expect(valueOf(text, 'source')).toMatch(/^DEMO/);
+    expect(valueOf(text, 'config_hash')).toBe('— demo, no server hash —');
+  });
+
+  it('states irregular or single-bin spacing instead of a bin size', () => {
+    const irregular: Heatmap = { t_bins: [30, 90, 210], x_bins: [250], values: [[1], [2], [3]] };
+    const { text } = heatmapExport(irregular, 'speed', { runId: 'run-x', exportedAt: AT });
+    expect(valueOf(text, 't_bin_s')).toBe('irregular (60 to 120)');
+    expect(valueOf(text, 'x_bin_m')).toBe('unknown (one bin)');
+    expect(valueOf(text, 'tier')).toMatch(/^unknown/);
   });
 });

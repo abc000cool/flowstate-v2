@@ -999,7 +999,16 @@ export async function mockGetRunHeatmap(runId: string, field: HeatField): Promis
   await sleep(160);
   const r = runs.find((x) => x.run_id === runId);
   if (!r) throw new Error(`run ${runId} not found in the demo backend`);
-  return buildHeatmap(r, field);
+  // the provenance the API sends with the field: its first seed, like the
+  // service's default (the view prints no demo hash as provenance)
+  return {
+    run_id: r.run_id,
+    config_hash: r.config_hash,
+    seed: r.seedBase,
+    field,
+    tier: r.tier,
+    ...buildHeatmap(r, field),
+  };
 }
 
 export async function mockCreateSweep(req: CreateSweepRequest): Promise<SweepDetail> {

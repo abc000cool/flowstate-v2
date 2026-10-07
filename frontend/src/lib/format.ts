@@ -153,3 +153,10 @@ export function formatFetchError(err: unknown): string {
   if (status === null || status === 0 || msg.startsWith(String(status))) return msg;
   return `HTTP ${status} — ${msg}`;
 }
+
+/** A wall-clock time of day in local 24-hour `hh:mm:ss`, e.g. when the data on
+ * screen was last read ("Stale — last update 14:02:31"). Not a duration. */
+export function formatClockTime(d: Date): string {
+  const two = (n: number): string => String(n).padStart(2, '0');
+  return `${two(d.getHours())}:${two(d.getMinutes())}:${two(d.getSeconds())}`;
+}

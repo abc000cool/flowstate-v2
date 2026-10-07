@@ -8,11 +8,18 @@
  * once, at mount; Tab and Shift+Tab cycle inside the dialog; Escape cancels;
  * the opener gets focus back on close; the app behind is `inert` while open
  * (the dialog is portalled to <body> so it is not inside the inert tree).
- * The confirm button is disabled while `busy`, which drops focus to <body>;
- * when `busy` clears with the dialog still open (a refused launch), focus
- * goes back to it — never away from a field the user has moved to. */
+ *
+ * Only `.app` is inert: the toasts sit outside it, each with a focusable
+ * dismiss button, and a launch toasts while the dialog is still open. So the
+ * Tab trap listens on the document for the life of the dialog, not on the
+ * dialog element (a key pressed from <body> or a toast never reaches that),
+ * and the dialog box itself holds focus (tabIndex -1) whenever the confirm
+ * button cannot: it is disabled while `busy`, which in a browser drops focus
+ * to <body>. When `busy` clears with the dialog still open (a refused
+ * launch), focus goes back to the button — never away from a field the user
+ * has moved to. */
 
-import { useEffect, useRef, type KeyboardEvent, type ReactNode } from 'react';
+import { useEffect, useRef, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 
 export interface ConfirmDialogProps {
@@ -30,6 +37,30 @@ export interface ConfirmDialogProps {
 const FOCUSABLE =
   'a[href], button:not([disabled]), input:not([disabled]):not([type="hidden"]), ' +
   'select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
+/** Keep Tab and Shift+Tab inside `box`, from wherever focus is. Acts on Tab
+ * only, and only when focus would leave: from the last (first) control, from
+ * outside the dialog, or from the box itself, whose Shift+Tab would step to
+ * the toasts that precede the portalled dialog in document order. */
+function trapTab(e: globalThis.KeyboardEvent, box: HTMLElement): void {
+  const nodes = Array.from(box.querySelectorAll<HTMLElement>(FOCUSABLE));
+  if (nodes.length === 0) {
+    e.preventDefault();
+    box.focus();
+    return;
+  }
+  const first = nodes[0];
+  const last = nodes[nodes.length - 1];
+  const active = document.activeElement;
+  const inside = active instanceof Node && active !== box && box.contains(active);
+  if (e.shiftKey && (active === first || !inside)) {
+    e.preventDefault();
+    last.focus();
+  } else if (!e.shiftKey && (active === last || !inside)) {
+    e.preventDefault();
+    first.focus();
+  }
+}
 
 export function ConfirmDialog({
   title,
@@ -76,64 +107,52 @@ export function ConfirmDialog({
   // to whatever opened the dialog when it goes. Re-focusing on every parent
   // render stole focus back from the field the user was typing in (and from
   // the cancel button, letting an Enter keypress confirm a launch the user was
-  // about to dismiss), so this effect must stay mount-only.
+  // about to dismiss), so this effect must stay mount-only. A dialog opened
+  // already busy has a disabled button: the box itself takes focus instead.
   useEffect(() => {
     const opener = openerRef.current?.el ?? null;
-    confirmRef.current?.focus();
+    const confirm = confirmRef.current;
+    if (confirm && !confirm.disabled) confirm.focus();
+    else boxRef.current?.focus();
     return () => {
       if (opener && opener.isConnected) opener.focus();
     };
   }, []);
 
   // The confirm button is disabled while busy, and a disabled button loses
-  // focus to <body> — with the app behind inert, nowhere a Tab can recover
-  // from. When busy clears and the dialog is still open (the launch was
-  // refused), give focus back to the button that was pressed. Only from
-  // <body> or the button itself: a field typed into while the dialog was
-  // blocked keeps focus (the Scenarios launcher clears `busy` as a valid
-  // duration is typed).
+  // focus to <body>, outside the dialog. When busy starts, the dialog box
+  // holds focus instead; when it clears and the dialog is still open (the
+  // launch was refused), focus goes back to the button that was pressed. Both
+  // only from <body>, the button or the box: a field typed into while the
+  // dialog was blocked keeps focus (the Scenarios launcher sets and clears
+  // `busy` as a duration is typed).
   const wasBusy = useRef(busy);
   useEffect(() => {
     const was = wasBusy.current;
     wasBusy.current = busy;
-    if (!was || busy) return;
+    if (was === busy) return;
     const active = document.activeElement;
-    if (active === null || active === document.body || active === confirmRef.current) {
+    const lost = active === null || active === document.body;
+    if (busy) {
+      if (lost || active === confirmRef.current) boxRef.current?.focus();
+    } else if (lost || active === confirmRef.current || active === boxRef.current) {
       confirmRef.current?.focus();
     }
   }, [busy]);
 
-  // One listener for the life of the dialog: it calls whatever onCancel the
-  // current render passed, so Escape after a re-render dismisses with the
-  // newest handler without the listener being torn down and re-added.
+  // One document-level listener for the life of the dialog: Escape calls
+  // whatever onCancel the current render passed (so a re-render dismisses
+  // with the newest handler without the listener being torn down and
+  // re-added), and Tab is trapped from wherever focus is. Neither moves focus
+  // on render.
   useEffect(() => {
     const onKey = (e: globalThis.KeyboardEvent): void => {
       if (e.key === 'Escape') cancelRef.current();
+      else if (e.key === 'Tab' && boxRef.current) trapTab(e, boxRef.current);
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, []);
-
-  // Focus trap: Tab only, and only when focus would leave the dialog. It
-  // never moves focus on render.
-  const onTrapKey = (e: KeyboardEvent<HTMLDivElement>): void => {
-    if (e.key !== 'Tab' || !boxRef.current) return;
-    const nodes = Array.from(boxRef.current.querySelectorAll<HTMLElement>(FOCUSABLE));
-    if (nodes.length === 0) {
-      e.preventDefault();
-      return;
-    }
-    const first = nodes[0];
-    const last = nodes[nodes.length - 1];
-    const active = document.activeElement;
-    if (e.shiftKey && (active === first || !boxRef.current.contains(active))) {
-      e.preventDefault();
-      last.focus();
-    } else if (!e.shiftKey && (active === last || !boxRef.current.contains(active))) {
-      e.preventDefault();
-      first.focus();
-    }
-  };
 
   return createPortal(
     <>
@@ -144,7 +163,7 @@ export function ConfirmDialog({
         role="dialog"
         aria-modal="true"
         aria-label={title}
-        onKeyDown={onTrapKey}
+        tabIndex={-1}
       >
         <h2>{title}</h2>
         {facts.length > 0 && (

@@ -355,10 +355,12 @@ export function RunDetailView(): JSX.Element {
               disabled={!heatmap || heatEmpty}
               title={
                 heatmap && !heatEmpty
-                  ? `The binned ${field} field in SI units, as plotted`
+                  ? `The binned ${field} field in SI units, as plotted: one replicate` +
+                    `${heatmap.seed === undefined ? '' : ` (seed ${heatmap.seed})`}, ` +
+                    'headed by its provenance'
                   : 'Available once the field has loaded'
               }
-              onClick={() => heatmap && downloadHeatmapCSV(heatmap, field, runId)}
+              onClick={() => heatmap && downloadHeatmapCSV(heatmap, field, { runId, run, demo })}
             >
               <Icon name="download" size={14} />
               Download CSV

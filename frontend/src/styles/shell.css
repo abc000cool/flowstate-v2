@@ -449,6 +449,36 @@
   background: var(--success-solid);
 }
 
+/* the poll is failing: the rows on screen are the last answer, not live.
+   Same pill as Live, in the offline banner's warning colours, with the
+   service's error beside it */
+.meta-stale {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1-5);
+  height: 20px;
+  padding: 0 var(--space-2);
+  border: 1px solid var(--warning-border);
+  border-radius: var(--radius-full);
+  background: var(--warning-subtle);
+  font-size: var(--text-12);
+  line-height: var(--leading-12);
+  font-weight: var(--weight-medium);
+  color: var(--warning-text);
+  white-space: nowrap;
+}
+.meta-stale-icon {
+  flex: none;
+}
+.page-meta .meta-stale-reason {
+  min-width: 0;
+  max-width: min(56ch, 100%);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--warning-text);
+}
+
 .meta-warning {
   color: var(--warning-text);
   font-weight: var(--weight-medium);

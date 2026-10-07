@@ -185,6 +185,7 @@ select.input:focus-visible {
   .banner,
   .corridor-chip,
   .meta-live,
+  .meta-stale,
   .empty-state {
     border: 1px solid CanvasText;
   }

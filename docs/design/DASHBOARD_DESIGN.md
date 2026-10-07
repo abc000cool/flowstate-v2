@@ -984,8 +984,11 @@ The density field is light-dominant in both themes by design.
   * The "no data" key is a 14×10 hatch swatch with the label.
 * **Table-view twin.** "Download CSV" (ghost, sm, download icon) writes the binned field
   already in memory: columns `t_s,x_m,speed_ms` (or `density_vehm`), SI units, empty for
-  null. The file is `flowstate-{run_id}-{field}.csv` via `lib/download.saveText`. There
-  is no new API.
+  null. The file is `flowstate-{run_id}-{field}-seed{N}-{micro|screening}[-demo].csv` via
+  `lib/download.saveText`, opening with `# key: value` provenance lines (run id, source,
+  tier — `screening` for macro runs — seed, replicate, config hash, field and units, bin
+  sizes, export time; skipped by pandas/numpy/R with `comment="#"`; 2026-10-07 review).
+  There is no new API.
 * **States** (all at the same fixed height): skeleton frame with "Loading the speed
   field…", error callout with Retry, and an empty callout when the API returns 0 bins.
   None of these may be an indefinite "loading".
@@ -1701,7 +1704,9 @@ Launch a scenario and follow its replicates. Every run records its seeds and con
   * First load: 5 skeleton rows.
   * Empty: EmptyState compact "No runs yet." with "Runs appear here after you launch
     one above."
-  * Poll errors stay silent (the shell banners cover connectivity), as today.
+  * Poll errors after the first answer replace the Live pill with a warning pill
+    "Stale — last update hh:mm:ss" and the server's error; the table keeps its last rows
+    (2026-10-07 review: a Live pill over frozen data was misleading).
 * **Test anchors:**
   * The `runs` table label.
   * Buttons `Launch run`, `Launch`; dialog `Launch this run?`.

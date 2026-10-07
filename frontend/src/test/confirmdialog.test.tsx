@@ -11,10 +11,12 @@
  * is registered once and reads `onCancel` through a ref, so it neither churns
  * on every keystroke nor captures a stale closure from mount. */
 
-import { fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import { useState } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import { ConfirmDialog } from '../components/ConfirmDialog';
+import { toast, Toasts } from '../components/toast';
+import { dropFocus } from './focus';
 
 /** A caller shaped like the real ones: a controlled field inside the dialog,
  * so every keystroke re-renders the parent, and an inline `onCancel` that
@@ -73,5 +75,84 @@ describe('ConfirmDialog', () => {
     unmount();
     fireEvent.keyDown(window, { key: 'Escape' });
     expect(onCancel).not.toHaveBeenCalled();
+  });
+});
+
+/** (3) Focus stays inside the modal while it is busy. The confirm button is
+ * disabled for the round trip, which drops focus to <body> in a browser, and
+ * the toasts (rendered after `.app`, so not inert) hold focusable dismiss
+ * buttons: a launch toasts "preset … stored" mid-request. A Tab trap that
+ * listens on the dialog alone never sees a key pressed from <body> or a
+ * toast, so Tab walked out of an aria-modal dialog. Focus now waits on the
+ * dialog itself while the button is disabled, and Tab is trapped at the
+ * document level for as long as the dialog is open. */
+describe('ConfirmDialog focus while busy', () => {
+  function Shell({ busy }: { busy: boolean }): JSX.Element {
+    return (
+      <>
+        <div className="app">
+          <button type="button">Launch run</button>
+        </div>
+        <Toasts />
+        <ConfirmDialog
+          title="Launch this run?"
+          confirmLabel="Launch"
+          busy={busy}
+          onConfirm={() => undefined}
+          onCancel={() => undefined}
+        />
+      </>
+    );
+  }
+
+  it('moves focus to the dialog itself when the confirm button is disabled', () => {
+    const { rerender } = render(<Shell busy={false} />);
+    const confirm = screen.getByRole('button', { name: 'Launch' });
+    expect(confirm).toHaveFocus();
+    rerender(<Shell busy />);
+    expect(confirm).toBeDisabled();
+    expect(screen.getByRole('dialog', { name: 'Launch this run?' })).toHaveFocus();
+    // and back to the button once the request is refused
+    rerender(<Shell busy={false} />);
+    expect(confirm).toHaveFocus();
+  });
+
+  it('opens on the dialog itself when it mounts already busy', () => {
+    render(<Shell busy />);
+    expect(screen.getByRole('dialog', { name: 'Launch this run?' })).toHaveFocus();
+  });
+
+  it('traps Tab from <body> and from a toast, outside the dialog', () => {
+    render(<Shell busy />);
+    act(() => toast('ok', 'preset ring_sugiyama stored as scn_1'));
+    const dialog = screen.getByRole('dialog', { name: 'Launch this run?' });
+    const cancel = screen.getByRole('button', { name: 'Cancel' });
+    const dismiss = screen.getByRole('button', { name: /^dismiss: preset ring_sugiyama/ });
+
+    // focus lost to <body> (the browser's answer to a disabled button)
+    dropFocus();
+    expect(fireEvent.keyDown(document.body, { key: 'Tab' })).toBe(false);
+    expect(cancel).toHaveFocus();
+
+    // focus on the non-inert toast: Shift+Tab comes back in, not further out
+    dismiss.focus();
+    expect(fireEvent.keyDown(dismiss, { key: 'Tab', shiftKey: true })).toBe(false);
+    expect(cancel).toHaveFocus();
+
+    // from the dialog box itself, Shift+Tab would step to the toasts before
+    // it in document order: it wraps to the last control instead
+    dialog.focus();
+    expect(fireEvent.keyDown(dialog, { key: 'Tab', shiftKey: true })).toBe(false);
+    expect(cancel).toHaveFocus();
+
+    // the toast store is module state: leave none behind for the next test
+    fireEvent.click(dismiss);
+  });
+
+  it('stops trapping Tab once the dialog is gone', () => {
+    const { unmount } = render(<Shell busy={false} />);
+    unmount();
+    dropFocus();
+    expect(fireEvent.keyDown(document.body, { key: 'Tab' })).toBe(true);
   });
 });
