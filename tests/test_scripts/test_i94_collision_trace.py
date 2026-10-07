@@ -18,13 +18,18 @@ and ``ramps``, ``vehicles.parquet``, ``trajectories.parquet`` in several row gro
 * **Reproduction**: a matching log reproduces; a shifted position, a wrong hash, an
   extra collision in a control, or a missing run directory does not, the artifact
   says NOT REPRODUCED with the reference commit, and the exit status is 3.
-* **Commands**: a logged weave speed target issued one step before contact is found.
+* **Commands** (the runner's ``weave_commands.parquet``, ``WeaveSpec.record_commands``):
+  a logged weave speed target (``cooperate`` / ``ease``) issued one step before contact
+  is found, with the rear car's other commands; a meta-only archive (the log recorded
+  in ``meta.json["weave_command_log"]``, its file absent) and an unreadable file say so
+  and keep the inferred reading; a run with no log reads exactly as before.
 """
 
 from __future__ import annotations
 
 import importlib.util
 import json
+import math
 import sys
 from pathlib import Path
 from types import ModuleType
@@ -76,8 +81,13 @@ def _write_run(
     vtypes: dict[str, dict[str, str]],
     first_samples: dict[str, tuple[float, float, int]],
     commands: list[dict[str, Any]] | None = None,
+    command_log: dict[str, Any] | None = None,
 ) -> Path:
-    """A run directory with the files ``run_micro`` writes (only what the reader reads)."""
+    """A run directory with the files ``run_micro`` writes (only what the reader reads).
+
+    ``commands``: rows of ``weave_commands.parquet`` in the runner's schema (columns not
+    given take the runner's "none"); ``command_log``: ``meta.json["weave_command_log"]``.
+    """
     run_dir.mkdir(parents=True)
     meta = {
         "config": {"sim": {"step_length_s": STEP, "output_hz": 2.0}},
@@ -93,6 +103,8 @@ def _write_run(
             for r in ramps
         ],
     }
+    if command_log is not None:
+        meta["weave_command_log"] = command_log
     (run_dir / "meta.json").write_text(json.dumps(meta))
     df = pd.DataFrame(rows).sort_values(["t", "veh_id"], kind="stable")
     table = pa.Table.from_pandas(df[["t", "veh_id", "x", "lane", "v", "a"]], preserve_index=False)
@@ -140,8 +152,25 @@ def _write_run(
     (run_dir / "net" / "demand.rou.xml").write_text("\n".join(lines))
     if commands is not None:
         with open(run_dir / tr.COMMANDS_FILE, "wb") as f:
-            pq.write_table(pa.Table.from_pandas(pd.DataFrame(commands), preserve_index=False), f)
+            pq.write_table(_command_table(commands), f)
     return run_dir
+
+
+def _command_table(rows: list[dict[str, Any]]) -> pa.Table:
+    """Rows in the runner's ``weave_commands.parquet`` schema (``microsim.runner``)."""
+    from microsim.runner import _WEAVE_COMMANDS_SCHEMA
+
+    none = {
+        "section": "ruth",
+        "lane_from": 0,
+        "lane_to": -1,
+        "v_cmd_ms": math.nan,
+        "lc_mode_set": -1,
+        "x_m": math.nan,
+    }
+    return pa.Table.from_pylist(
+        [{**none, **r} for r in rows], schema=pa.schema(_WEAVE_COMMANDS_SCHEMA)
+    )
 
 
 # --- the planted rear-end: Ruth St's auxiliary lane (R1-R3's setting) ---------------------
@@ -176,7 +205,11 @@ def _rear_end_rows() -> tuple[list[dict[str, Any]], float]:
 
 
 def _rear_end_run(
-    tmp: Path, *, pos_shift: float = 0.0, commands: list[dict[str, Any]] | None = None
+    tmp: Path,
+    *,
+    pos_shift: float = 0.0,
+    commands: list[dict[str, Any]] | None = None,
+    command_log: dict[str, Any] | None = None,
 ) -> tuple[Path, Any]:
     rows, x_c = _rear_end_rows()
     pos = x_c - E1_X0
@@ -213,6 +246,7 @@ def _rear_end_run(
             "v00004": (108.0, 1001.0, 0),
         },
         commands=commands,
+        command_log=command_log,
     )
     exp = tr.RunExpectation(
         "arm",
@@ -304,44 +338,130 @@ def test_braking_beyond_b_is_not_read_as_the_cap(tmp_path: Path) -> None:
     assert br["reading"].startswith("braked beyond b")
 
 
+#: The rear-end's planted weave command log (the runner's rules): the rear car eased at
+#: the two steps before contact and asked into lane 1 at the last; the front car given a
+#: cooperation target; one ease of the rear car 20 s before contact, outside the window.
+REAR_END_COMMANDS: list[dict[str, Any]] = [
+    {"t": T_REAR - 20.0, "veh_id": "v00001", "rule": "ease", "v_cmd_ms": 4.0},
+    {"t": T_REAR - 2 * STEP, "veh_id": "v00001", "rule": "ease", "v_cmd_ms": 1.0},
+    {"t": T_REAR - STEP, "veh_id": "v00001", "rule": "ease", "v_cmd_ms": 0.5},
+    {
+        "t": T_REAR - STEP,
+        "veh_id": "v00001",
+        "rule": "change_accept",
+        "lane_to": 1,
+        "lc_mode_set": 256,
+    },
+    {"t": T_REAR - STEP, "veh_id": "v00002", "rule": "cooperate", "v_cmd_ms": 0.0},
+]
+REAR_END_LOG: dict[str, Any] = {
+    "file": "weave_commands.parquet",
+    "n_rows": 5,
+    "sections": {"ruth": {"change_accept": 1, "cooperate": 1, "ease": 3}},
+}
+
+
 def test_a_logged_weave_target_in_the_contact_step_is_reported(tmp_path: Path) -> None:
-    cmds = [
-        {
-            "t": T_REAR - 2 * STEP,
-            "veh_id": "v00001",
-            "call": "slowDown",
-            "value": 1.0,
-            "rule": "easing",
-        },
-        {
-            "t": T_REAR - STEP,
-            "veh_id": "v00001",
-            "call": "slowDown",
-            "value": 0.5,
-            "rule": "easing",
-        },
-        {
-            "t": T_REAR - STEP,
-            "veh_id": "v00001",
-            "call": "changeLane",
-            "value": 1.0,
-            "rule": "accepted",
-        },
-        {
-            "t": T_REAR - STEP,
-            "veh_id": "v00002",
-            "call": "slowDown",
-            "value": 0.0,
-            "rule": "cooperation",
-        },
-    ]
-    run, exp = _rear_end_run(tmp_path, commands=cmds)
+    """The runner's log beside meta.json: the rear car's speed targets in the window are
+    its ``ease`` / ``cooperate`` rows (the lane request is listed among its commands, not
+    as a target), the one at ``t − step`` is active in the contact step; the run record
+    says the log was read."""
+    run, exp = _rear_end_run(tmp_path, commands=REAR_END_COMMANDS, command_log=REAR_END_LOG)
     r = tr.trace_run(run, exp, tr.Params())
     cmd = r["events"][0]["weave_commands_rear"]
     assert cmd["logged"] and cmd["active_in_contact_step"] and cmd["n_steps_with_target"] == 2
-    assert [c["call"] for c in cmd["speed_targets"]] == ["slowDown", "slowDown"]
+    assert [(c["rule"], c["v_cmd_ms"]) for c in cmd["speed_targets"]] == [
+        ("ease", 1.0),
+        ("ease", 0.5),
+    ]
+    assert [c["rule"] for c in cmd["commands"]] == ["ease", "ease", "change_accept"]
+    accept = cmd["commands"][-1]
+    assert (accept["lane_to"], accept["lc_mode_set"], accept["v_cmd_ms"]) == (1, 256, None)
+    assert r["weave_command_log"] == {
+        "file": tr.COMMANDS_FILE,
+        "read": True,
+        "n_rows": 5,
+        "recorded": REAR_END_LOG,
+        "problem": None,
+    }
     summary = tr.summarize([r], [])
     assert summary["events"][0]["verdict"].endswith("weave target in the contact step")
+    # the same log without a target in the contact step
+    late = [c for c in REAR_END_COMMANDS if not (c["t"] == T_REAR - STEP and c["rule"] == "ease")]
+    run2, exp2 = _rear_end_run(tmp_path / "late", commands=late, command_log=REAR_END_LOG)
+    r2 = tr.trace_run(run2, exp2, tr.Params())
+    cmd2 = r2["events"][0]["weave_commands_rear"]
+    assert cmd2["logged"] and not cmd2["active_in_contact_step"]
+    assert tr.summarize([r2], [])["events"][0]["verdict"].endswith(
+        "no weave target in the contact step"
+    )
+
+
+def test_a_run_without_a_log_reads_exactly_as_before(tmp_path: Path) -> None:
+    """No file and no ``weave_command_log``: the block, the run record and the verdict
+    the reader wrote before the recorder existed (byte for byte in the artifact)."""
+    run, exp = _rear_end_run(tmp_path)
+    r = tr.trace_run(run, exp, tr.Params())
+    assert r["events"][0]["weave_commands_rear"] == {
+        "logged": False,
+        "note": "the runner does not log weave commands (docs/I94_CAL_COLLISIONS.md §2, §10)",
+    }
+    assert "weave_command_log" not in r
+    assert list(r) == [
+        "run_dir",
+        "arm",
+        "seed",
+        "config_hash",
+        "versions",
+        "reproduction",
+        "trajectories",
+        "slice",
+        "events",
+    ]
+    verdict = tr.summarize([r], [])["events"][0]["verdict"]
+    assert verdict.endswith("; weave command not logged")
+
+
+def test_a_meta_only_archive_says_so_and_keeps_the_inferred_reading(tmp_path: Path) -> None:
+    """p8c-style archive: meta.json records the log, the parquet file is not shipped. The
+    block says so (rows recorded, the problem) and reads ``logged: false``; braking and
+    entries are the reading without a log, and nothing raises."""
+    run, exp = _rear_end_run(tmp_path, command_log=REAR_END_LOG)
+    assert not (run / tr.COMMANDS_FILE).exists()
+    r = tr.trace_run(run, exp, tr.Params())
+    (b,) = r["events"]
+    cmd = b["weave_commands_rear"]
+    assert cmd["logged"] is False and cmd["log_recorded"] is True and cmd["log_rows"] == 5
+    assert "meta-only archive" in cmd["log_problem"] and "weave_command_log" in cmd["log_problem"]
+    assert cmd["note"].endswith("the inferred reading (braking and entries) stands")
+    assert r["weave_command_log"]["read"] is False and r["weave_command_log"]["n_rows"] is None
+    assert r["weave_command_log"]["recorded"] == REAR_END_LOG
+    plain, plain_exp = _rear_end_run(tmp_path / "plain")
+    p = tr.trace_run(plain, plain_exp, tr.Params())["events"][0]
+    assert b["braking_rear"] == p["braking_rear"] and b["entries"] == p["entries"]
+    verdict = tr.summarize([r], [])["events"][0]["verdict"]
+    assert verdict.startswith(p["braking_rear"]["reading"])
+    assert verdict.endswith("weave command log not readable here, inferred reading")
+
+
+def test_an_unreadable_log_says_so_and_never_raises(tmp_path: Path) -> None:
+    """A file that is not Parquet, and one without the runner's ``rule`` column (the
+    speculative ``call`` form the reader once accepted): each reads ``logged: false``
+    with its problem, whether or not meta.json records a log."""
+    run, exp = _rear_end_run(tmp_path / "garbled")
+    (run / tr.COMMANDS_FILE).write_bytes(b"not a parquet file")
+    cmd = tr.trace_run(run, exp, tr.Params())["events"][0]["weave_commands_rear"]
+    assert cmd["logged"] is False and cmd["log_recorded"] is False
+    assert cmd["log_problem"].startswith(f"{tr.COMMANDS_FILE} cannot be read")
+    run, exp = _rear_end_run(tmp_path / "old_form", command_log=REAR_END_LOG)
+    old = pd.DataFrame([{"t": T_REAR - STEP, "veh_id": "v00001", "call": "slowDown", "value": 0.5}])
+    with open(run / tr.COMMANDS_FILE, "wb") as f:
+        pq.write_table(pa.Table.from_pandas(old, preserve_index=False), f)
+    r = tr.trace_run(run, exp, tr.Params())
+    cmd = r["events"][0]["weave_commands_rear"]
+    assert cmd["logged"] is False and cmd["log_recorded"] is True
+    assert "lacks the column(s) ['rule']" in cmd["log_problem"]
+    assert r["weave_command_log"]["problem"] == cmd["log_problem"]
 
 
 # --- the planted opposing entry: T.H.52 (T1-T3's setting) ---------------------------------

@@ -18,6 +18,9 @@ runs/<config_hash>/<seed>/
   journeys.parquet       # one row per PLANNED vehicle: planned/actual
                          # departure, arrival, meter hold, route free-flow
                          # time (JOURNEYS_FILE, WP-105)
+  weave_commands.parquet # opt-in (WeaveSpec.record_commands): one row per
+                         # command decision of a weave rule or measured zone
+                         # (WEAVE_COMMANDS_FILE, 2026-10-07)
   meta.json              # config snapshot + hash, versions, tier="micro",
                          # seeded flag, wall time, per-vehicle fuel, AV ids
 ```
@@ -945,6 +948,233 @@ def _zone_scan_roads(ws: Mapping[str, Any]) -> frozenset[str]:
     return frozenset(ws["exit_edges"]) | {road for road, _ in ws["lane_map"]} | set(ws["edges"])
 
 
+# --- The weave command recorder (WeaveSpec.record_commands, 2026-10-07) -------
+#
+# docs/I94_CAL_COLLISIONS.md §15: the collision diagnoses had to infer which
+# weave rule issued each command to each vehicle, because the runner logged
+# none. With ``record_commands`` on a section's weave block, every command
+# decision of that section's rules is one row of WEAVE_COMMANDS_FILE. Off (the
+# default), no recorder exists, nothing is buffered and no file is written.
+
+#: The weave command log written beside ``vehicles.parquet`` when any weave
+#: block sets ``WeaveSpec.record_commands`` (docs/CONTRACTS.md §3); recorded in
+#: ``meta.json["weave_command_log"]``.
+WEAVE_COMMANDS_FILE: Final[str] = "weave_commands.parquet"
+
+#: Columns of :data:`WEAVE_COMMANDS_FILE` (:class:`_WeaveCommandRecorder`):
+#: the step time [s]; the vehicle; the section's label (``meta.json``'s
+#: ``weave_sections[i].ramp`` / ``measured_merges[i].ramp``); the rule
+#: (:data:`WEAVE_COMMAND_RULES`); the vehicle's lane index at the decision
+#: (SUMO's, on its edge then, as ``trajectories.parquet``'s ``lane``; −1 off
+#: the subscription) and the lane a change request targets (the current lane
+#: for a one-step stay that ends an open request; −1 for no lane request); the
+#: speed written [m/s] (``slowDown`` target, ``setMaxSpeed`` value; NaN for
+#: none); the ``laneChangeMode`` written with ``setLaneChangeMode`` (−1 for
+#: none, a mode already in force included: ``_weave_set_mode`` does not
+#: rewrite it); and the vehicle's front-bumper position on the corridor axis
+#: [m] (``trajectories.parquet``'s ``x`` on corridor edges, the section's own
+#: on-ramp extended upstream from the section start, NaN elsewhere).
+_WEAVE_COMMANDS_SCHEMA: Final[list[tuple[str, pa.DataType]]] = [
+    ("t", pa.float64()),
+    ("veh_id", pa.string()),
+    ("section", pa.string()),
+    ("rule", pa.string()),
+    ("lane_from", pa.int32()),
+    ("lane_to", pa.int32()),
+    ("v_cmd_ms", pa.float64()),
+    ("lc_mode_set", pa.int32()),
+    ("x_m", pa.float64()),
+]
+
+#: Every ``rule`` of :data:`WEAVE_COMMANDS_FILE` and the decision its row is.
+#: "W1" / "W2" rules occur only while that amendment's key is set; "measured"
+#: ones only in a measured merge model's zone; the others in both. A row is a
+#: TraCI command written by the rule, or a guard's decision to withhold one
+#: (``force_deferred``, ``pair_yield``, ``handback_skip``,
+#: ``close_leader_withheld``, ``opposing_deferred``).
+WEAVE_COMMAND_RULES: Final[dict[str, str]] = {
+    # the driven vehicles (_weave_step, _measured_step)
+    "control_take": "taken under control: laneChangeMode 512",
+    "control_release": "handed back with its change made: its own mode restored",
+    "control_release_missed": "handed back still owing its change: its own mode restored",
+    "change_accept": "an accepted change requested for one step under mode 256",
+    "change_force": "a due forced change, guard passed, requested for one step under mode 256",
+    "force_deferred": "a due forced change refused by the guard: mode 512, no request",
+    "hold_reset": "no request after a step under mode 256: mode 512 written back",
+    "exit_giveup": "an exiter halted at the gore's end rerouted through, its own mode restored",
+    "entrant_giveup_release": (
+        "W1: an entrant halted at the auxiliary lane's end rerouted to the paired exit, "
+        "its own mode restored"
+    ),
+    "pair_release": "a stopped crossing pair released (the row is the yielder's)",
+    "pair_yield": "a released pair's yielder this step: no target, no request, mode 512",
+    # one-step speed targets, slowDown(v, 0) (_weave_command)
+    "cooperate": "a one-step speed target for the follower of a chosen gap",
+    "ease": "a one-step speed target for a changer towards its gap's leader",
+    "handback_skip": "W2: a target withheld, the vehicle's own model braking harder",
+    "close_leader_withheld": "W2: a target the close-leader reading withheld",
+    # the opposing-entry resolution (W2's weave_resolve_opposing; measured: always)
+    "opposing_deferred": "a request withheld for an opposing entry: mode 512, no request",
+    "opposing_vetoed": "an undriven vehicle's model change vetoed for the step: model bits cleared",
+    "opposing_restore": "a vetoed vehicle's mode given back at the section's next step",
+    # the vacate rule (_weave_vacate_step)
+    "vacate": "a through vehicle asked once into the lane left of the weave lane (mode 512)",
+    "vacate_readdress": "its open request re-issued on a window edge where the lane index differs",
+    "vacate_done": "seen in the target lane: its own mode restored",
+    "vacate_refused": "expired or reached the section in the weave lane: its own mode restored",
+    # the exiters' early move (_weave_exit_prepare_step)
+    "exit_prepare": "an exiter asked once into the lane feeding section lane 1 (mode 512)",
+    "exit_prepare_suspend": "its open request ended by a stay beside a vacating vehicle",
+    "exit_prepare_reissue": "its request re-issued: clear of the pair, or a new lane index",
+    "exit_prepare_done": "seen in that lane: its own mode restored",
+    "exit_prepare_refused": "expired or reached the section left of it: its own mode restored",
+    # the measured merge model's own commands
+    "measured_handover": "measured: an entrant taken one step before the zone (mode 512)",
+    "measured_handover_return": "measured: taken, left the window undriven: its own mode back",
+    "ceiling": "measured: the changer's desired-speed ceiling written (setMaxSpeed)",
+    "ceiling_release": "measured: maxSpeed handed back (setMaxSpeed, its own value)",
+    "relax_entrant": "measured: the post-crossing relaxation granted to the entrant (setTau)",
+    "relax_follower": "measured: the post-crossing relaxation granted to its new follower (setTau)",
+}
+
+#: Counter identities of a recorded section: the sum of the counters (its
+#: ``meta.json["weave_sections"][i]`` or ``["measured_merges"][i]`` entry)
+#: equals the number of its rows of the rules — wherever the entry carries
+#: every counter named. ``n_missed`` has none: a vehicle that left the network
+#: owing its change is counted there with no command to record.
+WEAVE_COMMAND_COUNTERS: Final[dict[tuple[str, ...], tuple[str, ...]]] = {
+    ("n_entered",): ("control_take",),
+    ("n_changed_in", "n_changed_out"): ("control_release",),
+    ("n_missed_exit",): ("exit_giveup",),
+    ("n_entrant_took_exit",): ("entrant_giveup_release",),
+    ("n_forced_deferred",): ("force_deferred",),
+    ("n_pair_releases",): ("pair_release",),
+    ("n_cooperations",): ("cooperate",),
+    ("n_changer_eased",): ("ease",),
+    ("n_handback_skips",): ("handback_skip",),
+    ("n_close_leader_withheld",): ("close_leader_withheld",),
+    ("n_opposing_deferred",): ("opposing_deferred", "opposing_vetoed"),
+    ("n_opposing_vetoed",): ("opposing_vetoed",),
+    ("n_vacate_requests",): ("vacate",),
+    ("n_vacated",): ("vacate_done",),
+    ("n_vacate_refused",): ("vacate_refused",),
+    ("n_exit_prepared",): ("exit_prepare_done",),
+    ("n_requests",): ("change_accept", "change_force"),
+    ("n_handovers",): ("measured_handover",),
+    ("n_relax_granted_entrant",): ("relax_entrant",),
+    ("n_relax_granted_follower",): ("relax_follower",),
+}
+
+
+class _WeaveCommandRecorder:
+    """The weave command log of one run (``WeaveSpec.record_commands``; 2026-10-07, I94_CAL_COLLISIONS §15).
+
+    One per run, shared by every section whose weave block sets the flag
+    (``ws["cmd_rec"]``; a section without the key records nothing). Each
+    section step opens it with :meth:`step` — the section's label, the step
+    time and the step's subscription results — and each rule then adds its
+    decisions with :meth:`add`, which reads the vehicle's lane and position
+    from those results. It makes no TraCI call and no rule reads anything back
+    from it, so a run with it on drives SUMO call for call as one without it.
+    Rows are buffered in column lists and written once, at the end of the run
+    (:meth:`table`), in decision order: by step, then the sections' step order
+    (upstream first), then each rule's own order.
+    """
+
+    __slots__ = ("_cols", "_keys", "_results", "_section", "_t", "_x_offset")
+
+    def __init__(self) -> None:
+        self._cols: dict[str, list[Any]] = {name: [] for name, _ in _WEAVE_COMMANDS_SCHEMA}
+        self._section = ""
+        self._t = math.nan
+        self._results: Mapping[str, Any] = {}
+        self._x_offset: Mapping[str, float] = {}
+        self._keys: tuple[Any, Any, Any] = (None, None, None)
+
+    def step(self, ws: Mapping[str, Any], tc: Any, results: Mapping[str, Any], t: float) -> None:
+        """Open the log for one section's step: its label, the time [s], the step's results."""
+        self._section = str(ws["ramp"])
+        self._t = float(t)
+        self._results = results
+        self._x_offset = ws.get("x_offset", {})
+        self._keys = (tc.VAR_ROAD_ID, tc.VAR_LANE_INDEX, tc.VAR_LANEPOSITION)
+
+    def add(
+        self,
+        vid: str,
+        rule: str,
+        *,
+        lane_to: int = -1,
+        v_cmd: float = math.nan,
+        lc_mode: int = -1,
+    ) -> None:
+        """Append one decision of the open section's step (columns: :data:`_WEAVE_COMMANDS_SCHEMA`).
+
+        Args:
+            vid: The vehicle the decision is for.
+            rule: Its rule, a key of :data:`WEAVE_COMMAND_RULES`.
+            lane_to: The lane a change request targets; the current lane for
+                a one-step stay; ``-1`` for no lane request.
+            v_cmd: The speed written [m/s]; NaN for none.
+            lc_mode: The ``laneChangeMode`` written; ``-1`` for none.
+
+        Raises:
+            ValueError: ``rule`` is not a documented rule.
+        """
+        if rule not in WEAVE_COMMAND_RULES:
+            raise ValueError(f"unknown weave command rule {rule!r} (WEAVE_COMMAND_RULES)")
+        lane_from, x = -1, math.nan
+        res = self._results.get(vid)
+        if res is not None:
+            var_road, var_lane, var_pos = self._keys
+            lane_from = int(res[var_lane])
+            x0 = self._x_offset.get(res[var_road])
+            if x0 is not None:
+                x = float(x0) + float(res[var_pos])
+        cols = self._cols
+        cols["t"].append(self._t)
+        cols["veh_id"].append(str(vid))
+        cols["section"].append(self._section)
+        cols["rule"].append(rule)
+        cols["lane_from"].append(lane_from)
+        cols["lane_to"].append(int(lane_to))
+        cols["v_cmd_ms"].append(float(v_cmd))
+        cols["lc_mode_set"].append(int(lc_mode))
+        cols["x_m"].append(x)
+
+    def __len__(self) -> int:
+        return len(self._cols["t"])
+
+    def rule_counts(self, section: str) -> dict[str, int]:
+        """Rows per rule of one section, rules in name order."""
+        counts: dict[str, int] = {}
+        for s, rule in zip(self._cols["section"], self._cols["rule"], strict=True):
+            if s == section:
+                counts[rule] = counts.get(rule, 0) + 1
+        return dict(sorted(counts.items()))
+
+    def table(self) -> pa.Table:
+        """The contract-typed table of every row, in decision order."""
+        return pa.Table.from_arrays(
+            [pa.array(self._cols[name], type=dtype) for name, dtype in _WEAVE_COMMANDS_SCHEMA],
+            schema=pa.schema(_WEAVE_COMMANDS_SCHEMA),
+        )
+
+
+def _weave_command_log_meta(rec: _WeaveCommandRecorder, sections: Sequence[str]) -> dict[str, Any]:
+    """``meta.json["weave_command_log"]``: the file, its row count and each recorded section's rows per rule."""
+    return {
+        "file": WEAVE_COMMANDS_FILE,
+        "n_rows": len(rec),
+        "sections": {s: rec.rule_counts(s) for s in sections},
+    }
+
+
+def _rec_mode(st: Mapping[str, Any], mode: int) -> int:
+    """The recorder's ``lc_mode_set`` of a :func:`_weave_set_mode` call about to be made: ``mode``, or ``-1`` when already in force."""
+    return mode if st["mode"] != mode else -1
+
+
 def _scripted_merge_step(
     mod: Any,
     tc: Any,
@@ -1525,6 +1755,8 @@ def _weave_vacate_step(
     ahead = float(ws["params"]["vacate_ahead_m"])
     if not spec or ahead <= 0.0:
         return
+    # the weave command recorder (WeaveSpec.record_commands; None = off)
+    rec: _WeaveCommandRecorder | None = ws.get("cmd_rec")
     step_s = float(ws["step_s"])
     x_offset: dict[str, float] = ws["x_offset"]
     x_start = float(x_offset[ws["edges"][0]])
@@ -1587,6 +1819,8 @@ def _weave_vacate_step(
                 # re-addressed there for the rest of its life
                 st["lane_to"] = lane_to_here
                 mod.vehicle.changeLane(vid, lane_to_here, max(st["until_s"] - t, step_s))
+                if rec is not None:
+                    rec.add(vid, "vacate_readdress", lane_to=lane_to_here)
             continue  # still in the weave lane with the request open
         else:
             ws["n_vacate_refused"] += 1
@@ -1597,6 +1831,13 @@ def _weave_vacate_step(
             # vehicle back in. A one-step stay in the current lane ends it
             mod.vehicle.changeLane(vid, lane, step_s)
         mod.vehicle.setLaneChangeMode(vid, st["lc_mode_orig"])
+        if rec is not None:
+            rec.add(
+                vid,
+                "vacate_done" if vid in target_ids else "vacate_refused",
+                lane_to=lane if t < st["until_s"] else -1,
+                lc_mode=st["lc_mode_orig"],
+            )
         del active[vid]
     # --- the through vehicles in the window this step ---------------------
     now: dict[str, float] = {}
@@ -1658,6 +1899,8 @@ def _weave_vacate_step(
         mod.vehicle.setLaneChangeMode(vid, LC_MODE_SCRIPTED_SAFE)
         mod.vehicle.changeLane(vid, lane_to, duration)
         ws["n_vacate_requests"] += 1
+        if rec is not None:
+            rec.add(vid, "vacate", lane_to=lane_to, lc_mode=LC_MODE_SCRIPTED_SAFE)
 
 
 def _weave_exit_prepare_abreast(
@@ -1771,6 +2014,8 @@ def _weave_exit_prepare_step(
     ahead = float(prm["vacate_ahead_m"])
     if not spec or ahead <= 0.0:
         return
+    # the weave command recorder (WeaveSpec.record_commands; None = off)
+    rec: _WeaveCommandRecorder | None = ws.get("cmd_rec")
     step_s = float(ws["step_s"])
     x_offset: dict[str, float] = ws["x_offset"]
     x_start = float(x_offset[ws["edges"][0]])
@@ -1851,6 +2096,8 @@ def _weave_exit_prepare_step(
                 if not st.get("suspended"):
                     st["suspended"] = True
                     mod.vehicle.changeLane(vid, lane, step_s)
+                    if rec is not None:
+                        rec.add(vid, "exit_prepare_suspend", lane_to=lane)
                 ws["n_exit_prepare_yielded"] += 1
             elif st.get("suspended") or lane_to_here != st["lane_to"]:
                 # clear of the pair again, or crossed onto a window edge
@@ -1859,6 +2106,8 @@ def _weave_exit_prepare_step(
                 st["suspended"] = False
                 st["lane_to"] = lane_to_here
                 mod.vehicle.changeLane(vid, lane_to_here, max(st["until_s"] - t, step_s))
+                if rec is not None:
+                    rec.add(vid, "exit_prepare_reissue", lane_to=lane_to_here)
             continue
         else:
             ws["n_exit_prepare_refused"] += 1
@@ -1868,6 +2117,13 @@ def _weave_exit_prepare_step(
             # section's own acceptance decides that change
             mod.vehicle.changeLane(vid, lane, step_s)
         mod.vehicle.setLaneChangeMode(vid, st["lc_mode_orig"])
+        if rec is not None:
+            rec.add(
+                vid,
+                "exit_prepare_done" if vid in target_ids else "exit_prepare_refused",
+                lane_to=lane if t < st["until_s"] else -1,
+                lc_mode=st["lc_mode_orig"],
+            )
         del active[vid]
     # --- the target lane's inflow to the window (the bound's flow) ----------
     flow_ids: set[str] = ws["prep_flow_ids"]
@@ -1932,6 +2188,8 @@ def _weave_exit_prepare_step(
         mod.vehicle.setLaneChangeMode(vid, LC_MODE_SCRIPTED_SAFE)
         mod.vehicle.changeLane(vid, lane_to, duration)
         ws["n_exit_prepare_requests"] += 1
+        if rec is not None:
+            rec.add(vid, "exit_prepare", lane_to=lane_to, lc_mode=LC_MODE_SCRIPTED_SAFE)
     ws["n_exit_prepare_held"] += len(active)
 
 
@@ -2305,11 +2563,14 @@ def _weave_pair_release(
         first = since.setdefault(key, t)
         if t - first <= release_s:
             continue
+        # the one with more section ahead of its front yields; ties by id
+        yielder = max((x_end - x_of[x_id], x_id), (x_end - x_of[f_id], f_id))[1]
         if key not in released:
             released.add(key)
             ws["n_pair_releases"] += 1
-        # the one with more section ahead of its front yields; ties by id
-        yielder = max((x_end - x_of[x_id], x_id), (x_end - x_of[f_id], f_id))[1]
+            rec: _WeaveCommandRecorder | None = ws.get("cmd_rec")
+            if rec is not None:
+                rec.add(yielder, "pair_release")
         yielders.add(yielder)
         partners.add(f_id if yielder == x_id else x_id)
     for key in [k for k in since if k not in standing]:
@@ -2429,9 +2690,12 @@ def _weave_opposing_restore(mod: Any, ws: dict[str, Any], results: Any) -> None:
     restores the mode.
     """
     vetoes: dict[str, int] = ws["opp_veto"]
+    rec: _WeaveCommandRecorder | None = ws.get("cmd_rec")
     for vid, mode in vetoes.items():
         if vid in results and int(mod.vehicle.getLaneChangeMode(vid)) == mode & ~LC_MODE_MODEL_BITS:
             mod.vehicle.setLaneChangeMode(vid, mode)
+            if rec is not None:
+                rec.add(vid, "opposing_restore", lc_mode=mode)
     vetoes.clear()
 
 
@@ -2620,11 +2884,15 @@ def _weave_cooperate(
     # amendment W2 (weave_close_leader, off unless set): a leader inside minGap
     # is a leader, not a free road, in the targets' own-acceleration estimate
     close = _weave_switch(prm, "weave_close_leader")
+    # the weave command recorder (WeaveSpec.record_commands; None = off)
+    rec: _WeaveCommandRecorder | None = ws.get("cmd_rec")
     if f_t is not None:
         if _weave_command(
             mod, coop, f_t, v_of[f_t], v0_of[f_t], p_of[f_t], a_f, step_s, close_leader=close
         ):
             ws["n_close_leader_withheld"] += 1
+            if rec is not None:
+                rec.add(f_t, "close_leader_withheld")
     if l_t is not None and a_c < 0.0:
         s_l = x_of[l_t] - p_of[l_t]["len"] - x_of[vid]
         # sixth derivation: on the ramp, a gap leader whose rear is behind the
@@ -2637,6 +2905,8 @@ def _weave_cooperate(
                 mod, coop, vid, v_c, v0_c, p_c, a_c, step_s, follower=False, close_leader=close
             ):
                 ws["n_close_leader_withheld"] += 1
+                if rec is not None:
+                    rec.add(vid, "close_leader_withheld")
     return f_t
 
 
@@ -2999,6 +3269,11 @@ def _weave_step(
     # amendment W2's switches (docs/I94_CAL_COLLISIONS.md §13; off unless set)
     handback = _weave_switch(prm, "weave_handback")
     resolve = _weave_switch(prm, "weave_resolve_opposing")
+    # the weave command recorder (WeaveSpec.record_commands, 2026-10-07; None =
+    # off): opened for this section's step before any rule records
+    rec: _WeaveCommandRecorder | None = ws.get("cmd_rec")
+    if rec is not None:
+        rec.step(ws, tc, results, t)
     if resolve and ws["opp_veto"]:
         # the model changes vetoed last step get their mode back before
         # anything of this step reads a mode
@@ -3100,6 +3375,12 @@ def _weave_step(
             done = road in exit_edges or (road in edges and lane == 0)
         else:
             done = road not in exit_edges
+        if rec is not None:
+            rec.add(
+                vid,
+                "control_release" if done else "control_release_missed",
+                lc_mode=st["lc_mode_orig"],
+            )
         if not done:
             ws["n_missed"] += 1
             continue
@@ -3134,6 +3415,8 @@ def _weave_step(
             }
             mod.vehicle.setLaneChangeMode(vid, LC_MODE_SCRIPTED_SAFE)
             ws["n_entered"] += 1
+            if rec is not None:
+                rec.add(vid, "control_take", lc_mode=LC_MODE_SCRIPTED_SAFE)
         res = results[vid]
         road = res[tc.VAR_ROAD_ID]
         lane = int(res[tc.VAR_LANE_INDEX])
@@ -3226,6 +3509,8 @@ def _weave_step(
             # m/s (session record)
             mod.vehicle.changeTarget(vid, ws["through_target"])
             mod.vehicle.setLaneChangeMode(vid, st["lc_mode_orig"])
+            if rec is not None:
+                rec.add(vid, "exit_giveup", lc_mode=st["lc_mode_orig"])
             del veh[vid]
             ws["gave_up"].add(vid)
             awaiting_exit.discard(vid)
@@ -3263,6 +3548,8 @@ def _weave_step(
             # VEHICLES_FILE) and never taken under control again
             mod.vehicle.changeTarget(vid, ws["exit_target"])
             mod.vehicle.setLaneChangeMode(vid, st["lc_mode_orig"])
+            if rec is not None:
+                rec.add(vid, "entrant_giveup_release", lc_mode=st["lc_mode_orig"])
             del veh[vid]
             ws["took_exit"].add(vid)
             ws["gave_up"].add(vid)
@@ -3273,6 +3560,8 @@ def _weave_step(
             # yields to its released partner: no target, no request, the
             # gap commitment dropped (re-chosen next step)
             st["target"] = None
+            if rec is not None:
+                rec.add(vid, "pair_yield", lc_mode=_rec_mode(st, LC_MODE_SCRIPTED_SAFE))
             _weave_set_mode(mod, vid, st, LC_MODE_SCRIPTED_SAFE)
             continue
         # --- gap choice and cooperation ------------------------------------
@@ -3316,14 +3605,25 @@ def _weave_step(
             # yields; SUMO still refuses an immediate collision). A forced
             # request lives one step only, so it is executed under the gaps
             # just checked or not at all (_weave_exec_change)
+            if rec is not None:
+                rec.add(
+                    vid,
+                    "change_accept" if accepted else "change_force",
+                    lane_to=lane + d,
+                    lc_mode=_rec_mode(st, LC_MODE_SCRIPTED_FORCE),
+                )
             _weave_exec_change(mod, vid, st, lane + d, step_s, t, "acc" if accepted else "force")
         elif force:
             # deferred: back under SUMO's own safety check, so a pending
             # request cannot execute into the gap that was just refused
+            if rec is not None:
+                rec.add(vid, "force_deferred", lc_mode=_rec_mode(st, LC_MODE_SCRIPTED_SAFE))
             _weave_set_mode(mod, vid, st, LC_MODE_SCRIPTED_SAFE)
             ws["n_forced_deferred"] += 1
         else:
             # no request this step: never leave a one-step forced mode standing
+            if rec is not None and st["mode"] != LC_MODE_SCRIPTED_SAFE:
+                rec.add(vid, "hold_reset", lc_mode=LC_MODE_SCRIPTED_SAFE)
             _weave_set_mode(mod, vid, st, LC_MODE_SCRIPTED_SAFE)
     if requests:
         _weave_resolve_and_execute(mod, tc, ws, results, lanes, v_of, requests, req_exec, t)
@@ -3364,8 +3664,12 @@ def _weave_step(
             # amendment W2: its own model must brake harder than a target
             # lets it this step; the target is withheld, not capped
             ws["n_handback_skips"] += 1
+            if rec is not None:
+                rec.add(fid, "handback_skip")
             continue
         mod.vehicle.slowDown(fid, v_new, 0.0)
+        if rec is not None:
+            rec.add(fid, "cooperate" if follower else "ease", v_cmd=v_new)
         if follower:
             ws["n_cooperations"] += 1
             ws["coop_decel_sum"] += -a_cmd
@@ -3423,18 +3727,31 @@ def _weave_resolve_and_execute(
         for k, lst in lanes.items()
     }
     withheld, vetoed = merge_model.resolve_opposing(list(requests.values()), opp, state_of)
+    # the weave command recorder (WeaveSpec.record_commands; None = off)
+    rec: _WeaveCommandRecorder | None = ws.get("cmd_rec")
     for vid in sorted(requests):
         st = veh[vid]
         target, kind = req_exec[vid]
         if vid in withheld:
+            if rec is not None:
+                rec.add(vid, "opposing_deferred", lc_mode=_rec_mode(st, LC_MODE_SCRIPTED_SAFE))
             _weave_set_mode(mod, vid, st, LC_MODE_SCRIPTED_SAFE)
             ws["n_opposing_deferred"] += 1
             continue
+        if rec is not None:
+            rec.add(
+                vid,
+                "change_force" if kind == "force" else "change_accept",
+                lane_to=target,
+                lc_mode=_rec_mode(st, LC_MODE_SCRIPTED_FORCE),
+            )
         _weave_exec_change(mod, vid, st, target, step_s, t, kind)
         st["opp_req"] = (t, target)
     for pid in sorted(vetoed):
         mode = int(mod.vehicle.getLaneChangeMode(pid))
         mod.vehicle.setLaneChangeMode(pid, mode & ~LC_MODE_MODEL_BITS)
+        if rec is not None:
+            rec.add(pid, "opposing_vetoed", lc_mode=mode & ~LC_MODE_MODEL_BITS)
         ws["opp_veto"][pid] = mode
         ws["n_opposing_deferred"] += 1
         ws["n_opposing_vetoed"] += 1
@@ -4258,6 +4575,8 @@ def _measured_handover_step(
     handover: dict[str, int] = ws["handover"]
     lane_map: dict[tuple[str, int], int] = ws["lane_map"]
     reach0: Mapping[int, frozenset[str]] = mm["reach"][ws["edges"][0]]
+    # the weave command recorder (WeaveSpec.record_commands; None = off)
+    rec: _WeaveCommandRecorder | None = ws.get("cmd_rec")
     now: set[str] = set()
     for vid, x in x_of.items():
         if vid in ws["veh"] or vid in ws["gave_up"] or x >= x_start:
@@ -4290,11 +4609,15 @@ def _measured_handover_step(
             handover[vid] = mode
             mod.vehicle.setLaneChangeMode(vid, LC_MODE_SCRIPTED_SAFE)
             ws["n_handovers"] += 1
+            if rec is not None:
+                rec.add(vid, "measured_handover", lc_mode=LC_MODE_SCRIPTED_SAFE)
         now.add(vid)
     for vid in [v for v in handover if v not in now and v not in pending]:
         mode = handover.pop(vid)
         if vid in results:
             mod.vehicle.setLaneChangeMode(vid, mode)
+            if rec is not None:
+                rec.add(vid, "measured_handover_return", lc_mode=mode)
 
 
 def _measured_cooperate(
@@ -4429,15 +4752,21 @@ def _measured_ceiling(
     if ceiling is not None and ceiling >= v0_target - 1e-9:
         ceiling = None
     last = mm["ceiling"].get(vid)
+    # the weave command recorder (WeaveSpec.record_commands; None = off)
+    rec: _WeaveCommandRecorder | None = ws.get("cmd_rec")
     if ceiling is None:
         if last is not None:
             mod.vehicle.setMaxSpeed(vid, p_c["vmax"])
             mm["ceiling"][vid] = None
+            if rec is not None:
+                rec.add(vid, "ceiling_release", v_cmd=p_c["vmax"])
         return
     mm["n_ceiling_steps"] += 1
     if last is None or abs(ceiling - last) > 1e-9:
         mod.vehicle.setMaxSpeed(vid, ceiling)
         mm["ceiling"][vid] = ceiling
+        if rec is not None:
+            rec.add(vid, "ceiling", v_cmd=ceiling)
 
 
 def _mm_restore_ceiling(mod: Any, ws: dict[str, Any], vid: str, in_network: bool) -> None:
@@ -4447,7 +4776,11 @@ def _mm_restore_ceiling(mod: Any, ws: dict[str, Any], vid: str, in_network: bool
         return
     last = mm["ceiling"].pop(vid)
     if last is not None and in_network:
-        mod.vehicle.setMaxSpeed(vid, _mm_veh(mod, mm["run"], vid)["vmax"])
+        v_own = _mm_veh(mod, mm["run"], vid)["vmax"]
+        mod.vehicle.setMaxSpeed(vid, v_own)
+        rec: _WeaveCommandRecorder | None = ws.get("cmd_rec")
+        if rec is not None:
+            rec.add(vid, "ceiling_release", v_cmd=v_own)
 
 
 def _measured_crossings(
@@ -4469,6 +4802,8 @@ def _measured_crossings(
     lane_map: dict[tuple[str, int], int] = ws["lane_map"]
     x_start = float(ws["x_offset"][ws["edges"][0]])
     step_s = float(ws["step_s"])
+    # the weave command recorder (WeaveSpec.record_commands; None = off)
+    rec: _WeaveCommandRecorder | None = ws.get("cmd_rec")
     for vid, st in ws["veh"].items():
         res = results.get(vid)
         if res is None:
@@ -4511,6 +4846,8 @@ def _measured_crossings(
             ):
                 mm["n_relax_entrant"] += 1
                 mm["touched"][vid] = t
+                if rec is not None:
+                    rec.add(vid, "relax_entrant")
         fol = mod.vehicle.getFollower(vid, LEADER_LOOKAHEAD_M)
         if fol is not None and fol[0]:
             fid, gap_f = str(fol[0]), float(fol[1])
@@ -4525,6 +4862,8 @@ def _measured_crossings(
                 ):
                     mm["n_relax_follower"] += 1
                     mm["touched"][fid] = t
+                    if rec is not None:
+                        rec.add(fid, "relax_follower")
 
 
 def _measured_step(
@@ -4599,6 +4938,11 @@ def _measured_step(
     step_s = float(ws["step_s"])
     veh: dict[str, dict[str, Any]] = ws["veh"]
     touched: dict[str, float] = mm["touched"]
+    # the weave command recorder (WeaveSpec.record_commands, 2026-10-07; None =
+    # off): opened for this zone's step before any rule records
+    rec: _WeaveCommandRecorder | None = ws.get("cmd_rec")
+    if rec is not None:
+        rec.step(ws, tc, results, t)
     if ws["opp_veto"]:
         _weave_opposing_restore(mod, ws, results)
     # --- exit bookkeeping (weaving sections; the weave's rule) ---------------
@@ -4705,13 +5049,21 @@ def _measured_step(
             continue
         res_h = results[vid]
         road = res_h[tc.VAR_ROAD_ID]
-        _mm_cancel(mod, vid, st, int(res_h[tc.VAR_LANE_INDEX]), step_s)
-        mod.vehicle.setLaneChangeMode(vid, st["lc_mode_orig"])
-        _mm_restore_ceiling(mod, ws, vid, True)
         if st["exiter"]:
             done = road in exit_edges or road in edges
         else:
             done = road not in exit_edges
+        if rec is not None:
+            lane_h = int(res_h[tc.VAR_LANE_INDEX])
+            rec.add(
+                vid,
+                "control_release" if done else "control_release_missed",
+                lane_to=lane_h if st.get("open") else -1,
+                lc_mode=st["lc_mode_orig"],
+            )
+        _mm_cancel(mod, vid, st, int(res_h[tc.VAR_LANE_INDEX]), step_s)
+        mod.vehicle.setLaneChangeMode(vid, st["lc_mode_orig"])
+        _mm_restore_ceiling(mod, ws, vid, True)
         if not done:
             ws["n_missed"] += 1
             continue
@@ -4758,6 +5110,8 @@ def _measured_step(
             }
             mod.vehicle.setLaneChangeMode(vid, LC_MODE_SCRIPTED_SAFE)
             ws["n_entered"] += 1
+            if rec is not None:
+                rec.add(vid, "control_take", lc_mode=LC_MODE_SCRIPTED_SAFE)
         st["dir"] = d
         touched[vid] = t
         if k is None:
@@ -4842,6 +5196,13 @@ def _measured_step(
             and not (acc.accepted or forced_ok)
         ):
             # the exit given up (the weave's exit-side rule): rerouted through
+            if rec is not None:
+                rec.add(
+                    vid,
+                    "exit_giveup",
+                    lane_to=lane if st.get("open") else -1,
+                    lc_mode=st["lc_mode_orig"],
+                )
             _mm_cancel(mod, vid, st, lane, step_s)
             mod.vehicle.changeTarget(vid, ws["through_target"])
             mod.vehicle.setLaneChangeMode(vid, st["lc_mode_orig"])
@@ -4854,6 +5215,13 @@ def _measured_step(
             continue
         if vid in yielders:
             st["target"] = None
+            if rec is not None:
+                rec.add(
+                    vid,
+                    "pair_yield",
+                    lane_to=lane if st.get("open") else -1,
+                    lc_mode=_rec_mode(st, LC_MODE_SCRIPTED_SAFE),
+                )
             _weave_set_mode(mod, vid, st, LC_MODE_SCRIPTED_SAFE)
             _mm_cancel(mod, vid, st, lane, step_s)
             continue
@@ -4902,6 +5270,15 @@ def _measured_step(
         else:
             if force:
                 ws["n_forced_deferred"] += 1
+            if rec is not None:
+                # a due forced change refused (every such step), or the hold
+                # of a step with no request — recorded only when it writes
+                lc_w = _rec_mode(st, LC_MODE_SCRIPTED_SAFE)
+                stay = lane if st.get("open") else -1
+                if force or lc_w >= 0 or stay >= 0:
+                    rec.add(
+                        vid, "force_deferred" if force else "hold_reset", lane_to=stay, lc_mode=lc_w
+                    )
             _weave_set_mode(mod, vid, st, LC_MODE_SCRIPTED_SAFE)
             _mm_cancel(mod, vid, st, lane, step_s)
     if requests:
@@ -4925,10 +5302,24 @@ def _measured_step(
             st = veh[vid]
             lane, target, kind = req_lanes[vid]
             if vid in withheld:
+                if rec is not None:
+                    rec.add(
+                        vid,
+                        "opposing_deferred",
+                        lane_to=lane if st.get("open") else -1,
+                        lc_mode=_rec_mode(st, LC_MODE_SCRIPTED_SAFE),
+                    )
                 _weave_set_mode(mod, vid, st, LC_MODE_SCRIPTED_SAFE)
                 _mm_cancel(mod, vid, st, lane, step_s)
                 ws["n_opposing_deferred"] += 1
                 continue
+            if rec is not None:
+                rec.add(
+                    vid,
+                    "change_force" if kind == "force" else "change_accept",
+                    lane_to=req_lanes[vid][1],  # the target lane (``target`` above)
+                    lc_mode=_rec_mode(st, LC_MODE_SCRIPTED_FORCE),
+                )
             _weave_exec_change(mod, vid, st, target, step_s, t, "acc")
             st["open"] = True
             st["last_kind"] = kind
@@ -4936,6 +5327,8 @@ def _measured_step(
         for pid in sorted(vetoed):
             mode = int(mod.vehicle.getLaneChangeMode(pid))
             mod.vehicle.setLaneChangeMode(pid, mode & ~LC_MODE_MODEL_BITS)
+            if rec is not None:
+                rec.add(pid, "opposing_vetoed", lc_mode=mode & ~LC_MODE_MODEL_BITS)
             ws["opp_veto"][pid] = mode
             ws["n_opposing_deferred"] += 1
     # --- entrants still on the ramp: anticipated before they appear ---------
@@ -4983,6 +5376,8 @@ def _measured_step(
     for fid in sorted(coop):
         v_new, a_cmd, follower = coop[fid]
         mod.vehicle.slowDown(fid, v_new, 0.0)
+        if rec is not None:
+            rec.add(fid, "cooperate" if follower else "ease", v_cmd=v_new)
         touched[fid] = t
         if follower:
             ws["n_cooperations"] += 1
@@ -6888,6 +7283,24 @@ def run_micro(
         # a section upstream of another always acts first in a step.
         scripted_states.sort(key=lambda ss: float(offsets_by_edge[ss["edge"]]))
 
+    # --- The weave command recorder (WeaveSpec.record_commands, 2026-10-07) --
+    # One log for the run, kept by every weaving section or measured zone whose
+    # weave block sets the flag (ws["cmd_rec"], attached below; docs/
+    # I94_CAL_COLLISIONS.md §15). None when no block sets it: no section has
+    # the key, nothing is buffered and WEAVE_COMMANDS_FILE is not written.
+    cmd_rec: _WeaveCommandRecorder | None = (
+        _WeaveCommandRecorder()
+        if isinstance(cfg.network, OSMNetwork)
+        and any(
+            r.kind == "on"
+            and r.merge in ("weave", "measured")
+            and r.weave is not None
+            and r.weave.record_commands
+            for r in cfg.network.ramps
+        )
+        else None
+    )
+
     # --- Weaving sections (RampSpec.merge == "weave") ----------------------
     # An entrance whose auxiliary lane also feeds the next exit: lane 0 stays
     # connected to the exit (_apply_merge_models validated the pairing) and
@@ -7056,6 +7469,8 @@ def run_micro(
                     "waits_out_s": [],
                 }
             )
+            if cmd_rec is not None and ramp_w.weave.record_commands:
+                weave_states[-1]["cmd_rec"] = cmd_rec
         # Stepped upstream-first — by the section's start offset along the
         # chain, not by where its ramp sits in the ramp list (2026-09-24,
         # block 3). The vacate guard of _weave_vacate_step (a vehicle already
@@ -7114,6 +7529,8 @@ def run_micro(
                     step_s=float(cfg.sim.step_length_s),
                 )
             )
+            if cmd_rec is not None and ramp_mm.weave is not None and ramp_mm.weave.record_commands:
+                weave_states[-1]["cmd_rec"] = cmd_rec
             n_mm += 1
         weave_states.sort(key=lambda ws: float(ws["x_offset"][ws["edges"][0]]))
         for n_z, ws_z in enumerate(ws for ws in weave_states if ws.get("mm")):
@@ -7716,6 +8133,9 @@ def run_micro(
         ),
     )
     _write_parquet(journeys, run_dir / JOURNEYS_FILE)
+    # the weave command log (WeaveSpec.record_commands; nothing when off)
+    if cmd_rec is not None:
+        _write_parquet(cmd_rec.table(), run_dir / WEAVE_COMMANDS_FILE)
     meter_wait_total = _meter_wait_totals(journeys)
     journeys_meta = _journeys_meta(
         journeys, end_s, len(set(route_by_id.values()) - set(route_geom))
@@ -7836,6 +8256,18 @@ def run_micro(
                 "measured_merge_model": _measured_run_meta(measured_run),
             }
             if measured_run is not None
+            else {}
+        ),
+        # WeaveSpec.record_commands (2026-10-07, docs/I94_CAL_COLLISIONS.md §15):
+        # present only when a weave block sets it, so every other run's
+        # meta.json keeps exactly its keys; the sections in step order
+        **(
+            {
+                "weave_command_log": _weave_command_log_meta(
+                    cmd_rec, [ws["ramp"] for ws in weave_states if "cmd_rec" in ws]
+                )
+            }
+            if cmd_rec is not None
             else {}
         ),
         # the lane-end give-up (OSMNetwork.lane_end_giveup_m, WP-71): None when off

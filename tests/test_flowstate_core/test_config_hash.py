@@ -296,14 +296,78 @@ def test_unset_fields_are_dropped_without_pydantic_2_12_features():
     ramp["weave"] = {"exit_ramp": "B"}
     raw = config_module.RampSpec.model_validate(ramp).model_dump(mode="json")
     assert "ramp_to_ramp_share" not in raw["weave"]
+    # record_commands (2026-10-07) the same way: absent at False, kept at True
+    assert WeaveSpec(exit_ramp="B", record_commands=False).model_dump(mode="json") == (
+        WeaveSpec(exit_ramp="B").model_dump(mode="json")
+    )
+    assert "record_commands" not in WeaveSpec(exit_ramp="B").model_dump_json()
+    on = WeaveSpec(exit_ramp="B", record_commands=True)
+    assert on.model_dump()["record_commands"] is True
+    assert '"record_commands":true' in on.model_dump_json()
+    assert WeaveSpec.model_validate(on.model_dump()) == on
+    assert "record_commands" not in raw["weave"]
     schema = WeaveSpec.model_json_schema(mode="serialization")
     assert set(schema["properties"]) == {
         "exit_ramp",
         "length_m",
         "weave_params",
         "ramp_to_ramp_share",
+        "record_commands",
     }
     assert schema == WeaveSpec.model_json_schema(mode="validation")
+
+
+def test_record_commands_is_hash_neutral_until_it_is_set(tmp_path):
+    """``WeaveSpec.record_commands`` (2026-10-07, the weave command recorder,
+    opt-in): at False a weave scenario hashes and dumps (``model_dump``,
+    ``meta.json["config"]``, YAML) exactly as before the field existed; true,
+    the hash moves, the YAML carries it and round-trips; the measured model's
+    weave block takes it too (it is not a ``weave_params`` key)."""
+    import yaml
+
+    from flowstate_core.config import RampSpec
+
+    root = Path(__file__).resolve().parents[2]
+    name = "mndot_i94_wb_stpaul_weave_dc.yaml"
+    cfg = ScenarioConfig.from_yaml(root / "scenarios" / name)
+    known = KNOWN_BOUNDARY_SCENARIO_HASHES[name]
+    assert config_hash(cfg) == known
+    raw = cfg.model_dump(mode="json")
+    weaves = [r for r in raw["network"]["ramps"] if r.get("weave")]
+    assert weaves, "the scenario has weave entrances"
+    assert all("record_commands" not in r["weave"] for r in weaves)
+    assert "record_commands" not in json.dumps(config_hash_payload(cfg))
+    cfg.to_yaml(tmp_path / "unset.yaml")
+    assert "record_commands" not in (tmp_path / "unset.yaml").read_text()
+
+    def with_flag(value: bool) -> ScenarioConfig:
+        doc = json.loads(json.dumps(raw))
+        for r in doc["network"]["ramps"]:
+            if r.get("weave"):
+                r["weave"]["record_commands"] = value
+        return ScenarioConfig.model_validate(doc)
+
+    off = with_flag(False)
+    assert config_hash(off) == known and off.model_dump(mode="json") == raw
+    on = with_flag(True)
+    assert config_hash(on) != known
+    on.to_yaml(tmp_path / "on.yaml")
+    dumped = yaml.safe_load((tmp_path / "on.yaml").read_text())
+    assert all(
+        r["weave"]["record_commands"] is True for r in dumped["network"]["ramps"] if r.get("weave")
+    )
+    assert ScenarioConfig.from_yaml(tmp_path / "on.yaml") == on
+    measured = RampSpec.model_validate(
+        {
+            "kind": "on",
+            "edges": ["r"],
+            "attach_edge": "e",
+            "inflow": [[0.0, 0.1]],
+            "merge": "measured",
+            "weave": {"exit_ramp": "B", "record_commands": True},
+        }
+    )
+    assert measured.weave is not None and measured.weave.record_commands
 
 
 def test_pinned_ring_hash():

@@ -40,14 +40,21 @@ For each run matched by (config hash, seed) to an expected run:
    lane on the collision edge by any vehicle within ``--behind-m`` (150 m) behind
    and ``--ahead-m`` (60 m) ahead of the contact in the window, and each car's lane
    on arriving at the collision edge (the T1 control comparison).
-5. **Weave commands.** The runner does not log the weave's commands
-   (docs/I94_CAL_COLLISIONS.md §2). When a run carries them — a
-   ``weave_commands.parquet`` beside ``meta.json``, or ``meta.json["weave_commands"]``,
-   rows ``t`` (issue time [s]), ``veh_id`` and optionally ``call`` (``slowDown`` /
-   ``setSpeed`` are speed targets), ``value`` and ``rule`` — the rear car's speed
-   targets in the window are listed and ``active_in_contact_step`` says whether one
-   was issued at ``t − step`` (a target issued after step k acts in step k+1).
-   Otherwise the block reads ``logged: false``.
+5. **Weave commands.** The runner logs the weave's commands only when the scenario's
+   weave block sets ``WeaveSpec.record_commands`` (2026-10-07; docs/CONTRACTS.md §3):
+   ``weave_commands.parquet`` beside ``meta.json`` (one row per command decision:
+   ``t``, ``veh_id``, ``section``, ``rule``, ``lane_from``, ``lane_to``, ``v_cmd_ms``,
+   ``lc_mode_set``, ``x_m``), recorded in ``meta.json["weave_command_log"]``
+   (``file``, ``n_rows``, ``sections``). When the file is here, it is read through an
+   open file object: the rear car's speed targets in the window (the one-step
+   ``slowDown`` rules ``cooperate`` and ``ease``) are listed, with every command of the
+   rear car in the window (``commands``, any rule), and ``active_in_contact_step``
+   says whether a target was issued at ``t − step`` (a target issued after step k
+   acts in step k+1). When ``meta.json`` records a log but the file is not here (a
+   meta-only archive such as p8c's) or the file cannot be read, the block says so
+   (``log_recorded``, ``log_rows``, ``log_problem``) and reads ``logged: false``: the
+   inferred reading (braking and entries) stands. A run that recorded no log reads
+   ``logged: false`` exactly as before the recorder existed.
 
 Each run's window rows (every vehicle within the spatial band, and the three cars
 throughout) are written to ``<run>/collision_slice.parquet``; the trajectories
@@ -107,8 +114,19 @@ SUMO_PASSENGER_EMERGENCY_DECEL_MS2: Final[float] = 9.0
 #: vClasses that take the passenger default above (the runner writes none, or ``hov``).
 PASSENGER_VCLASSES: Final[frozenset[str | None]] = frozenset({None, "passenger", "hov"})
 SLICE_FILE: Final[str] = "collision_slice.parquet"
+#: The runner's weave command log (``microsim.runner.WEAVE_COMMANDS_FILE``) and its
+#: ``meta.json`` record (module item 5).
 COMMANDS_FILE: Final[str] = "weave_commands.parquet"
-SPEED_TARGET_CALLS: Final[frozenset[str]] = frozenset({"slowDown", "setSpeed"})
+COMMANDS_META_KEY: Final[str] = "weave_command_log"
+#: The log's speed-target rules: the one-step ``slowDown`` targets
+#: (``microsim.runner.WEAVE_COMMAND_RULES``; ``ceiling`` is a desired-speed cap, not one).
+SPEED_TARGET_RULES: Final[frozenset[str]] = frozenset({"cooperate", "ease"})
+#: The log's columns this reader needs.
+COMMAND_COLUMNS: Final[tuple[str, ...]] = ("t", "veh_id", "rule")
+#: The block of a run that recorded no command log (unchanged since the recorder existed).
+NOT_LOGGED_NOTE: Final[str] = (
+    "the runner does not log weave commands (docs/I94_CAL_COLLISIONS.md §2, §10)"
+)
 TRAJ_COLUMNS: Final[tuple[str, ...]] = ("t", "veh_id", "x", "lane", "v", "a")
 VTYPE_ATTRS: Final[tuple[str, ...]] = (
     "carFollowModel",
@@ -470,16 +488,73 @@ def read_first_samples(run_dir: Path) -> dict[str, float]:
     return dict(zip(df["veh_id"].astype(str), df["entry_t_s"].astype(float), strict=True))
 
 
-def read_commands(run_dir: Path, meta: Mapping[str, Any]) -> pd.DataFrame | None:
-    """The run's weave command log, when it has one (module docstring, item 5)."""
+@dataclass(frozen=True)
+class CommandLog:
+    """A run's weave command log, as far as its directory holds it (module item 5).
+
+    Attributes:
+        frame: The log's rows; ``None`` when the file is not here or cannot be read.
+        recorded: ``meta.json["weave_command_log"]``; ``None`` when the run recorded no log.
+        problem: Why a log that exists cannot be read here; ``None`` when it was read
+            or none was recorded.
+    """
+
+    frame: pd.DataFrame | None = None
+    recorded: Mapping[str, Any] | None = None
+    problem: str | None = None
+
+    @property
+    def present(self) -> bool:
+        """Whether the run recorded a log, or a log file is here."""
+        return self.frame is not None or self.recorded is not None or self.problem is not None
+
+    def summary(self) -> dict[str, Any]:
+        """The run-level record of the log (only written when :attr:`present`)."""
+        return {
+            "file": COMMANDS_FILE,
+            "read": self.frame is not None,
+            "n_rows": None if self.frame is None else len(self.frame),
+            "recorded": None if self.recorded is None else dict(self.recorded),
+            "problem": self.problem,
+        }
+
+
+def read_commands(run_dir: Path, meta: Mapping[str, Any]) -> CommandLog:
+    """The run's weave command log, when it has one (module item 5); never raises on a bad log.
+
+    The file is read through an open file object (a path handed to pyarrow builds a
+    ``LocalFileSystem``, which fails once libsumo's Arrow is loaded in the process).
+    """
+    raw = meta.get(COMMANDS_META_KEY)
+    recorded: Mapping[str, Any] | None
+    if raw is None:
+        recorded = None
+    elif isinstance(raw, Mapping):
+        recorded = raw
+    else:  # not the contract's object: recorded, but nothing more can be said
+        recorded = {}
     path = run_dir / COMMANDS_FILE
     if path.is_file():
-        with open(path, "rb") as f:
-            return pd.read_parquet(f)
-    rows = meta.get("weave_commands")
-    if rows:
-        return pd.DataFrame(rows)
-    return None
+        try:
+            with open(path, "rb") as f:
+                frame = pq.read_table(f).to_pandas()
+        except (OSError, ValueError, pa.ArrowException) as exc:
+            return CommandLog(None, recorded, f"{COMMANDS_FILE} cannot be read ({exc})")
+        missing = [c for c in COMMAND_COLUMNS if c not in frame.columns]
+        if missing:
+            return CommandLog(
+                None, recorded, f"{COMMANDS_FILE} lacks the column(s) {missing} of the runner's log"
+            )
+        return CommandLog(frame, recorded, None)
+    if recorded is not None:
+        return CommandLog(
+            None,
+            recorded,
+            f"the run recorded weave commands (meta.json {COMMANDS_META_KEY}: "
+            f"{recorded.get('n_rows')} rows) but {COMMANDS_FILE} is not in this directory "
+            "(a meta-only archive)",
+        )
+    return CommandLog()
 
 
 def _py(v: Any) -> Any:
@@ -800,27 +875,38 @@ def braking(
 
 
 def commands_block(
-    cmds: pd.DataFrame | None, vid: str, t_c: float, step: float, params: Params
+    log: CommandLog, vid: str, t_c: float, step: float, params: Params
 ) -> dict[str, Any]:
-    """The rear car's weave speed targets in the window (module item 5)."""
-    if cmds is None:
+    """The rear car's weave speed targets and commands in the window (module item 5)."""
+    if log.frame is None:
+        if not log.present:
+            # no log recorded: the block as before the recorder existed
+            return {"logged": False, "note": NOT_LOGGED_NOTE}
         return {
             "logged": False,
-            "note": "the runner does not log weave commands (docs/I94_CAL_COLLISIONS.md §2, §10)",
+            "log_recorded": log.recorded is not None,
+            "log_rows": None if log.recorded is None else log.recorded.get("n_rows"),
+            "log_problem": log.problem,
+            "note": f"{log.problem}: the inferred reading (braking and entries) stands",
         }
+    cmds = log.frame
     mine = cmds[
         (cmds["veh_id"].astype(str) == vid)
         & (cmds["t"] >= t_c - params.before_s - _EPS_T)
         & (cmds["t"] <= t_c + _EPS_T)
     ]
-    if "call" in mine.columns:
-        mine = mine[mine["call"].astype(str).isin(SPEED_TARGET_CALLS)]
-    rows = [{k: _py(v) for k, v in r.items()} for r in mine.sort_values("t").to_dict("records")]
+    # stable: the log's rows are in decision order within a step
+    commands = [
+        {k: _py(v) for k, v in r.items()}
+        for r in mine.sort_values("t", kind="stable").to_dict("records")
+    ]
+    rows = [r for r in commands if r["rule"] in SPEED_TARGET_RULES]
     return {
         "logged": True,
         "speed_targets": rows,
         "active_in_contact_step": any(abs(float(r["t"]) - (t_c - step)) <= _EPS_T for r in rows),
         "n_steps_with_target": len({round(float(r["t"]), 6) for r in rows}),
+        "commands": commands,
     }
 
 
@@ -845,7 +931,7 @@ def trace_event(
     params: Params,
     vtypes: Mapping[str, Mapping[str, Any]],
     vrows: Mapping[str, Mapping[str, Any]],
-    cmds: pd.DataFrame | None,
+    cmds: CommandLog,
     first_t: Mapping[str, float],
 ) -> tuple[dict[str, Any], pd.DataFrame]:
     """One event's window, braking, entries and commands; and its slice rows.
@@ -1116,6 +1202,9 @@ def trace_run(run_dir: Path, exp: RunExpectation | None, params: Params) -> dict
         "reproduction": repro,
         "trajectories": has_traj,
         "slice": None if slice_path is None else str(slice_path),
+        # only for a run that recorded a log (or holds its file): a run without
+        # one keeps exactly its record from before the recorder existed
+        **({"weave_command_log": cmds.summary()} if cmds.present else {}),
         "events": blocks,
     }
 
@@ -1128,7 +1217,11 @@ def _verdict(b: Mapping[str, Any]) -> str:
     if hyp == "command_cap":
         cmd = b["weave_commands_rear"]
         cmd_txt = (
-            "weave command not logged"
+            (
+                "weave command log not readable here, inferred reading"
+                if cmd.get("log_problem")
+                else "weave command not logged"
+            )
             if not cmd.get("logged")
             else (
                 "weave target in the contact step"

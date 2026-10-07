@@ -500,16 +500,33 @@ class WeaveSpec(BaseModel):
     ``model_dump`` (so from ``meta.json["config"]`` and YAML) when unset
     (:meth:`_serialize`); the realized share is recorded in
     ``meta.json["ramp_to_ramp_shares"]`` when set."""
+    record_commands: bool = False
+    """Log every command decision this section's rules make for a vehicle
+    (2026-10-07, docs/I94_CAL_COLLISIONS.md §15: which weave rule issued each
+    command was inferred, not read). When true, ``microsim.runner`` appends one
+    row per decision of the section's weave rules — or, with
+    ``merge="measured"``, of the measured model's zone — to the run's
+    ``weave_commands.parquet`` (``microsim.runner.WEAVE_COMMANDS_FILE``: time,
+    vehicle, section, rule, lanes, speed target, lane-change mode, position;
+    the rule names are ``microsim.runner.WEAVE_COMMAND_RULES``) and records the
+    file in ``meta.json["weave_command_log"]`` (docs/CONTRACTS.md §3). A
+    recorder only: it reads what the step already holds, makes no TraCI call
+    and never changes what the section does, so every other file of a run is
+    byte-identical with it on or off. ``False`` (the default) records nothing
+    and writes no file. Hash-neutral and absent from ``model_dump`` (so from
+    ``meta.json["config"]`` and YAML) at ``False`` (:meth:`_serialize`); set,
+    it moves the config hash like any other non-default value. Not set by any
+    committed scenario."""
 
     # No return annotation on purpose: pydantic builds a model's serialization
     # JSON schema from its serializer's return annotation and keeps the model's
     # own schema without one.
     @model_serializer(mode="wrap")
     def _serialize(self, handler: SerializerFunctionWrapHandler):  # type: ignore[no-untyped-def]
-        """Drop ``ramp_to_ramp_share`` from every dump while it is unset (None).
+        """Drop ``ramp_to_ramp_share`` while unset (None) and ``record_commands`` while ``False``.
 
         So a weave block dumps (``model_dump``, ``meta.json["config"]``, YAML)
-        exactly as before the field existed (2026-10-07). Written as a wrap
+        exactly as before either field existed (2026-10-07). Written as a wrap
         serializer, not ``Field(exclude_if=...)``, because ``exclude_if``
         needs pydantic >= 2.12 while the packages declare ``pydantic>=2.10``:
         on 2.10 and 2.11 that keyword is a deprecated extra (it lands in the
@@ -518,8 +535,11 @@ class WeaveSpec(BaseModel):
         no rule: they are dict keys, present only when set.
         """
         data = handler(self)
-        if self.ramp_to_ramp_share is None and isinstance(data, dict):
-            data.pop("ramp_to_ramp_share", None)
+        if isinstance(data, dict):
+            if self.ramp_to_ramp_share is None:
+                data.pop("ramp_to_ramp_share", None)
+            if not self.record_commands:
+                data.pop("record_commands", None)
         return data
 
     @model_validator(mode="after")

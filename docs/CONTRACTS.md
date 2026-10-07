@@ -1731,6 +1731,8 @@ runs/<config_hash>/<seed>/
   trajectories.parquet     # micro tier
   edges.parquet            # binned edge/segment data (both tiers)
   vehicles.parquet         # micro tier: one row per departed vehicle (2026-09-25)
+  weave_commands.parquet   # micro tier, opt-in: one row per weave command
+                           # decision (WeaveSpec.record_commands, 2026-10-07)
   meta.json                # config snapshot, config_hash, seed, versions, tier,
                            # seeded flag, wall_time_s, fuel totals
 ```
@@ -1796,6 +1798,91 @@ ring runs list every vehicle with route `"main"` and none arrived. The integer c
 Each reroute is counted once. So `n_gave_up_exit + n_took_exit` equals the
 number of `vehicles.parquet` rows the rule marked, unless a vehicle was
 rerouted at two diverges: it is counted twice here and has one row.
+
+`weave_commands.parquet` (micro, opt-in, since 2026-10-07; `microsim.runner.WEAVE_COMMANDS_FILE`): the log
+of which weave rule issued which command to which vehicle, which the collision diagnoses of
+docs/I94_CAL_COLLISIONS.md §15 had to infer.
+
+- **Switch.** `WeaveSpec.record_commands: bool = False`, per weave block: a weaving section (`merge: weave`)
+  or a measured zone with a weave block (`merge: measured`). At `false` it is hash-neutral and absent from
+  `model_dump`, YAML and `meta.json["config"]` (the wrap serializer that drops an unset `ramp_to_ramp_share`);
+  `true` moves the config hash like any other non-default value. No committed scenario sets it.
+- **Off by default, never a behaviour change.** Off, no recorder exists: nothing is buffered, no file is
+  written, `meta.json` has no new key, and every committed scenario and golden is unchanged. On, the recorder
+  reads only the step's subscription results (no TraCI call) and no rule reads anything back from it: every
+  other file of the run is byte-identical with it on or off, and `meta.json` differs only by the flag in
+  `config`, by `config_hash` and by `weave_command_log` (below). Rows are buffered in memory and written once,
+  through an open file object, after `journeys.parquet` and before the completion marker.
+- **Rows.** One per command decision of a recording section's rules: a TraCI command a rule wrote, or a
+  guard's decision to withhold one. In decision order: by step, then the sections' upstream-first step order,
+  then each rule's own order. A step in which a driven vehicle merely stays under mode 512 with no request
+  writes nothing and has no row.
+- **Columns.**
+  - `t: f64 [s]`: simulation time of the step.
+  - `veh_id: str`: the vehicle the decision is for.
+  - `section: str`: the section's label, as `weave_sections[i].ramp` / `measured_merges[i].ramp`.
+  - `rule: str`: one of `microsim.runner.WEAVE_COMMAND_RULES` (table below).
+  - `lane_from: i32`: the vehicle's lane at the decision (SUMO's index on its edge then, as
+    `trajectories.parquet`'s `lane`); `-1` when it has no subscription row that step.
+  - `lane_to: i32`: the lane a change request targets; the current lane for a one-step stay that ends an
+    open request; `-1` for no lane request.
+  - `v_cmd_ms: f64 [m/s]`: the speed written, `slowDown`'s one-step target (`cooperate`, `ease`) or
+    `setMaxSpeed`'s value (`ceiling`, `ceiling_release`); NaN on every other rule.
+  - `lc_mode_set: i32`: the `laneChangeMode` written with `setLaneChangeMode`; `-1` when none is written,
+    including a mode already in force (the runner does not rewrite it).
+  - `x_m: f64 [m]`: the front bumper on the corridor axis: `trajectories.parquet`'s `x` on corridor edges
+    (equal, row for row, at the same step); on the section's own on-ramp, extended upstream from the section
+    start; NaN on junction lanes and other roads.
+- **Rules.** "W1" / "W2" rows occur only while that amendment's key is set; "measured" rows only in a
+  measured zone; the rest in both.
+
+  | `rule` | decision |
+  |---|---|
+  | `control_take` | taken under control: mode 512 |
+  | `control_release` / `control_release_missed` | handed back with its change made / still owing it: its own mode restored |
+  | `change_accept` / `change_force` | an accepted / a due forced change (guard passed) requested for one step under mode 256 |
+  | `force_deferred` | a due forced change refused by the guard: mode 512, no request (every such step) |
+  | `hold_reset` | no request after a step under mode 256: mode 512 written back (measured: or an open request ended) |
+  | `exit_giveup` | an exiter halted at the gore's end rerouted through, its own mode restored |
+  | `entrant_giveup_release` | W1: an entrant halted at the auxiliary lane's end rerouted to the paired exit, its own mode restored |
+  | `pair_release` / `pair_yield` | a stopped crossing pair released (the yielder's row, once per release) / the yielder this step: no target, no request, mode 512 |
+  | `cooperate` / `ease` | a one-step speed target for a chosen gap's follower / for a changer towards its gap's leader |
+  | `handback_skip` / `close_leader_withheld` | W2: a target withheld, the vehicle's own model braking harder / by the close-leader reading |
+  | `opposing_deferred` / `opposing_vetoed` / `opposing_restore` | the opposing-entry resolution (W2's `weave_resolve_opposing`; always in a measured zone): a request withheld (mode 512) / an undriven vehicle's model bits cleared for the step / its mode given back at the section's next step |
+  | `vacate` / `vacate_readdress` / `vacate_done` / `vacate_refused` | the vacate rule: the request (mode 512) / re-issued on a window edge where the lane index differs / handed back seen in the target lane / handed back expired or at the section |
+  | `exit_prepare` / `exit_prepare_suspend` / `exit_prepare_reissue` / `exit_prepare_done` / `exit_prepare_refused` | the exiters' early move: the same five decisions, the suspension being the stay beside a vacating vehicle |
+  | `measured_handover` / `measured_handover_return` | measured: an entrant taken one step before the zone (mode 512) / given its own mode back, undriven |
+  | `ceiling` / `ceiling_release` | measured: the desired-speed ceiling written / `maxSpeed` handed back |
+  | `relax_entrant` / `relax_follower` | measured: the post-crossing relaxation granted (`setTau`) |
+- **Counter identities** (`microsim.runner.WEAVE_COMMAND_COUNTERS`, tested on every recorded fixture). On a
+  recorded section's `meta.json` entry, wherever it carries the counters:
+  - `n_entered` equals the `control_take` rows, `n_changed_in + n_changed_out` the `control_release` rows,
+    `n_missed_exit` the `exit_giveup` rows and `n_entrant_took_exit` the `entrant_giveup_release` rows.
+  - `n_forced_deferred`, `n_pair_releases`, `n_cooperations`, `n_changer_eased`, `n_handback_skips`,
+    `n_close_leader_withheld`, `n_opposing_vetoed`, `n_vacate_requests`, `n_vacated`, `n_vacate_refused` and
+    `n_exit_prepared` each equal their rule's rows.
+  - `n_opposing_deferred` equals `opposing_deferred + opposing_vetoed`.
+  - Measured: `n_requests` equals `change_accept + change_force`, `n_handovers` the `measured_handover`
+    rows, and `n_relax_granted_entrant` / `_follower` the `relax_entrant` / `relax_follower` rows.
+  - `n_missed` has none: a vehicle that left the network owing its change is counted with no command.
+- **Not recorded.**
+  - The scripted merges (their own path).
+  - A measured acceleration-lane zone (no weave block to carry the flag).
+  - The measured relaxation's per-step headway writes and restores after the grant (run-wide,
+    `_measured_relax_step`).
+  - The measured model's AV command withdrawals (`measured_merge_model.n_av_commands_withdrawn`).
+  - The lane-end give-up (WP-71).
+- **Size.** 9,362 rows (0.2 MB) on the T.H.52 fixture's 600 s at capacity with W2 on; 465–1,288 rows
+  (13–27 kB) on the 300-s `weave.osm` fixture, either model. Most rows are the vehicle-steps of `cooperate`
+  and `ease`.
+- **`meta.json["weave_command_log"]`** (only when a block sets the flag; a meta written with it off is
+  unchanged). `file` (`"weave_commands.parquet"`); `n_rows`; `sections`, `{label: {rule: rows}}` for every
+  recording section in step order (rules in name order).
+- **Reading.** `pq.read_table` through an open file object. Speed targets are the `cooperate` / `ease` rows:
+  there is no `call` column. `scripts/i94_collision_trace.py` reads the file this way and lists the rear car's
+  targets and commands in each event's window; when `meta.json` records a log whose file is not in the
+  directory (a meta-only archive, such as p8c's), or the file cannot be read, it says so and keeps its
+  inferred reading; a run with no log reads exactly as before.
 
 `meta.json["av_emergency_handback"]` (micro, since 2026-09-26, WP-95) is `null` unless
 `AVSpec.emergency_handback` is true (its default since 2026-10-04) and the scenario has a vehicle

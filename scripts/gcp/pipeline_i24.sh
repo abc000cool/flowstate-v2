@@ -139,7 +139,7 @@ make_archive() {  # make_archive light|full [tries] — atomic replace of $ARCHI
   extra="$extra $(ls runs/p5/i94_netfix_probe/*/LANES.json runs/p5/i94_netfix_probe/*/*/*/*/readings.json runs/p5/i94_netfix_probe/*/*/*/*/meta.json 2>/dev/null | tr '\n' ' ')"
   # stage p8c's re-runs (runs/p8c/<arm>/<config hash>/<seed>/): the pair manifest, every run's meta.json and
   # vehicles.parquet and the reader's window slice; never the trajectories (a few GB each)
-  extra="$extra $(ls runs/p8c/PAIRS.json runs/p8c/*/*/*/meta.json runs/p8c/*/*/*/vehicles.parquet runs/p8c/*/*/*/collision_slice.parquet 2>/dev/null | tr '\n' ' ')"
+  extra="$extra $(ls runs/p8c/PAIRS.json runs/p8c/*/*/*/meta.json runs/p8c/*/*/*/vehicles.parquet runs/p8c/*/*/*/collision_slice.parquet runs/p8c/*/*/*/weave_commands.parquet 2>/dev/null | tr '\n' ' ')"  # weave_commands.parquet: the opt-in recorder's log (2026-10-07), small
   # stage p12's batteries (runs/i24_validation/p12_*/<config hash>/<seed>/): every replicate's meta.json and edges.parquet
   # and each battery's braking counts, the B1 readout's inputs (corridor_b1.py evaluate re-runs from them); never the
   # trajectories (the labels do not start with dc, so the full archive's first-seed line above does not take them)
