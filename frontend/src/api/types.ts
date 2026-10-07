@@ -104,9 +104,14 @@ export interface ScenarioConfig {
   fd_calibration?: string | null;
   macro?: MacroOptions | null;
   perturbation?: PerturbationSpec | null;
-  /** The master seed the replicate seeds are spawned from. A config value the
-   * user sets (the launchers cap it at `MAX_SEED`, 2^31 − 1), so a JSON number
-   * carries it exactly; the replicate seeds it spawns are 64-bit and travel as
+  /** The master seed the replicate seeds are spawned from. The server refuses
+   * a master seed above 2^53 − 1 (`Number.MAX_SAFE_INTEGER`) however it
+   * arrives — a launcher, `POST /scenarios`, a YAML upload, an onboarded
+   * corridor or a preset — so every one it stores or sends back is an integer
+   * a JSON number carries exactly, and a `number` here is that seed digit for
+   * digit. The launchers additionally cap the values typed into them at
+   * `MAX_SEED` (2^31 − 1); that cap is the form's, not a property of a seed
+   * read from the API. The replicate seeds it spawns are 64-bit and travel as
    * strings (`Seed`). */
   seed: number;
   replicates: number;

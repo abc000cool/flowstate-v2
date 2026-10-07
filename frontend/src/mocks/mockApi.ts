@@ -41,6 +41,7 @@ import type {
   Tier,
   WeaveExits,
 } from '../api/types';
+import { ApiError } from '../api/errors';
 import { corridorSpeedField, mulberry32, ringSpeedField, toDensityField } from './heatmap';
 
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
@@ -144,6 +145,9 @@ interface RunRecord {
   fd_source?: string;
   seeded: boolean;
   n: number;
+  /** Replicate `i` ran seed `seedBase + i`. No two demo runs share a seed:
+   * the fixed rows below own 1000–6019, and every run made in this session (a
+   * launch or a sweep cell) takes a fresh block from `allocateSeeds`. */
   seedBase: number;
   config_hash: string;
   created_at: string;
@@ -496,6 +500,32 @@ function seedOf(r: RunRecord, i: number): Seed {
   return String(r.seedBase + i);
 }
 
+/** First seed of the next block `allocateSeeds` hands out: above the fixed
+ * rows' 1000–6019. */
+let nextSeedBase = 10_000;
+
+/** A seed block no other demo run holds, for a run of `n` replicates: its
+ * first seed. Blocks are contiguous and start on a multiple of 100, so two
+ * runs made in one session never share a seed. That is what keeps Compare's
+ * "the runs share no seed" true of demo data: the old sweep-cell formula
+ * (`9000 + 7000·p + 100·c`) gave neighbouring cells overlapping ranges, and
+ * every controller at one (p, c) the same one. */
+function allocateSeeds(n: number): number {
+  const base = nextSeedBase;
+  nextSeedBase += Math.ceil(Math.max(n, 1) / 100) * 100;
+  return base;
+}
+
+/** The replicate of `r` that `seed` names, or null when `r` ran no such seed;
+ * no seed is the first replicate, the API's default. The offset is taken in
+ * `BigInt` from the decimal string, like every seed the dashboard handles: a
+ * seed asked for is never put through a number. */
+function replicateIndex(r: RunRecord, seed: Seed | undefined): number | null {
+  if (seed === undefined) return 0;
+  const i = BigInt(seed) - BigInt(r.seedBase);
+  return i >= 0n && i < BigInt(r.n) ? Number(i) : null;
+}
+
 function buildMetrics(r: RunRecord): RunMetrics {
   const profile = r.profile ?? BASELINE;
   const rng = mulberry32(r.seedBase);
@@ -540,10 +570,13 @@ function buildMetrics(r: RunRecord): RunMetrics {
   };
 }
 
-function buildHeatmap(r: RunRecord, field: HeatField): Heatmap {
+/** Replicate `i`'s field: its own seed draws its noise, so two replicates of
+ * one run are two realisations, as on the API. */
+function buildHeatmap(r: RunRecord, field: HeatField, i: number): Heatmap {
+  const seed = r.seedBase + i;
   let speed: Heatmap;
   if (r.kind === 'ring') {
-    speed = ringSpeedField(r.seedBase);
+    speed = ringSpeedField(seed);
   } else {
     const allBands = [
       { t0: -420, x0: 9200, depth: 1.0 },
@@ -554,7 +587,7 @@ function buildHeatmap(r: RunRecord, field: HeatField): Heatmap {
     const bands = allBands
       .slice(0, Math.max(keep, r.damping >= 1 ? 0 : 1))
       .map((b) => ({ ...b, depth: b.depth * (1 - 0.55 * r.damping) }));
-    speed = corridorSpeedField({ bands, seed: r.seedBase });
+    speed = corridorSpeedField({ bands, seed });
   }
   if (field === 'density') return toDensityField(speed, r.kind === 'ring' ? 9 : 30);
   return speed;
@@ -587,6 +620,27 @@ const STRATEGY_DAMPING: Record<SweepStrategy, number> = {
   'vsl+alinea': 0.13,
 };
 
+/** A finished sweep cell over its run `rec`. */
+function cellOf(
+  p: number,
+  c: number,
+  controller: string | null,
+  strategy: SweepStrategy,
+  rec: RunRecord,
+): SweepCell {
+  return {
+    penetration: p,
+    compliance: c,
+    controller,
+    strategy,
+    config_hash: rec.config_hash,
+    run_id: rec.run_id,
+    status: 'done',
+    progress: { completed_replicates: rec.n, total_replicates: rec.n },
+    aggregate: buildMetrics(rec).aggregate,
+  };
+}
+
 function buildSweep(sweepId: string, req: CreateSweepRequest): SweepRecord {
   const tier: Tier = req.tier ?? 'micro';
   const cells: SweepCell[] = [];
@@ -600,6 +654,10 @@ function buildSweep(sweepId: string, req: CreateSweepRequest): SweepRecord {
     const eff = controller ? p * c : 0;
     const tag = controller ?? 'none';
     const runId = `run-sw-${sweepId.slice(-4)}-${tag.slice(0, 3)}-p${Math.round(p * 100)}-c${Math.round(c * 100)}-${strategy}`;
+    // a cell already built (the same run id) keeps its run, and so its seeds:
+    // the cell's aggregate is that run's metrics, not a fresh draw beside it
+    const existing = runs.find((r) => r.run_id === runId);
+    if (existing) return cellOf(p, c, controller, strategy, existing);
     const damp = Math.min(0.92, eff * 9 + STRATEGY_DAMPING[strategy]);
     const profile: RunProfile = {
       throughput_veh_h: BASELINE.throughput_veh_h * (1 + damp * 0.045),
@@ -623,7 +681,7 @@ function buildSweep(sweepId: string, req: CreateSweepRequest): SweepRecord {
       fd_source: tier === 'macro' ? 'v1_legacy preset' : undefined,
       seeded: true,
       n: req.replicates,
-      seedBase: 9000 + Math.round(p * 1000) * 7 + Math.round(c * 100),
+      seedBase: allocateSeeds(req.replicates),
       config_hash: fakeHash(runId),
       created_at: new Date().toISOString(),
       kind: 'corridor',
@@ -631,18 +689,8 @@ function buildSweep(sweepId: string, req: CreateSweepRequest): SweepRecord {
       damping: damp,
       fixedStatus: 'done',
     };
-    if (!runs.some((r) => r.run_id === runId)) runs.push(rec);
-    return {
-      penetration: p,
-      compliance: c,
-      controller,
-      strategy,
-      config_hash: rec.config_hash,
-      run_id: runId,
-      status: 'done',
-      progress: { completed_replicates: req.replicates, total_replicates: req.replicates },
-      aggregate: buildMetrics(rec).aggregate,
-    };
+    runs.push(rec);
+    return cellOf(p, c, controller, strategy, rec);
   };
   const controllers = req.controllers.length > 0 ? req.controllers : [null];
   const strategies = req.strategies?.length ? req.strategies : (['none'] as SweepStrategy[]);
@@ -981,7 +1029,7 @@ export async function mockCreateRun(req: CreateRunRequest): Promise<{ run_id: st
     tier: req.tier ?? scn?.config.tier ?? 'micro',
     seeded: scn?.config.perturbation != null,
     n,
-    seedBase: 10000 + runs.length * 100,
+    seedBase: allocateSeeds(n),
     config_hash: scn?.config_hash ?? fakeHash(runId),
     created_at: new Date().toISOString(),
     kind,
@@ -1003,19 +1051,31 @@ export async function mockGetRunMetrics(runId: string): Promise<RunMetrics> {
   return buildMetrics(r);
 }
 
-export async function mockGetRunHeatmap(runId: string, field: HeatField): Promise<Heatmap> {
+/** `GET /runs/{id}/heatmap[?seed=]`, as the API answers it: the replicate
+ * `seed` names (the run's first when none is given), a 404 for a seed the run
+ * did not run, a 422 for one that is not decimal digits. The answer's `seed`
+ * is the one the field was drawn from (the view prints no demo hash as
+ * provenance). */
+export async function mockGetRunHeatmap(
+  runId: string,
+  field: HeatField,
+  seed?: Seed,
+): Promise<Heatmap> {
   await sleep(160);
   const r = runs.find((x) => x.run_id === runId);
   if (!r) throw new Error(`run ${runId} not found in the demo backend`);
-  // the provenance the API sends with the field: its first seed, like the
-  // service's default (the view prints no demo hash as provenance)
+  if (seed !== undefined && !/^[0-9]+$/.test(seed)) {
+    throw new ApiError(422, `seed: a seed is a decimal string of digits, as the run lists it`);
+  }
+  const i = replicateIndex(r, seed);
+  if (i === null) throw new ApiError(404, `run '${runId}' has no replicate for seed ${seed}`);
   return {
     run_id: r.run_id,
     config_hash: r.config_hash,
-    seed: seedOf(r, 0),
+    seed: seedOf(r, i),
     field,
     tier: r.tier,
-    ...buildHeatmap(r, field),
+    ...buildHeatmap(r, field, i),
   };
 }
 

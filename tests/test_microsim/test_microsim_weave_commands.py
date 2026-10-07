@@ -16,10 +16,11 @@ Three groups:
   included, with the recorder on and off.
 * **Runs** (SUMO, fixture size): off writes byte-identical files whether the
   flag is unset or false, and never builds the recorder; on, every other file
-  is byte-identical and ``meta.json`` differs only by the flag, the hash and
-  ``weave_command_log``; the file has the contract's schema, only documented
-  rules, and per-rule row counts equal to the meta counters
-  (``WEAVE_COMMAND_COUNTERS``). The comparison with the code before the
+  is byte-identical and ``meta.json`` differs only by the flag and
+  ``weave_command_log`` (the hash is the same: both share one run directory,
+  and a run without the flag removes an earlier run's log there); the file has
+  the contract's schema, only documented rules, and per-rule row counts equal
+  to the meta counters (``WEAVE_COMMAND_COUNTERS``). The comparison with the code before the
   recorder existed was made out of band (two trees, the same five fixtures;
   the change's record).
 """
@@ -909,22 +910,33 @@ class TestRecorderRuns:
 
     def test_on_changes_no_other_output(self, tmp_path):
         """On: trajectories, edges, vehicles and journeys byte-identical to
-        off; meta.json differs only by the flag in the config, the hash and
-        ``weave_command_log``."""
+        off; meta.json differs only by the flag in the config and
+        ``weave_command_log``: the config hash is the same (the recorder is
+        hash-neutral on and off, review 2026-10-07), so both runs share one
+        ``<config_hash>/<seed>`` directory. Run there in turn (off, on, off),
+        the last run leaves no log behind from the one before."""
         raw = _weave_raw(weave_params={**W2, "entrant_giveup_m": 5.0, "exit_prepare": 1.0})
-        p_off = run_micro(_with_flag(raw, None), 3, tmp_path / "off")
-        p_on = run_micro(_with_flag(raw, True), 3, tmp_path / "on")
-        off, on = _parquet_bytes(p_off), _parquet_bytes(p_on)
+        root = tmp_path / "runs"
+        p_off = run_micro(_with_flag(raw, None), 3, root)
+        off, m_off = _parquet_bytes(p_off), _meta(p_off, root)
+        p_on = run_micro(_with_flag(raw, True), 3, root)
+        assert p_on.run_dir == p_off.run_dir
+        on, m_on = _parquet_bytes(p_on), _meta(p_on, root)
         assert set(on) == {*off, WEAVE_COMMANDS_FILE}
         assert all(on[name] == data for name, data in off.items())
-        m_off, m_on = _meta(p_off, tmp_path / "off"), _meta(p_on, tmp_path / "on")
         assert {k for k in {*m_off, *m_on} if m_off.get(k) != m_on.get(k)} == {
             "config",
-            "config_hash",
             "weave_command_log",
         }
+        assert m_on["config_hash"] == m_off["config_hash"] == p_off.run_dir.parent.name
         assert m_on["config"]["network"]["ramps"][0]["weave"].pop("record_commands") is True
         assert m_on["config"] == m_off["config"]
+        # off again in the same directory: the previous run's log is gone
+        p_again = run_micro(_with_flag(raw, False), 3, root)
+        assert p_again.run_dir == p_off.run_dir
+        assert not (p_again.run_dir / WEAVE_COMMANDS_FILE).exists()
+        assert _parquet_bytes(p_again) == off
+        assert _meta(p_again, root) == m_off
 
     @pytest.mark.parametrize(
         ("case", "seed"),

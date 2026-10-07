@@ -1379,11 +1379,14 @@ weaves (`mndot_i94_wb_stpaul_weave_xlsfg_dc_cal_w1b`, hash 0d26de2a5f01); arm B 
 | CW5a | given-up exits per weave, B ≤ A + 2 + 2·√(2A) | Ruth St 599 vs bound 608 (A 540); T.H.52 990 vs 1,043 (A 954) | pass |
 | CW5b | W1b's releases ≤ 1 % of each entrance's departures, pooled | Ruth St **257 of 20,340 = 1.26 %**; T.H.52 1 of 91,644 | **fail** |
 
-**Reading.** CW1–CW4 and CW5a hold: W2 removed the calibration-day corridor's only collision without a measurable
-cost in flow, departures, locks or given-up exits. CW5b fails, and it fails identically in arm A: W1b alone
-releases the same 257 stuck entrants of 20,340 at Ruth St (1.26 %; T.H.52: 3) on these inputs — the clause measures
-W1b on the calibration-day Ruth St weave, which is denser than the weave p9 passed it on (`_dc`, ≤ 1 %), and W2 does
-not change it. By the rule fixed in §13.6, W2 is **not adopted on this round**: the criteria are read as written, and
+**Reading.** CW1–CW4 and CW5a hold: B had no collision (0 of 20; Clopper–Pearson 0–16.8 %) and no measurable cost
+in flow, departures, locks or given-up exits. A had one, at T.H.52; a difference of one collision in 20 paired runs
+is within what the pre-registered power note (§13.6) says this round cannot resolve, so the round does not show that
+W2 caused the drop. CW5b fails, and arm A fails it at the same pooled share: with W1b alone, 257 of 20,340 Ruth St
+entrants are also released (1.26 %; T.H.52: 3 against B's 1). The pooled totals coincide, but the per-seed counts
+differ in 18 of 20 seeds, so W2 changes which entrants are released without changing how many. The clause measures
+W1b on the calibration-day Ruth St weave, which is denser than the weave p9 passed it on (`_dc`, ≤ 1 %). By the rule fixed in
+§13.6, W2 is **not adopted on this round**: the criteria are read as written, and
 CW5b is one of them. What the round shows is that the failing clause is W1b's on `_dc_cal`, not W2's; whether to re-run
 W1b's release bound against the arm it measures (A), or to treat 1.26 % as the calibration-day cost of W1b, is the
 owner's call and not re-thresholded here. Both arms fail the battery gate as every `_dc_cal` arm has (GEH share
@@ -1392,7 +1395,7 @@ owner's call and not re-thresholded here. Both arms fail the battery gate as eve
 **What W2 did in arm B** (counters over 20 seeds; Ruth St / T.H.52): hand-back skips 3,546 / 2,880; close-leader
 withheld 427 / 101; opposing entries deferred 6,985 / 16,767, of which vetoed 6,908 / 16,011. The counters are
 recorded only when the switches are on (§14.4). Arm A's one collision is at T.H.52; p8's `_dc_cal` battery without
-W1b had two, both at Ruth St (§10): W1b changes which contacts occur, not that they occur, and W2 removes them.
+W1b had two, both at Ruth St (§10): W1b changes which contacts occur, not that they occur; arm B had none, which this round's power cannot attribute to W2 (CW3 above).
 
 **Limits.** One recording's calibration-day inputs; 20 seeds; the two readers of CW4 agree but were written by the
 same hand; the W2 counters are not paired with per-vehicle outcomes (no weave command recorder, §15). The round

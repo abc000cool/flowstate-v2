@@ -317,46 +317,86 @@ def test_unset_fields_are_dropped_without_pydantic_2_12_features():
     assert schema == WeaveSpec.model_json_schema(mode="validation")
 
 
-def test_record_commands_is_hash_neutral_until_it_is_set(tmp_path):
+#: Committed scenarios whose weave blocks feed a measured merge zone
+#: (``merge: measured``), with their policy-v3 hash.
+KNOWN_MEASURED_WEAVE_SCENARIO_HASHES = {
+    "mndot_i94_wb_stpaul_weave_measured.yaml": "d317700d4156",
+    "i24_replica_flow_speedcal_measured.yaml": "8103d6067875",
+}
+
+
+def test_record_commands_is_hash_neutral_on_and_off(tmp_path):
     """``WeaveSpec.record_commands`` (2026-10-07, the weave command recorder,
-    opt-in): at False a weave scenario hashes and dumps (``model_dump``,
-    ``meta.json["config"]``, YAML) exactly as before the field existed; true,
-    the hash moves, the YAML carries it and round-trips; the measured model's
-    weave block takes it too (it is not a ``weave_params`` key)."""
+    opt-in) is a pure observer, so it is left out of the config hash at every
+    value (review 2026-10-07): a recording re-run of a pinned scenario carries
+    the pinned hash (``--expect-hash`` guards, p8c's reproduction check) on a
+    weaving section and on a measured zone's weave block alike. At False it is
+    absent from every dump (``model_dump``, ``meta.json["config"]``, YAML), as
+    before the field existed; true, the dump, the YAML and ``meta.json["config"]``
+    still carry it and round-trip."""
     import yaml
 
     from flowstate_core.config import RampSpec
 
     root = Path(__file__).resolve().parents[2]
-    name = "mndot_i94_wb_stpaul_weave_dc.yaml"
-    cfg = ScenarioConfig.from_yaml(root / "scenarios" / name)
-    known = KNOWN_BOUNDARY_SCENARIO_HASHES[name]
-    assert config_hash(cfg) == known
-    raw = cfg.model_dump(mode="json")
-    weaves = [r for r in raw["network"]["ramps"] if r.get("weave")]
-    assert weaves, "the scenario has weave entrances"
-    assert all("record_commands" not in r["weave"] for r in weaves)
-    assert "record_commands" not in json.dumps(config_hash_payload(cfg))
-    cfg.to_yaml(tmp_path / "unset.yaml")
-    assert "record_commands" not in (tmp_path / "unset.yaml").read_text()
+    cases = {
+        "mndot_i94_wb_stpaul_weave_dc.yaml": KNOWN_BOUNDARY_SCENARIO_HASHES[
+            "mndot_i94_wb_stpaul_weave_dc.yaml"
+        ],
+        **KNOWN_MEASURED_WEAVE_SCENARIO_HASHES,
+    }
+    merges_seen = set()
+    for name, known in cases.items():
+        cfg = ScenarioConfig.from_yaml(root / "scenarios" / name)
+        assert config_hash(cfg) == known, name
+        raw = cfg.model_dump(mode="json")
+        weaves = [r for r in raw["network"]["ramps"] if r.get("weave")]
+        assert weaves, f"{name} has weave blocks"
+        merges_seen |= {r["merge"] for r in weaves}
+        assert all("record_commands" not in r["weave"] for r in weaves), name
+        assert "record_commands" not in json.dumps(config_hash_payload(cfg)), name
+        cfg.to_yaml(tmp_path / "unset.yaml")
+        assert "record_commands" not in (tmp_path / "unset.yaml").read_text(), name
 
-    def with_flag(value: bool) -> ScenarioConfig:
-        doc = json.loads(json.dumps(raw))
-        for r in doc["network"]["ramps"]:
-            if r.get("weave"):
-                r["weave"]["record_commands"] = value
-        return ScenarioConfig.model_validate(doc)
+        def with_flag(value: bool, doc: dict = raw) -> ScenarioConfig:
+            d = json.loads(json.dumps(doc))
+            for r in d["network"]["ramps"]:
+                if r.get("weave"):
+                    r["weave"]["record_commands"] = value
+            return ScenarioConfig.model_validate(d)
 
-    off = with_flag(False)
-    assert config_hash(off) == known and off.model_dump(mode="json") == raw
-    on = with_flag(True)
-    assert config_hash(on) != known
-    on.to_yaml(tmp_path / "on.yaml")
-    dumped = yaml.safe_load((tmp_path / "on.yaml").read_text())
-    assert all(
-        r["weave"]["record_commands"] is True for r in dumped["network"]["ramps"] if r.get("weave")
-    )
-    assert ScenarioConfig.from_yaml(tmp_path / "on.yaml") == on
+        off = with_flag(False)
+        assert config_hash(off) == known and off.model_dump(mode="json") == raw, name
+        on = with_flag(True)
+        assert config_hash(on) == known, name
+        assert config_hash_payload(on) == config_hash_payload(cfg), name
+        assert "record_commands" not in json.dumps(config_hash_payload(on)), name
+        # the v2 reading of a document shares the payload rule
+        assert config_hash_v2(on.model_dump(mode="json")) == config_hash_v2(raw), name
+        # ... while every other dump still records it (meta.json["config"] is
+        # model_dump(mode="json"), the YAML is written from it)
+        dumped_on = on.model_dump(mode="json")
+        assert all(
+            r["weave"]["record_commands"] is True
+            for r in dumped_on["network"]["ramps"]
+            if r.get("weave")
+        ), name
+        on.to_yaml(tmp_path / "on.yaml")
+        from_yaml = yaml.safe_load((tmp_path / "on.yaml").read_text())
+        assert all(
+            r["weave"]["record_commands"] is True
+            for r in from_yaml["network"]["ramps"]
+            if r.get("weave")
+        ), name
+        assert ScenarioConfig.from_yaml(tmp_path / "on.yaml") == on, name
+        # one block on, the others off: the same hash again
+        one = json.loads(json.dumps(raw))
+        next(r for r in one["network"]["ramps"] if r.get("weave"))["weave"]["record_commands"] = (
+            True
+        )
+        assert config_hash(ScenarioConfig.model_validate(one)) == known, name
+    assert merges_seen == {"weave", "measured"}
+    # a measured zone's weave block takes the flag (it is not a weave_params key)
     measured = RampSpec.model_validate(
         {
             "kind": "on",
@@ -368,6 +408,52 @@ def test_record_commands_is_hash_neutral_until_it_is_set(tmp_path):
         }
     )
     assert measured.weave is not None and measured.weave.record_commands
+    assert measured.model_dump(mode="json")["weave"]["record_commands"] is True
+
+
+def test_every_committed_scenario_hashes_as_before_with_the_recorder_on_or_off():
+    """Every committed scenario hashes as it did before the hash payload's dump
+    context existed (the payload a plain ``exclude_defaults`` dump gives: no
+    committed scenario sets ``record_commands``), and as it does unchanged with
+    ``record_commands`` true on every weave block it has."""
+    from flowstate_core.config import CONFIG_HASH_VERSION, _digest
+
+    root = Path(__file__).resolve().parents[2]
+    paths = sorted((root / "scenarios").glob("*.yaml"))
+    assert len(paths) >= 45
+    n_with_weaves = 0
+    for path in paths:
+        cfg = ScenarioConfig.from_yaml(path)
+        before = cfg.model_dump(mode="json", exclude_defaults=True)
+        before["network"] = {**before["network"], "kind": cfg.network.kind}
+        known = _digest({"hash_version": CONFIG_HASH_VERSION, "config": before})
+        assert config_hash(cfg) == known, path.name
+        doc = cfg.model_dump(mode="json")
+        ramps = doc["network"].get("ramps") or []
+        weaves = [r for r in ramps if r.get("weave")]
+        if not weaves:
+            continue
+        n_with_weaves += 1
+        for r in weaves:
+            r["weave"]["record_commands"] = True
+        assert config_hash(ScenarioConfig.model_validate(doc)) == known, path.name
+    assert n_with_weaves >= 3
+
+
+def test_hash_payload_context_reaches_only_the_hash():
+    """The hash payload's dump context (``HASH_PAYLOAD_CONTEXT_KEY``) is what
+    drops ``record_commands`` true: a plain dump keeps it, a dump with the key
+    drops it, and it changes nothing else of a weave block."""
+    from flowstate_core.config import HASH_PAYLOAD_CONTEXT_KEY, WeaveSpec
+
+    on = WeaveSpec(exit_ramp="B", ramp_to_ramp_share=0.3, record_commands=True)
+    plain = on.model_dump(mode="json")
+    assert plain["record_commands"] is True
+    hashed = on.model_dump(mode="json", context={HASH_PAYLOAD_CONTEXT_KEY: True})
+    assert "record_commands" not in hashed
+    assert hashed == {k: v for k, v in plain.items() if k != "record_commands"}
+    assert on.model_dump(mode="json", context={HASH_PAYLOAD_CONTEXT_KEY: False}) == plain
+    assert on.model_dump(mode="json", context={"other": True}) == plain
 
 
 def test_pinned_ring_hash():

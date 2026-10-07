@@ -847,21 +847,25 @@ log `artifacts/i24_discharge_2026-10-07/p12_i24_b1.log.txt`. Each B1 arm against
 **Reading, by the rule fixed above.** A1–A4 hold; **A5 fails on the canonical arm**, so B1 is **not adopted** on this
 round. On the calibrated-demand arm (`_dc_refit`) every applicable criterion holds and the numbers are what the
 diagnosis predicted: the 5,400-m flow lands on the recording (6,008 against 6,009), the peak sections rise by
-266 veh/h to within GEH 5 of their targets (3.9 and 4.7 against 7.3 and 8.3), 2.7 points more of the demand is on
-the road, the boundary zone runs 6.7 km/h closer to the schedule and the segment speeds improve. On the canonical
+266 and 276 veh/h (2,200 / 3,200 m) to within GEH 5 of their targets (3.9 and 4.7 against 7.3 and 8.3), 2.7 points
+more of the demand is on the road, the boundary zone runs 6.6 km/h [6.5, 6.7] closer to the schedule and the 15-min
+segment-speed RMSPE (A5's convention) improves 0.273 → 0.256, while the 5-min RMSPE of the battery's `speeds_rmspe`
+row worsens 0.333 → 0.377 (canonical 0.372 → 0.502; `reported.rmspe_5min`). On the canonical
 arm (uncalibrated demand, k = 0 drivers) the same change frees the downstream end and the corridor runs faster than
 the congested recording: RMSPE 0.230 → 0.309, outside the +0.02 band, with the emergent wave and zero collisions
 kept; on `_dc` (k = 1 drivers, uncorrected demand) the speeds degrade further (0.534 → 0.864) while its peak flows do
 not move — that arm's ceiling is not the boundary. What the round establishes: the downstream representation was
-the ceiling (§5), and B1 removes it; what it does not establish is that B1 alone reproduces the canonical arm, which
-it was never expected to (the FHWA demand re-sequence, §8.3, was conditional on A1–A5 and does not run). Whether
-B1 is adopted together with the calibrated-demand arm, where it holds, is the owner's call; it is not re-thresholded
-here. I-94 is exempt by model form (§8.3, factors note).
+the ceiling (§5), and B1 removes it on `_dc_refit`. On the pre-registered adoption arm (canonical), B1 degrades the
+15-min segment-speed RMSPE by +0.074 [0.057, 0.090] (paired, 20 seeds), outside the +0.02 no-harm bound, so by §8.3
+the current rule does not adopt it; whether B1 is adopted together with the calibrated-demand arm, where it holds, is
+the owner's call and is not re-thresholded here. B1 is not defined for I-94's EIDM fleet (§8.3, factors note), so the
+rule's I-94 clause cannot be met as written; that too is the owner's call.
 
 **Limits.** One recording, one day; the `_dc_refit` reference fails the wave row, so A4's verdict half is read on
 the canonical arm only; A2's zone speed is the corrected (windowed) estimator, with the first estimator reported
 beside it; lane shares are not computed (only trajectories carry them, and the archive carries none); the braking
-counts are VM-side (`hard_braking.py`) and were not re-run locally.
+counts are VM-side (`hard_braking.py`) and were not re-run locally. The `_dc_refit` segment-speed improvement holds
+only at the 15-min aggregation (A5's convention); at the battery's 5 min the RMSPE worsens (0.333 → 0.377).
 
 ### 8.4 Measure the target before using it again
 

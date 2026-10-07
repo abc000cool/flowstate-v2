@@ -6886,6 +6886,11 @@ def run_micro(
     # than pairing a stale meta.json with a truncated trajectories.parquet.
     meta_path = run_dir / COMPLETION_MARKER
     meta_path.unlink(missing_ok=True)
+    # The weave command log is the one file a run may or may not write, and the
+    # recorder is hash-neutral (WeaveSpec.record_commands): a recording run and
+    # one without it share this directory, so a log left by an earlier run must
+    # not outlive it under a meta.json that does not name it.
+    (run_dir / WEAVE_COMMANDS_FILE).unlink(missing_ok=True)
     workdir = run_dir / "net"
 
     is_ring = isinstance(cfg.network, RingNetwork)

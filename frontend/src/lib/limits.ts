@@ -25,9 +25,11 @@ export const MIN_DURATION_S = 1;
  * server limit. */
 export const MAX_DURATION_S = 86_400;
 
-/** `ScenarioConfig.seed` is a plain int, but SUMO's `--seed` and the RNG
- * helpers are non-negative, so the launcher clamps to a 32-bit unsigned range
- * rather than posting a negative seed the runner would reject. */
+/** `ScenarioConfig.seed` is a non-negative int the server bounds at 2^53 − 1
+ * (what a JSON number carries exactly); SUMO's `--seed` and the RNG helpers
+ * are non-negative too, so the launchers clamp typed values to the signed
+ * 32-bit range (0 … 2^31 − 1) rather than posting a seed the runner would
+ * reject. The cap applies only to values typed into the forms. */
 export const MIN_SEED = 0;
 export const MAX_SEED = 2_147_483_647;
 

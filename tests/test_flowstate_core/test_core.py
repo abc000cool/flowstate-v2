@@ -105,6 +105,32 @@ class TestConfig:
         with pytest.raises(ValueError):
             _ring_config(av={"penetration": 0.5})
 
+    def test_master_seed_is_bounded_to_what_a_json_number_carries(self):
+        """``seed`` lies in ``[0, 2**53 - 1]`` (2026-10-07): the API emits the
+        config as plain JSON, and a browser's ``JSON.parse`` rounds a larger
+        integer, so a re-posted config would spawn other replicate seeds under
+        another hash. The ceiling is the last integer a double keeps exactly."""
+        import json
+
+        from pydantic import ValidationError
+
+        from flowstate_core.config import MAX_MASTER_SEED
+
+        assert MAX_MASTER_SEED == 2**53 - 1
+        assert float(MAX_MASTER_SEED) == MAX_MASTER_SEED
+        assert int(float(MAX_MASTER_SEED + 2)) != MAX_MASTER_SEED + 2  # 2**53 + 1 rounds
+        top = _ring_config(seed=2**53 - 1)
+        assert top.seed == 2**53 - 1
+        doc = json.loads(top.model_dump_json())
+        assert doc["seed"] == 2**53 - 1 and int(float(doc["seed"])) == doc["seed"]
+        assert ScenarioConfig.model_validate(doc) == top
+        assert _ring_config(seed=0).seed == 0
+        for bad in (2**53, 2**53 + 1, 2**63 - 1, spawn_seeds(42, 1)[0], -1):
+            with pytest.raises(ValidationError, match="seed"):
+                _ring_config(seed=bad)
+            with pytest.raises(ValidationError, match="seed"):
+                ScenarioConfig.model_validate({**doc, "seed": bad})
+
     def test_corridor_inflow_must_be_ordered(self):
         with pytest.raises(ValueError):
             ScenarioConfig(

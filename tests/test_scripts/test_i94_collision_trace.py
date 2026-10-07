@@ -22,7 +22,9 @@ and ``ramps``, ``vehicles.parquet``, ``trajectories.parquet`` in several row gro
   a logged weave speed target (``cooperate`` / ``ease``) issued one step before contact
   is found, with the rear car's other commands; a meta-only archive (the log recorded
   in ``meta.json["weave_command_log"]``, its file absent) and an unreadable file say so
-  and keep the inferred reading; a run with no log reads exactly as before.
+  and keep the inferred reading; a run with no log reads exactly as before. A log that
+  records only the other of two sections says "section not recorded" at the collision's
+  section, never "no weave target", and keeps the inferred reading.
 """
 
 from __future__ import annotations
@@ -210,6 +212,7 @@ def _rear_end_run(
     pos_shift: float = 0.0,
     commands: list[dict[str, Any]] | None = None,
     command_log: dict[str, Any] | None = None,
+    extra_ramps: tuple[dict[str, Any], ...] = (),
 ) -> tuple[Path, Any]:
     rows, x_c = _rear_end_rows()
     pos = x_c - E1_X0
@@ -236,7 +239,8 @@ def _rear_end_run(
                 "attach_edge": "E1",
                 "attach_x_m": E1_X0,
                 "attach_end_x_m": E1_X1,
-            }
+            },
+            *extra_ramps,
         ],
         vtypes={"v00001": {}, "v00002": {}, "v00003": {}},
         first_samples={
@@ -462,6 +466,88 @@ def test_an_unreadable_log_says_so_and_never_raises(tmp_path: Path) -> None:
     assert cmd["logged"] is False and cmd["log_recorded"] is True
     assert "lacks the column(s) ['rule']" in cmd["log_problem"]
     assert r["weave_command_log"]["problem"] == cmd["log_problem"]
+
+
+#: A second weaving section downstream (T.H.52's place) on its own edge, no vehicle on it.
+TH52_RAMP: dict[str, Any] = {
+    "index": 1,
+    "name": "th52",
+    "kind": "on",
+    "attach_edge": "E2",
+    "attach_x_m": 2000.0,
+    "attach_end_x_m": 2305.02,
+}
+
+
+def test_a_log_without_the_collisions_section_says_section_not_recorded(tmp_path: Path) -> None:
+    """The flag set on one of two sections. With the log holding only th52, the rear-end in
+    Ruth St's lane is not read as "no weave target in the contact step" (the log's silence
+    there says nothing): the block says section not recorded, names ``ruth`` in
+    ``unrecorded_sections`` and keeps the inferred reading, and the verdict says so. With
+    the log holding only ruth, the target is read as before and th52 is named."""
+    th52_log = {"file": tr.COMMANDS_FILE, "n_rows": 1, "sections": {"th52": {"ease": 1}}}
+    th52_rows = [
+        {"t": T_REAR - STEP, "veh_id": "v00009", "section": "th52", "rule": "ease", "v_cmd_ms": 3.0}
+    ]
+    run, exp = _rear_end_run(
+        tmp_path / "th52", commands=th52_rows, command_log=th52_log, extra_ramps=(TH52_RAMP,)
+    )
+    r = tr.trace_run(run, exp, tr.Params())
+    (b,) = r["events"]
+    cmd = b["weave_commands_rear"]
+    assert cmd["logged"] is False and cmd["log_recorded"] is True and cmd["log_rows"] == 1
+    assert cmd["collision_section"] == "ruth" and cmd["section_recorded"] is False
+    assert cmd["unrecorded_sections"] == ["ruth"]
+    assert cmd["note"].startswith("section not recorded: ruth did not record weave commands")
+    assert cmd["note"].endswith("the inferred reading (braking and entries) stands")
+    assert r["weave_command_log"]["read"] is True  # the file was read; it lacks the section
+    plain, plain_exp = _rear_end_run(tmp_path / "plain", extra_ramps=(TH52_RAMP,))
+    p = tr.trace_run(plain, plain_exp, tr.Params())["events"][0]
+    assert b["braking_rear"] == p["braking_rear"] and b["entries"] == p["entries"]
+    verdict = tr.summarize([r], [])["events"][0]["verdict"]
+    assert verdict == (
+        f"{p['braking_rear']['reading']}; section not recorded (unrecorded sections: ruth), "
+        "inferred reading"
+    )
+    # the log holds the collision's section: read as before, the other section named
+    run2, exp2 = _rear_end_run(
+        tmp_path / "ruth",
+        commands=REAR_END_COMMANDS,
+        command_log=REAR_END_LOG,
+        extra_ramps=(TH52_RAMP,),
+    )
+    cmd2 = tr.trace_run(run2, exp2, tr.Params())["events"][0]["weave_commands_rear"]
+    assert cmd2["logged"] and cmd2["active_in_contact_step"]
+    assert cmd2["collision_section"] == "ruth" and cmd2["section_recorded"] is True
+    assert cmd2["unrecorded_sections"] == ["th52"]
+    r2 = tr.trace_run(run2, exp2, tr.Params())
+    assert tr.summarize([r2], [])["events"][0]["verdict"].endswith(
+        "; weave target in the contact step (unrecorded sections: th52)"
+    )
+
+
+def test_unrecorded_sections_count_measured_zones_and_an_edge_in_no_section() -> None:
+    """A measured zone's label counts as a section; a log that does not say which sections
+    it recorded gives None (nothing can be said); a collision in no section, while some
+    section is unrecorded, is not read as "no weave target" either."""
+    meta = {
+        "weave_sections": [{"ramp": "ruth", "edges": ["E1"]}],
+        "measured_merges": [{"ramp": "m1", "edges": ["E5"]}],
+    }
+    empty = pd.DataFrame({"t": [], "veh_id": [], "rule": []})
+    log = tr.CommandLog(empty, {"n_rows": 0, "sections": {"ruth": {}}}, None)
+    assert tr.unrecorded_sections(meta, log) == ["m1"]
+    assert tr.unrecorded_sections(meta, tr.CommandLog(empty, {"n_rows": 0}, None)) is None
+    in_zone = tr.commands_block(log, meta, "E5", "v1", 100.0, STEP, tr.Params())
+    assert in_zone["logged"] is False and in_zone["collision_section"] == "m1"
+    assert in_zone["section_recorded"] is False and in_zone["unrecorded_sections"] == ["m1"]
+    outside = tr.commands_block(log, meta, "E9", "v1", 100.0, STEP, tr.Params())
+    assert outside["logged"] is False and outside["collision_section"] is None
+    assert outside["section_recorded"] is None and outside["unrecorded_sections"] == ["m1"]
+    assert outside["note"].startswith("section not recorded: the collision's edge E9 lies in no")
+    recorded_here = tr.commands_block(log, meta, "E1", "v1", 100.0, STEP, tr.Params())
+    assert recorded_here["logged"] is True and recorded_here["section_recorded"] is True
+    assert recorded_here["speed_targets"] == [] and not recorded_here["active_in_contact_step"]
 
 
 # --- the planted opposing entry: T.H.52 (T1-T3's setting) ---------------------------------

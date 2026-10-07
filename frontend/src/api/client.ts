@@ -15,6 +15,7 @@
  * cannot freeze the dashboard until someone reloads it, and `clearAuthFailure`
  * is the shell's manual Retry. */
 
+import { ApiError } from './errors';
 import { beginRunsRead, clearCachedRuns, recordRuns } from '../lib/runsCache';
 import * as mock from '../mocks/mockApi';
 import type {
@@ -188,15 +189,7 @@ export function clearAuthFailure(): void {
 
 /* ------------------------------- fetch -------------------------------- */
 
-export class ApiError extends Error {
-  constructor(
-    public status: number,
-    message: string,
-  ) {
-    super(message);
-    this.name = 'ApiError';
-  }
-}
+export { ApiError };
 
 interface RequestInitLite {
   method?: string;
@@ -462,10 +455,10 @@ export async function getRunMetrics(runId: string): Promise<RunMetrics> {
  * seed unless `seed` names another (the API answers 404 for a seed the run
  * did not run). `seed` is the decimal string the run listed (`Seed`) and goes
  * into the query exactly as given: a 64-bit seed must never pass through a
- * number. The demo backend ignores `seed`; the answer's own `seed` says which
- * replicate it is, whatever was asked. */
+ * number. The demo backend takes `seed` the same way (the replicate it names,
+ * or a 404); the answer's own `seed` says which replicate it is. */
 export async function getRunHeatmap(runId: string, field: HeatField, seed?: Seed): Promise<Heatmap> {
-  if (isMockActive()) return mock.mockGetRunHeatmap(runId, field);
+  if (isMockActive()) return mock.mockGetRunHeatmap(runId, field, seed);
   const s = seed === undefined ? '' : `&seed=${encodeURIComponent(seed)}`;
   const h = await request<Heatmap>(`/runs/${encodeURIComponent(runId)}/heatmap?field=${field}${s}`);
   return h.seed === undefined || h.seed === null ? h : { ...h, seed: asSeed(h.seed) };

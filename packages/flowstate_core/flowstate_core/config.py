@@ -19,6 +19,7 @@ from pydantic import (
     BaseModel,
     ConfigDict,
     Field,
+    SerializationInfo,
     SerializerFunctionWrapHandler,
     field_validator,
     model_serializer,
@@ -35,11 +36,36 @@ from flowstate_core.constants import (
 #: Default of ``BoundarySpec.limit_factor``: the schedule is posted as written.
 BOUNDARY_LIMIT_FACTOR_DEFAULT: Final[float] = 1.0
 
+#: ``model_dump`` context key set by :func:`config_hash_payload` (2026-10-07).
+#: A model whose serializer sees it drops its hash-excluded fields at every
+#: value: pure observers, which change no output of a run but their own file
+#: and ``meta.json``'s record of it (``WeaveSpec.record_commands``). Every
+#: other dump (``model_dump``, ``meta.json["config"]``, YAML) keeps them.
+HASH_PAYLOAD_CONTEXT_KEY: Final[str] = "flowstate_config_hash_payload"
+
+
+def _in_hash_payload(info: SerializationInfo) -> bool:
+    """Whether a serializer runs inside :func:`config_hash_payload`'s dump."""
+    context = info.context
+    return isinstance(context, Mapping) and bool(context.get(HASH_PAYLOAD_CONTEXT_KEY))
+
+
 #: Ceiling on ``ScenarioConfig.replicates``. Generous next to the ≥ 20 seeds a
 #: headline claim needs (CLAUDE.md §0.6) and next to every scenario shipped
 #: here (1–20), while keeping one config from queueing unbounded simulation
 #: work. The API caps a *request* lower still (``api.schemas.MAX_REPLICATES``).
 MAX_REPLICATES = 500
+
+#: Ceiling on ``ScenarioConfig.seed``: the largest integer a JSON number
+#: carries exactly (an IEEE-754 double's 53-bit significand; JavaScript's
+#: ``Number.MAX_SAFE_INTEGER``). The API emits the scenario config as plain
+#: JSON, so a larger master seed stored through ``POST /scenarios`` is rounded
+#: by a browser's ``JSON.parse``, and a client re-posting it (the dashboard's
+#: composer) spawns other replicate seeds under another config hash while
+#: saying the seed was kept (review 2026-10-07). Replicate seeds, which
+#: :func:`flowstate_core.rng.spawn_seeds` draws up to ``2**63``, are not
+#: config fields; the API spells them as decimal strings.
+MAX_MASTER_SEED: Final[int] = 2**53 - 1
 
 
 class RingNetwork(BaseModel):
@@ -513,32 +539,40 @@ class WeaveSpec(BaseModel):
     recorder only: it reads what the step already holds, makes no TraCI call
     and never changes what the section does, so every other file of a run is
     byte-identical with it on or off. ``False`` (the default) records nothing
-    and writes no file. Hash-neutral and absent from ``model_dump`` (so from
-    ``meta.json["config"]`` and YAML) at ``False`` (:meth:`_serialize`); set,
-    it moves the config hash like any other non-default value. Not set by any
-    committed scenario."""
+    and writes no file. Hash-neutral at every value: left out of
+    :func:`config_hash_payload` whether false or true (:meth:`_serialize`),
+    since a recording run reproduces the run without the recorder, so it must
+    carry that run's hash (``--expect-hash`` guards, reproduction checks) and
+    share its ``runs/<config_hash>/<seed>/`` directory. Absent from
+    ``model_dump`` (so from ``meta.json["config"]`` and YAML) at ``False``,
+    present there when true, so a run's ``meta.json`` still says whether it
+    recorded. Not set by any committed scenario."""
 
     # No return annotation on purpose: pydantic builds a model's serialization
     # JSON schema from its serializer's return annotation and keeps the model's
     # own schema without one.
     @model_serializer(mode="wrap")
-    def _serialize(self, handler: SerializerFunctionWrapHandler):  # type: ignore[no-untyped-def]
+    def _serialize(self, handler: SerializerFunctionWrapHandler, info: SerializationInfo):  # type: ignore[no-untyped-def]
         """Drop ``ramp_to_ramp_share`` while unset (None) and ``record_commands`` while ``False``.
 
         So a weave block dumps (``model_dump``, ``meta.json["config"]``, YAML)
-        exactly as before either field existed (2026-10-07). Written as a wrap
-        serializer, not ``Field(exclude_if=...)``, because ``exclude_if``
-        needs pydantic >= 2.12 while the packages declare ``pydantic>=2.10``:
-        on 2.10 and 2.11 that keyword is a deprecated extra (it lands in the
-        JSON schema, which then cannot be generated) and nothing is excluded.
-        The optional ``weave_params`` keys (:data:`WEAVE_OPTIONAL_KEYS`) need
-        no rule: they are dict keys, present only when set.
+        exactly as before either field existed (2026-10-07). Inside
+        :func:`config_hash_payload` (:data:`HASH_PAYLOAD_CONTEXT_KEY`)
+        ``record_commands`` is dropped at every value: the recorder is a pure
+        observer, so a recording run carries the hash of the run without it.
+        Written as a wrap serializer, not ``Field(exclude_if=...)``, because
+        ``exclude_if`` needs pydantic >= 2.12 while the packages declare
+        ``pydantic>=2.10``: on 2.10 and 2.11 that keyword is a deprecated
+        extra (it lands in the JSON schema, which then cannot be generated)
+        and nothing is excluded. The optional ``weave_params`` keys
+        (:data:`WEAVE_OPTIONAL_KEYS`) need no rule: they are dict keys,
+        present only when set.
         """
         data = handler(self)
         if isinstance(data, dict):
             if self.ramp_to_ramp_share is None:
                 data.pop("ramp_to_ramp_share", None)
-            if not self.record_commands:
+            if not self.record_commands or _in_hash_payload(info):
                 data.pop("record_commands", None)
         return data
 
@@ -1466,7 +1500,11 @@ class ScenarioConfig(BaseModel):
     managed_lanes: list[ManagedLaneSpec] = Field(default_factory=list)
     """Managed (HOV) lane rules (:class:`ManagedLaneSpec`); eligibility comes
     from ``FleetSpec.hov_fraction``."""
-    seed: int = 42
+    seed: int = Field(default=42, ge=0, le=MAX_MASTER_SEED)
+    """Master seed: :func:`flowstate_core.rng.spawn_seeds` derives the
+    replicate seeds from it. Bounded to ``[0, MAX_MASTER_SEED]`` (``2**53 - 1``,
+    2026-10-07), the integers a JSON number carries exactly, so the config
+    round-trips through a browser unchanged; every committed scenario uses 42."""
     replicates: int = Field(default=20, ge=1, le=MAX_REPLICATES)
     """Seeded replicates per run. The ≥ 20 floor for headline claims is
     CLAUDE.md §0.6; the ``MAX_REPLICATES`` ceiling is a resource guard — a
@@ -1541,9 +1579,15 @@ def config_hash_payload(cfg: ScenarioConfig) -> dict[str, Any]:
     Omitting defaults means a new optional field leaves the hash of every
     scenario that does not use it unchanged, so schema growth no longer
     invalidates goldens, sweeps and run trees; the network's ``kind`` is
-    kept explicitly since it is a default-valued discriminator.
+    kept explicitly since it is a default-valued discriminator. Fields that
+    only observe a run (``WeaveSpec.record_commands``, 2026-10-07) are left
+    out at every value: the dump runs under :data:`HASH_PAYLOAD_CONTEXT_KEY`,
+    which their model's serializer reads, so no site that embeds the model
+    can carry one into the hash.
     """
-    dumped = cfg.model_dump(mode="json", exclude_defaults=True)
+    dumped = cfg.model_dump(
+        mode="json", exclude_defaults=True, context={HASH_PAYLOAD_CONTEXT_KEY: True}
+    )
     network = dict(dumped.get("network") or {})
     network["kind"] = cfg.network.kind
     dumped["network"] = network

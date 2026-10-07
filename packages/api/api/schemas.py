@@ -9,10 +9,12 @@ the run's hash is the hash of the *effective* config.
 
 from __future__ import annotations
 
+import re
 from typing import Annotated, Any, Literal, Self
 
 from pydantic import (
     BaseModel,
+    BeforeValidator,
     ConfigDict,
     Field,
     PlainSerializer,
@@ -44,6 +46,37 @@ Seed = Annotated[
         {"anyOf": [{"type": "integer"}, {"type": "string", "pattern": r"^[0-9]+$"}]},
         mode="validation",
     ),
+]
+
+_DECIMAL_SEED = re.compile(r"[0-9]+")
+
+
+def _require_decimal_seed(value: object) -> object:
+    """Refuse a string seed that is not plain decimal digits.
+
+    Lax ``int`` parsing would also take ``"+5"``, ``" 5 "``, ``"5.0"`` and
+    ``"5_0"`` (the last as 50); a query seed is held to exactly the
+    ``^[0-9]+$`` that :data:`QuerySeed` publishes.
+    """
+    if isinstance(value, str) and _DECIMAL_SEED.fullmatch(value) is None:
+        raise ValueError("a seed is a decimal string of digits, as the run lists it")
+    return value
+
+
+#: A replicate seed taken as a query parameter (``GET
+#: /runs/{run_id}/heatmap?seed=``), published as the decimal string every
+#: response spells it as (:data:`Seed`).
+#:
+#: With a plain ``int`` the OpenAPI schema says ``integer``, so a client
+#: generated from ``/openapi.json`` gets ``seeds: string[]`` on the run but
+#: ``seed?: number`` on the heatmap, writes ``Number(run.seeds[0])``, rounds
+#: 6914975401685141156 to 6914975401685141000 and gets a 404. The schema is
+#: therefore the string form; the value is still parsed to the exact int, and
+#: anything but decimal digits is a 422.
+QuerySeed = Annotated[
+    int,
+    BeforeValidator(_require_decimal_seed),
+    WithJsonSchema({"type": "string", "pattern": r"^[0-9]+$"}),
 ]
 
 # ---------------------------------------------------------------------------

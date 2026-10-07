@@ -4,7 +4,8 @@ No simulation and no run tree: the copy writer on the committed scenario into a
 temporary directory, the braking counter and the zone reader on synthetic tables,
 the 15-min RMSPE convention on a committed battery artifact, and the readout end to
 end on synthetic batteries in a temporary repository (a missing replicate; an arm
-with problems blocking the adoption reading).
+with problems blocking the adoption reading; a boundary-zone window without density,
+which is such a problem).
 """
 
 from __future__ import annotations
@@ -138,6 +139,29 @@ def test_cells_straddling_a_schedule_window_are_flagged(tmp_path: Path) -> None:
     ).to_parquet(run / "edges.parquet")
     r = cb.zone_speeds(run, {"sim_x_m": [100.0, 300.0]}, 600.0, 660.0)
     assert r["schedule_windows"]["cells_inside_one_window"] is False
+
+
+def _empty_second_window(run: Path) -> None:
+    """Drop the zone's cells of the second 30-s window (630-660 s) from ``_two_window_field``'s
+    ``edges.parquet``; the column outside the zone keeps every time bin, so the grid is unchanged."""
+    e = pd.read_parquet(run / "edges.parquet")
+    keep = (e["t_bin"] < 630.0) | (e["x_bin"] > 300.0)
+    e[keep].reset_index(drop=True).to_parquet(run / "edges.parquet")
+
+
+def test_a_zone_window_without_density_is_counted_as_filled(tmp_path: Path) -> None:
+    """A simulated zone has no observation gaps, so a 30-s window without density means the zone
+    was empty: the zone speed fills it forward (to the first window's 5 m/s, as the schedule fills a
+    missing sample) and ``schedule_windows.filled`` counts it, which ``battery`` records as a problem."""
+    run = tmp_path / "run"
+    _two_window_field(run, 5.0, 25.0)
+    _empty_second_window(run)
+    r = cb.zone_speeds(run, {"sim_x_m": [100.0, 300.0]}, 600.0, 660.0)
+    assert r["schedule_windows"]["n"] == 2
+    assert r["schedule_windows"]["filled"] == 1
+    assert r["schedule_windows"]["cells_inside_one_window"] is True
+    assert r["speed_ms"] == pytest.approx(5.0)  # the filled window took the first one's speed
+    assert r["cells"]["dt_s"] == 15.0
 
 
 def test_the_committed_schedule_is_on_the_30s_grid_the_zone_speed_uses() -> None:
@@ -333,3 +357,25 @@ def test_an_arm_with_problems_blocks_the_adoption_reading(
     assert doc["adoption"]["blocked_by_problems"] == {
         "canonical": ["33: limit_factor 1.0 recorded, 1.2185 expected"]
     }
+
+
+def test_a_filled_zone_window_is_a_problem_that_blocks_the_reading(
+    repo: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """One B1 replicate of the dc_refit arm leaves the zone's second 30-s window empty: A2 is still
+    computed (the window is filled) but the replicate is named in the arm's problems, so the adoption
+    reading is blocked and ``evaluate`` exits with status 3."""
+    _empty_second_window(repo / "runs" / "i24_validation" / "d_b1" / "cfg" / "22")
+    out = repo / "out.json"
+    assert _main(monkeypatch, out) == cb.EXIT_BLOCKED
+    doc = json.loads(out.read_text())
+    arm = doc["arms"]["dc_refit"]
+    assert arm["b1"]["zone_windows_filled"] == [0, 1, 0]
+    assert arm["criteria"]["A2"]["zone"]["windows_filled"]["b1"] == [0, 1, 0]
+    assert arm["criteria"]["A2"]["zone"]["verdict"] is not None
+    assert arm["problems"] == [
+        "22: 1 of the boundary zone's 2 30-s windows have no density (the zone was empty; "
+        "the zone speed filled them)"
+    ]
+    assert doc["adoption"]["blocked_by_problems"] == {"dc_refit": arm["problems"]}
+    assert doc["adoption"]["i24_holds"] is None

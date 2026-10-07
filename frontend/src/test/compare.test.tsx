@@ -13,6 +13,7 @@ import { clearAuthFailure, setOfflineFallback } from '../api/client';
 import type { AggregateStat, Heatmap, RunDetail, ScenarioSummary, SweepDetail } from '../api/types';
 import { AppStateProvider } from '../components/AppContext';
 import { sameExtent, unionExtent } from '../components/HeatmapCanvas';
+import { mockCreateSweep, mockGetRun } from '../mocks/mockApi';
 import {
   compareNotes,
   compareSections,
@@ -637,6 +638,37 @@ describe('CompareView seeds, notes and re-reads', () => {
     ).toBeInTheDocument();
     expect(within(pickerB()).queryByText('DEMO')).toBeNull();
     expect(calls.filter((u) => u.endsWith('/runs/run-base'))).toHaveLength(1);
+  });
+
+  it('says "share no seed" of demo runs only when they share none, each field its own run’s seed', async () => {
+    setOfflineFallback(true);
+    // two neighbouring cells of a demo sweep: they used to run 9150–9169 and
+    // 9165–9184, and the demo heatmap ignored `?seed=`, so this note said
+    // "share no seed" of runs that shared five
+    const sweep = await mockCreateSweep({
+      scenario_id: 'scn-corridor',
+      penetrations: [0.01, 0.02],
+      compliances: [0.25, 0.8],
+      controllers: ['follower_stopper'],
+      replicates: 20,
+      include_baseline: false,
+    });
+    const cell = (p: number, c: number): string =>
+      `run-sw-${sweep.sweep_id.slice(-4)}-fol-p${p}-c${c}-none`;
+    const [ra, rb] = await Promise.all([mockGetRun(cell(1, 80)), mockGetRun(cell(2, 25))]);
+    expect(ra.seeds.filter((s) => rb.seeds.includes(s))).toEqual([]);
+
+    renderAt(`/compare?a=${ra.run_id}&b=${rb.run_id}`);
+    const note = await screen.findByText(/the runs share no seed/, {}, { timeout: 4000 });
+    expect(note).toHaveTextContent(
+      `A shows seed ${ra.seeds[0]} and B seed ${rb.seeds[0]}: the runs share no seed`,
+    );
+    const heads = Array.from(document.querySelectorAll('.compare-heat-seed')).map((e) => e.textContent);
+    expect(heads).toEqual([
+      `seed ${ra.seeds[0]} · replicate 1 of 20`,
+      `seed ${rb.seeds[0]} · replicate 1 of 20`,
+    ]);
+    expect(calls).toEqual([]);
   });
 
   it('reads again, exactly once, on Retry after a failed Reload', async () => {

@@ -49,8 +49,9 @@ the rule needs the owner. Reported, not gating: the peak sections (2,200 / 3,200
 thresholds, GEH < 5 share and 5-min RMSPE; the reference's reproduction of the committed step-3 battery.
 Lane shares are not computed: only the trajectories carry per-lane section crossings. Every arm feeds the
 reading (A1), so any arm with ``problems`` (a replicate's files missing, a recorded factor or config hash that
-disagrees, different seeds, ...) blocks it: ``i24_holds`` is None, ``adoption.blocked_by_problems`` names each
-such arm's problems, and ``evaluate`` exits with status 3 after writing the output.
+disagrees, different seeds, ``edges.parquet`` cells straddling the schedule's 30-s windows, a 30-s window of
+the boundary zone without density, ...) blocks it: ``i24_holds`` is None, ``adoption.blocked_by_problems``
+names each such arm's problems, and ``evaluate`` exits with status 3 after writing the output.
 """
 
 import argparse
@@ -245,7 +246,10 @@ def zone_speeds(run_dir: Path, zone: dict, t_lo: float, t_hi: float) -> dict[str
     ``schedule_mean`` weights every window equally. So the cells are grouped into those windows
     (``(t_bin - t_lo) // BOUNDARY_WINDOW_S``), each window's Edie speed is its sum of flow over its sum of
     density, a window without density is filled as the schedule fills one without samples (forward, then
-    backward), and ``speed_ms`` is the unweighted mean of the window speeds. Corrected 2026-10-07, before any
+    backward), and ``speed_ms`` is the unweighted mean of the window speeds. The schedule fills a window
+    the detectors missed, but a simulated zone has no observation gaps: a window without density means the
+    zone was empty, so ``schedule_windows.filled`` > 0 is a problem (``battery`` records it, which blocks
+    the adoption reading, as straddling cells do; review 2026-10-07). Corrected 2026-10-07, before any
     p12 result was read: the first version took one Edie speed over all the cells, which weights each window
     by its vehicle-time (dense, slow windows count more than in the schedule's mean); that value is reported
     as ``edie_2h_ms``. ``per_window_ms`` is the Edie speed per 5-min window (reported).
@@ -346,15 +350,25 @@ def battery(label: str, runs_root: Path, zone: dict, factor: float | None) -> di
             )
         if steps is None:
             steps = meta["config"]["network"]["boundary"]["steps"]
-        zones.append(
+        z = (
             zone_speeds(run_dir, zone, t_lo, t_hi)
             if (run_dir / "edges.parquet").is_file()
             else None
         )
-        if zones[-1] is None:
+        zones.append(z)
+        if z is None:
             problems.append(f"{seed}: no edges.parquet under {run_dir}")
-        elif not zones[-1]["schedule_windows"]["cells_inside_one_window"]:
-            problems.append(f"{seed}: edges.parquet cells straddle the schedule's 30-s windows")
+        else:
+            if not z["schedule_windows"]["cells_inside_one_window"]:
+                problems.append(f"{seed}: edges.parquet cells straddle the schedule's 30-s windows")
+            # a simulated zone has no observation gaps: a window without density means the zone was
+            # empty, which the forward/backward fill would hide (review 2026-10-07)
+            if z["schedule_windows"]["filled"]:
+                problems.append(
+                    f"{seed}: {z['schedule_windows']['filled']} of the boundary zone's "
+                    f"{z['schedule_windows']['n']} 30-s windows have no density (the zone was empty; "
+                    "the zone speed filled them)"
+                )
     coll = [int(x) for x in sim.get("n_collisions_per_replicate") or []]
     coll_meta = [None if m is None else m.get("n_collisions") for m in metas]
     if (

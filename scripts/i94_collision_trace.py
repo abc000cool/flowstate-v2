@@ -54,7 +54,14 @@ For each run matched by (config hash, seed) to an expected run:
    meta-only archive such as p8c's) or the file cannot be read, the block says so
    (``log_recorded``, ``log_rows``, ``log_problem``) and reads ``logged: false``: the
    inferred reading (braking and entries) stands. A run that recorded no log reads
-   ``logged: false`` exactly as before the recorder existed.
+   ``logged: false`` exactly as before the recorder existed. The runner records only
+   the sections whose weave block sets the flag, so ``unrecorded_sections`` lists every
+   ``meta.json["weave_sections"]`` / ``["measured_merges"]`` label (``ramp``) that the
+   log's ``sections`` lacks. When the collision's section is among them (or the
+   collision lies in no section while some section is), the absence of a target in the
+   log says nothing: the block reads ``logged: false`` and "section not recorded", and
+   the inferred reading stands. A log that holds the collision's section is read as
+   above, with any other unrecorded sections named in the block and the verdict.
 
 Each run's window rows (every vehicle within the spatial band, and the three cars
 throughout) are written to ``<run>/collision_slice.parquet``; the trajectories
@@ -874,10 +881,51 @@ def braking(
     }
 
 
+def _section_label(meta: Mapping[str, Any], edge: str) -> str | None:
+    """The label (``ramp``) of the weaving section or measured zone whose edges hold ``edge``."""
+    for key in ("weave_sections", "measured_merges"):
+        for s in meta.get(key) or []:
+            if edge in (s.get("edges") or []):
+                return None if s.get("ramp") is None else str(s["ramp"])
+    return None
+
+
+def unrecorded_sections(meta: Mapping[str, Any], log: CommandLog) -> list[str] | None:
+    """The run's sections whose commands the log does not hold (module item 5).
+
+    Every ``meta.json["weave_sections"]`` / ``["measured_merges"]`` label (``ramp``)
+    absent from ``meta.json["weave_command_log"]["sections"]`` (the runner records only
+    the sections whose weave block sets ``record_commands``), in meta.json's order.
+    ``None`` when the run records no such mapping: then nothing can be said.
+    """
+    rec = None if log.recorded is None else log.recorded.get("sections")
+    if not isinstance(rec, Mapping):
+        return None
+    labels = [
+        str(s["ramp"])
+        for key in ("weave_sections", "measured_merges")
+        for s in meta.get(key) or []
+        if s.get("ramp") is not None
+    ]
+    return [s for s in labels if s not in rec]
+
+
 def commands_block(
-    log: CommandLog, vid: str, t_c: float, step: float, params: Params
+    log: CommandLog,
+    meta: Mapping[str, Any],
+    edge: str,
+    vid: str,
+    t_c: float,
+    step: float,
+    params: Params,
 ) -> dict[str, Any]:
-    """The rear car's weave speed targets and commands in the window (module item 5)."""
+    """The rear car's weave speed targets and commands in the window (module item 5).
+
+    ``edge``: the collision's edge, which places it in a section (:func:`_section_label`).
+    When that section did not record commands (:func:`unrecorded_sections`), or the
+    collision lies in no section while some section did not record them, the block says
+    "section not recorded" and reads ``logged: false``: the inferred reading stands.
+    """
     if log.frame is None:
         if not log.present:
             # no log recorded: the block as before the recorder existed
@@ -888,6 +936,34 @@ def commands_block(
             "log_rows": None if log.recorded is None else log.recorded.get("n_rows"),
             "log_problem": log.problem,
             "note": f"{log.problem}: the inferred reading (braking and entries) stands",
+        }
+    unrecorded = unrecorded_sections(meta, log)
+    section = _section_label(meta, edge)
+    # True / False: the collision's section is / is not in the log; None: the run does
+    # not say which sections it recorded, or the collision lies in no section
+    section_recorded = None if unrecorded is None or section is None else section not in unrecorded
+    where: dict[str, Any] = {
+        "collision_section": section,
+        "section_recorded": section_recorded,
+        "unrecorded_sections": unrecorded,
+    }
+    if unrecorded and section_recorded is not True:
+        recorded = log.recorded or {}  # never empty here: unrecorded_sections read it
+        held = sorted(str(s) for s in recorded.get("sections") or {})
+        why = (
+            f"{section} did not record weave commands (meta.json {COMMANDS_META_KEY} "
+            f"sections: {held})"
+            if section is not None
+            else f"the collision's edge {edge} lies in no weaving section or measured zone, "
+            f"and {unrecorded} did not record weave commands"
+        )
+        return {
+            "logged": False,
+            "log_recorded": True,
+            "log_rows": recorded.get("n_rows"),
+            **where,
+            "note": f"section not recorded: {why}; the inferred reading (braking and entries) "
+            "stands",
         }
     cmds = log.frame
     mine = cmds[
@@ -903,6 +979,7 @@ def commands_block(
     rows = [r for r in commands if r["rule"] in SPEED_TARGET_RULES]
     return {
         "logged": True,
+        **where,
         "speed_targets": rows,
         "active_in_contact_step": any(abs(float(r["t"]) - (t_c - step)) <= _EPS_T for r in rows),
         "n_steps_with_target": len({round(float(r["t"]), 6) for r in rows}),
@@ -1120,7 +1197,7 @@ def trace_event(
             "rear": arrival_on_edge(rear, rng),
             "front": arrival_on_edge(front, rng),
         },
-        "weave_commands_rear": commands_block(cmds, ev.collider, t_c, step, params),
+        "weave_commands_rear": commands_block(cmds, meta, edge, ev.collider, t_c, step, params),
     }
     # the slice: every vehicle within the band, and the three cars throughout the window
     win = frame[(frame["t"] >= w_lo) & (frame["t"] <= w_hi)]
@@ -1216,19 +1293,21 @@ def _verdict(b: Mapping[str, Any]) -> str:
     hyp = b.get("hypothesis")
     if hyp == "command_cap":
         cmd = b["weave_commands_rear"]
-        cmd_txt = (
-            (
-                "weave command log not readable here, inferred reading"
-                if cmd.get("log_problem")
-                else "weave command not logged"
-            )
-            if not cmd.get("logged")
-            else (
+        unrec = cmd.get("unrecorded_sections") or []
+        unrec_txt = f"unrecorded sections: {', '.join(unrec)}"
+        if not cmd.get("logged"):
+            if unrec:
+                cmd_txt = f"section not recorded ({unrec_txt}), inferred reading"
+            elif cmd.get("log_problem"):
+                cmd_txt = "weave command log not readable here, inferred reading"
+            else:
+                cmd_txt = "weave command not logged"
+        else:
+            cmd_txt = (
                 "weave target in the contact step"
                 if cmd.get("active_in_contact_step")
                 else "no weave target in the contact step"
-            )
-        )
+            ) + (f" ({unrec_txt})" if unrec else "")
         return f"{b['braking_rear']['reading']}; {cmd_txt}"
     if hyp == "opposing_entries":
         e = b["entries"]

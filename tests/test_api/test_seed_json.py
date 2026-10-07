@@ -129,3 +129,53 @@ def test_a_64_bit_seed_round_trips_byte_exactly_through_the_api(client: TestClie
     # ... and the rounded number a browser would have made of it does not
     h = client.get(f"/api/v1/runs/{rid}/heatmap?field=speed&seed={ROUNDED}", headers=HEADERS)
     assert h.status_code == 404
+
+
+def test_openapi_publishes_the_heatmap_seed_as_the_decimal_string_runs_list(
+    client: TestClient,
+) -> None:
+    # A client generated from /openapi.json must get the same type for the
+    # seed it sends as for the seeds it reads (``RunOut.seeds: string[]``);
+    # an ``integer`` here made it write ``Number(run.seeds[0])`` and round
+    # 6914975401685141156 into a 404.
+    spec = client.get("/openapi.json").json()
+    params = spec["paths"]["/api/v1/runs/{run_id}/heatmap"]["get"]["parameters"]
+    (seed,) = [p for p in params if p["name"] == "seed"]
+    assert seed["in"] == "query"
+    assert seed["required"] is False
+    assert seed["schema"]["anyOf"] == [
+        {"type": "string", "pattern": "^[0-9]+$"},
+        {"type": "null"},
+    ]
+    seeds = spec["components"]["schemas"]["RunOut"]["properties"]["seeds"]
+    assert seeds["items"]["type"] == "string"
+
+    # and no other query or path parameter carries a seed as a number
+    for path, ops in spec["paths"].items():
+        for op in ops.values():
+            for p in op.get("parameters", []):
+                if "seed" in p["name"].lower():
+                    assert "integer" not in json.dumps(p["schema"]), (path, p)
+
+
+def test_the_heatmap_seed_parses_exactly_and_refuses_anything_but_digits(
+    client: TestClient,
+) -> None:
+    scenario = post_scenario(client, macro_corridor_config(seed=42))
+    run = post_run(client, scenario["scenario_id"])
+    assert run["status"] == "done", run["error"]
+    rid = run["run_id"]
+    url = f"/api/v1/runs/{rid}/heatmap?field=speed"
+
+    # omitted: the first seed; given: exactly that int, not its double
+    assert client.get(url, headers=HEADERS).json()["seed"] == str(BIG_SEED)
+    h = client.get(f"{url}&seed={BIG_SEED}", headers=HEADERS)
+    assert h.status_code == 200, h.text
+    assert h.json()["seed"] == str(BIG_SEED)
+    # digits that name no replicate are a 404, not a 422
+    assert client.get(f"{url}&seed=999999", headers=HEADERS).status_code == 404
+
+    # lax int parsing would take these ("5_0" as 50); the published pattern does not
+    for bad in ("abc", "", "-1", "+5", "5.0", "5_0", "%205", "0x10"):
+        r = client.get(f"{url}&seed={bad}", headers=HEADERS)
+        assert r.status_code == 422, (bad, r.status_code, r.text)

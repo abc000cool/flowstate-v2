@@ -502,7 +502,7 @@ document does not set is false); it is never written into a new record.
 `tests/golden/config_defaults.json` now also pins the module-level defaults
 of the two dict-valued merge blocks (`merge_defaults`:
 `SCRIPTED_MERGE_DEFAULTS`, `WEAVE_DEFAULTS`), which a model dump does not
-show (`merge_params` defaults to `{}`).
+show (`merge_params` defaults to `{}`). Fields that only observe a run (`WeaveSpec.record_commands`) are left out of the payload at every value (2026-10-07; `HASH_PAYLOAD_CONTEXT_KEY`).
 
 **Ramp-meter stop placement (2026-09-23, docs/LESSONS.md row 31).** The
 meter used to set its stop only once a vehicle was on the ramp's last edge;
@@ -1804,15 +1804,22 @@ of which weave rule issued which command to which vehicle, which the collision d
 docs/I94_CAL_COLLISIONS.md §15 had to infer.
 
 - **Switch.** `WeaveSpec.record_commands: bool = False`, per weave block: a weaving section (`merge: weave`)
-  or a measured zone with a weave block (`merge: measured`). At `false` it is hash-neutral and absent from
-  `model_dump`, YAML and `meta.json["config"]` (the wrap serializer that drops an unset `ramp_to_ramp_share`);
-  `true` moves the config hash like any other non-default value. No committed scenario sets it.
+  or a measured zone with a weave block (`merge: measured`). Hash-neutral on and off: `config_hash_payload`
+  leaves it out at every value (its dump runs under `flowstate_core.config.HASH_PAYLOAD_CONTEXT_KEY`, which
+  `WeaveSpec`'s serializer reads, so every site that embeds a weave block is covered). The reason: the
+  recorder is a pure observer, so a recording run reproduces the run without it and must carry that run's
+  hash, or a recording re-run of a pinned scenario would fail its `--expect-hash` guard and any reproduction
+  check keyed on the hash. At `false` it is absent from `model_dump`, YAML and `meta.json["config"]` (the wrap
+  serializer that drops an unset `ramp_to_ramp_share`); at `true` they carry it, so `meta.json["config"]` still
+  says the run recorded. No committed scenario sets it.
 - **Off by default, never a behaviour change.** Off, no recorder exists: nothing is buffered, no file is
   written, `meta.json` has no new key, and every committed scenario and golden is unchanged. On, the recorder
   reads only the step's subscription results (no TraCI call) and no rule reads anything back from it: every
   other file of the run is byte-identical with it on or off, and `meta.json` differs only by the flag in
-  `config`, by `config_hash` and by `weave_command_log` (below). Rows are buffered in memory and written once,
-  through an open file object, after `journeys.parquet` and before the completion marker.
+  `config` and by `weave_command_log` (below). Rows are buffered in memory and written once, through an open
+  file object, after `journeys.parquet` and before the completion marker. A recording run and one without it
+  share `runs/<config_hash>/<seed>/`: `run_micro` deletes a `weave_commands.parquet` left there by an
+  earlier run before it starts, so the directory holds a log only when its `meta.json` names it.
 - **Rows.** One per command decision of a recording section's rules: a TraCI command a rule wrote, or a
   guard's decision to withhold one. In decision order: by step, then the sections' upstream-first step order,
   then each rule's own order. A step in which a driven vehicle merely stays under mode 512 with no request

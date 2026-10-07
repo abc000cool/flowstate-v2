@@ -153,6 +153,12 @@ function composeToConfig(c: ComposeState, base: ScenarioConfig | null): Scenario
       vsl: c.vsl ? (base?.av.vsl ?? 'threshold') : null,
     },
     sim: { ...(base?.sim ?? {}), duration_s: c.duration_s },
+    // the stored master seed, carried over as the number the API sent: the
+    // form does not edit it and does not cap it at MAX_SEED (a seed stored
+    // through the API, an upload or a preset may be larger). It is the stored
+    // value exactly, since the server refuses a master seed above 2^53 − 1
+    // (`ScenarioConfig.seed`); one a JSON number could not carry is refused
+    // on this POST, never stored rounded.
     seed: base?.seed ?? 42,
     replicates: c.replicates,
   };
@@ -202,7 +208,9 @@ function passthroughFields(
       carried.push(`${group}.${k}`);
     }
   }
-  // top level: `seed` and `tier` are real config the form cannot edit
+  // top level: `seed` and `tier` are real config the form cannot edit. `seed`
+  // is listed as carried "unchanged" because it is posted back as the stored
+  // number, which is the stored seed exactly (see `composeToConfig`)
   const modelledTop = new Set(['name', 'network', 'fleet', 'av', 'sim', 'replicates']);
   for (const k of Object.keys(base as unknown as Record<string, unknown>)) {
     const v = (base as unknown as Record<string, unknown>)[k];
