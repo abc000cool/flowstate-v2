@@ -53,8 +53,13 @@ status() { bounded 90 gcloud compute instances describe "$VM" --project "$PROJEC
 instance_id() { bounded 90 gcloud compute instances describe "$VM" --project "$PROJECT" --zone "$ZONE" --format='value(id)' 2>/dev/null; }
 ssh_cmd() { bounded 150 gcloud compute ssh "$VM" --project "$PROJECT" --zone "$ZONE" --quiet --ssh-flag="-o ConnectTimeout=25" --command "$1" 2>/dev/null; }
 delete_vm() {
-  bounded 300 gcloud compute instances delete "$VM" --project "$PROJECT" --zone "$ZONE" --quiet >/dev/null 2>&1 \
-    && say "VM_DELETED $VM" || say "VM_DELETE_FAILED (retry manually: gcloud compute instances delete $VM --zone $ZONE)"
+  if bounded 300 gcloud compute instances delete "$VM" --project "$PROJECT" --zone "$ZONE" --quiet >/dev/null 2>&1; then
+    say "VM_DELETED $VM"
+  elif ! bounded 60 gcloud compute instances list --project "$PROJECT" --format='value(name)' 2>/dev/null | grep -qx "$VM"; then
+    say "VM_GONE $VM (already deleted, e.g. by its own self-delete)"   # 2026-10-07: was reported as a failed delete
+  else
+    say "VM_DELETE_FAILED (retry manually: gcloud compute instances delete $VM --zone $ZONE)"
+  fi
   say "post-delete instances: $(bounded 60 gcloud compute instances list --project "$PROJECT" --format='value(name,status)' 2>/dev/null | tr '\n' ' ')"
 }
 archive_owner() { tar xzOf "$1" logs/INSTANCE_ID 2>/dev/null | tr -d '[:space:]'; }   # the instance id inside an archive
