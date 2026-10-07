@@ -1542,3 +1542,25 @@ uv run --no-sync python $H/releases.py $W    # every release beside its referenc
 **Identity runs.** As §8.7, with W1's `harness/cmp.py` and `harness/hashes.py`
 on the trees `git archive HEAD` (`84a272e`) and that tree with `config.py`
 and `runner.py` copied in.
+
+## 11. W1b's corridor round — 2026-10-07 (stage p9, one n2-standard-16 in us-central1-a, 99 min, about $1.30, self-deleted)
+
+The I-94 four-hour battery under the reference configuration with the calibrated drivers (`_dc`, step 3's 20
+seeds) run twice on one code tree (b066935): the reference, and the same scenario with `entrant_giveup_m` 5 and
+`entrant_giveup_dwell_s` 60 on both weaves (`scenarios/mndot_i94_wb_stpaul_weave_dc_w1b.yaml`). Read by
+`corridor_w1b.py` against the criteria of §10.6, fixed before any run (`artifacts/weave_w1b_corridor.json`;
+`artifacts/validation_mndot_i94_wb_stpaul_weave_xlsfg_dc{,_w1b}_p9.json`; `docs/reports/..._p9/`).
+
+| criterion | result | verdict |
+|---|---|---|
+| reference reproduces step 3 | identical (max difference 0.0) | — |
+| C1 T.H.52 throughput (S790), paired | +7.2 veh/h [−9.6, +23.9] | **pass** |
+| C2 realised demand, paired | +0.7 pp [−0.25, +1.66] | **pass** |
+| C3 collisions | 0 (reference 0) | **pass** |
+| C4b locks | **0** (reference 3: 677105600768189526 at T.H.52; 3011106312394044631 and 8026499204807041784 at Ruth St) | **pass** |
+| C5b releases | Ruth St 108 of 19,900 entrants (0.54 %); T.H.52 5 of 91,801 (0.005 %) | **pass** |
+
+Beside the criteria: link-flow GEH < 5 on 56.1 % of link-hours against 52.3 %, lowest realised demand 0.958 against
+0.889, and the battery's own `no_locks` row (validation.locks) PASS against FAIL. **W1b removes every lock with no
+measurable throughput cost and no collision.** It stays opt-in until the owner adopts it (a default change is a
+config-hash change under policy v3).
