@@ -42,25 +42,42 @@ Outputs: ``runs/i24_validation/<arm>/`` run trees and
 ``artifacts/i24_validation_<arm>.json`` (schema of the M3 results files plus
 the coverage tables). The scenario YAMLs used are copied next to them.
 
+**An explicit scenario file** (``--scenario PATH --label L``, 2026-10-06, for
+scenarios no family builds, e.g. the Amendment-1 calibrated
+``scenarios/i24_replica_flow_speedcal_dc.yaml``): the same battery, observed
+side and criteria rows, the run tree under ``runs/i24_validation<_family>/L/``
+and the artifact ``artifacts/i24_validation<_family>_L.json``. ``L`` may not be
+an arm's name (no committed arm artifact can be overwritten). Additively, the
+artifact records the scenario file (path, sha256), every replicate's SUMO
+collision count (``simulated.n_collisions_per_replicate``, the ``collisions``
+block of ``validation.battery.collision_summary`` and ``zero_collisions``) and
+scores the ``no_collisions`` criteria row from them; the committed observed
+side (``artifacts/i24_validation_observed.json``) is not rewritten. The arms'
+behaviour and outputs are unchanged.
+
 Usage (repo root)::
 
     uv run --no-sync python scripts/i24_validate.py --replicates 2 --arms tracked   # smoke
     uv run --no-sync python scripts/i24_validate.py --procs 8                        # full
     uv run --no-sync python scripts/i24_validate.py --ring-only --ring-seeds 3       # ring rows
+    uv run --no-sync python scripts/i24_validate.py --scenario scenarios/X.yaml --label x --procs 30
 """
 
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import math
 import os
+import re
 import shutil
 import sys
 import time
 from dataclasses import asdict
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -73,6 +90,7 @@ from flowstate_core.config import ScenarioConfig, config_hash
 from flowstate_core.rng import spawn_seeds
 from microsim.runner import _versions, run_replicates
 from microsim.scenarios import load_scenario
+from validation.battery import collision_counts, collision_free, collision_summary, load_meta
 from validation.criteria import evaluate, get_profile
 from validation.fields import speed_field
 from validation.metrics import aggregate, compute_metrics, geh, rmspe
@@ -110,8 +128,21 @@ def scenario_name(arm: str) -> str:
 
 
 def artifact_path(arm: str) -> Path:
-    """Validation artifact path of an arm in the active family."""
+    """Validation artifact path of an arm (or an explicit scenario's label) in the active family."""
     return REPO_ROOT / "artifacts" / f"i24_validation{FAMILY}_{arm}.json"
+
+
+def label_error(label: str) -> str | None:
+    """Why ``label`` cannot name an explicit scenario's battery, else None.
+
+    A label names the run tree and the artifact (:func:`artifact_path`), so an
+    arm's name is refused: it would overwrite that arm's committed artifact.
+    """
+    if not re.fullmatch(r"[a-z0-9][a-z0-9_]*", label):
+        return f"--label {label!r}: lower-case letters, digits and '_' only"
+    if label in ARMS or label in ("ring", "all", "both"):
+        return f"--label {label!r} is an arm's (or reserved) name; choose another"
+    return None
 
 
 def _inputs() -> dict:
@@ -564,7 +595,15 @@ def build_results(
     obs: dict,
     replicates: int,
     ring: dict | None = None,
+    *,
+    scenario: str | None = None,
+    demand_arm: str | None = None,
+    collisions: list[int | None] | None = None,
 ) -> dict:
+    """The arm's artifact. ``scenario`` / ``demand_arm`` / ``collisions`` serve an
+    explicit scenario (``--scenario``): its name, its demand text and its runs'
+    collision counts for the ``no_collisions`` row (None: not recorded, as for
+    every arm)."""
     sim_hourly = np.asarray(sim["hourly_flows_veh_h_mean"], dtype=np.float64)
     geh_tracked = _geh_table(sim_hourly, np.asarray(obs["hourly_flows_veh_h_tracked"]))
     geh_corrected = _geh_table(sim_hourly, np.asarray(obs["hourly_flows_veh_h_corrected"]))
@@ -596,6 +635,7 @@ def build_results(
         ring_dampening=None if ring is None else bool(ring["dampening"]["passed"]),
         n_seeds=replicates,
         sweep_grid=_sweep_grid(),
+        collision_counts=collisions,
     )
     inputs = _inputs()
     ring_note = (
@@ -609,7 +649,7 @@ def build_results(
         "schema_version": 6,
         "criteria_profile": PROFILE.name,
         "created_at": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
-        "scenario": scenario_name(arm),
+        "scenario": scenario if scenario is not None else scenario_name(arm),
         "arm": arm,
         "replicates": replicates,
         "seeds": sim["seeds"],
@@ -623,7 +663,9 @@ def build_results(
             "framing": "measured downstream boundary condition per FHWA Traffic Analysis Toolbox Vol. III (FHWA-HOP-18-036, 2019); data-derived (seeded=False)",
         },
         "ramps": [r["name"] for r in inputs["ramps"]],
-        "demand_arm": (
+        "demand_arm": demand_arm
+        if demand_arm is not None
+        else (
             "as tracked (lower bound at the instrument's coverage)"
             if arm == "tracked"
             else "divided by the apparent tracking coverage per 15-min window (docs/I24_DATA.md §4)"
@@ -747,6 +789,8 @@ def refresh_criteria(arm: str, ring_block: dict | None = None) -> Path:
         ring_dampening=None if not ring else bool(ring["dampening"]["passed"]),
         n_seeds=int(d["replicates"]),
         sweep_grid=_sweep_grid(),
+        # recorded by explicit-scenario batteries only; absent (not recorded) for every arm
+        collision_counts=(d.get("simulated") or {}).get("n_collisions_per_replicate"),
     )
     d["criteria"] = [_json_safe(asdict(r)) for r in rows]
     d.setdefault("notes", []).append(
@@ -758,15 +802,113 @@ def refresh_criteria(arm: str, ring_block: dict | None = None) -> Path:
     return path
 
 
-def main() -> None:
+def _print_arm(
+    arm: str, results: dict[str, Any], sim: dict[str, Any], obs: dict[str, Any], replicates: int
+) -> None:
+    """The console summary of one arm's (or explicit scenario's) battery."""
+    g = results["geh"]
+    print(
+        f"[{arm}] GEH<5 vs tracked {g['vs_tracked_counts']['fraction_under_5']:.0%}, vs corrected "
+        f"{g['vs_coverage_corrected_counts']['fraction_under_5']:.0%}, vs recommended "
+        f"{g['vs_recommended_coverage_counts']['fraction_under_5']:.0%} | RMSPE {results['rmspe']['value']:.1%} | "
+        f"sim backward wave [{CRITERION_DETECTOR.name}] {sim['criterion_wave_speed_kmh']} km/h "
+        f"(standard {sim['mean_backward_speed_kmh']}, {sim['n_replicates_with_backward_waves']}/{replicates} reps) | "
+        f"obs [{CRITERION_DETECTOR.name}] {obs['waves_by_detector'][CRITERION_DETECTOR.name]['mean_backward_speed_kmh']} km/h "
+        f"(standard {obs['waves']['mean_backward_speed_kmh']}, stripe {obs['waves_stripe']['mean_backward_speed_kmh']}) | "
+        f"wall {sim['wall_s']} s",
+        flush=True,
+    )
+    for row in results["criteria"]:
+        print(
+            f"    {row['name']:18s} {'PASS' if row['passed'] else 'FAIL'}  {row['value']}  ({row['threshold']})"
+        )
+
+
+def _rel_repo(path: Path) -> str:
+    p = path.resolve()
+    return str(p.relative_to(REPO_ROOT)) if p.is_relative_to(REPO_ROOT) else str(p)
+
+
+def explicit_battery(
+    scenario: Path,
+    label: str,
+    replicates: int,
+    procs: int,
+    obs: dict[str, Any],
+    ring: dict[str, Any] | None,
+    analysis_procs: int,
+    reuse_runs: bool,
+) -> dict[str, Any]:
+    """The battery of an explicit scenario file (module docstring); writes its artifact."""
+    cfg = load_scenario(scenario)
+    print(
+        f"scenario {_rel_repo(scenario)} as {label!r} ({cfg.name}, config {config_hash(cfg)}): "
+        f"{replicates} replicates ...",
+        flush=True,
+    )
+    sim = micro_arm(
+        cfg,
+        replicates,
+        OUT_ROOT / label,
+        procs,
+        obs,
+        analysis_procs=analysis_procs,
+        reuse_runs=reuse_runs,
+    )
+    metas = [load_meta(d) for d in sim["run_dirs"]]
+    sim["n_collisions_per_replicate"] = collision_counts(metas)
+    results = build_results(
+        label,
+        cfg,
+        sim,
+        obs,
+        replicates,
+        ring,
+        scenario=cfg.name,
+        demand_arm=f"as written in the scenario file {_rel_repo(scenario)} (its header says how)",
+        collisions=sim["n_collisions_per_replicate"],
+    )
+    results["scenario_file"] = {
+        "path": _rel_repo(scenario),
+        "sha256": hashlib.sha256(scenario.read_bytes()).hexdigest(),
+    }
+    results["collisions"] = collision_summary(metas, labels=sim["seeds"])
+    results["zero_collisions"] = collision_free(metas)
+    results["notes"].append(
+        f"Explicit scenario file (--scenario {_rel_repo(scenario)} --label {label}); every "
+        "replicate's SUMO collision count (meta.json n_collisions) is recorded in "
+        "simulated.n_collisions_per_replicate, pooled in 'collisions' and scored in the "
+        "no_collisions row."
+    )
+    out_path = artifact_path(label)
+    out_path.write_text(json.dumps(_json_safe(results), indent=2, allow_nan=False))
+    shutil.copy(scenario, OUT_ROOT / f"{cfg.name}.yaml")
+    _print_arm(label, results, sim, obs, replicates)
+    col = results["collisions"]
+    print(
+        "    collisions         "
+        + (
+            "not recorded"
+            if col is None
+            else f"{col['total']} over {col['n_runs_recorded']} replicate(s), "
+            f"{col['n_runs_with_collisions']} with any"
+        )
+        + f" -> {_rel_repo(out_path)}",
+        flush=True,
+    )
+    return results
+
+
+def main(argv: list[str] | None = None) -> None:
     ap = argparse.ArgumentParser(description=__doc__.split("\n", 1)[0])
     ap.add_argument("--replicates", type=int, default=20)
     ap.add_argument("--procs", type=int, default=int(os.environ.get("I24_PROCS", "8")))
     ap.add_argument(
         "--arms",
         choices=("all", "both", "tracked", "corrected", "speedcal", "ramps", "speedcal_heavy"),
-        default="all",
-        help="'both' = tracked + corrected (the pre-2026-09-03 pair); 'all' adds speedcal",
+        default=None,
+        help="'both' = tracked + corrected (the pre-2026-09-03 pair); 'all' (the default) adds "
+        "speedcal",
     )
     ap.add_argument("--analysis-procs", type=int, default=6)
     ap.add_argument(
@@ -797,7 +939,33 @@ def main() -> None:
         "then read scenarios/i24_replica_<family>*.yaml and write "
         "artifacts/i24_validation_<family>_<arm>.json under runs/i24_validation_<family>/",
     )
-    args = ap.parse_args()
+    ap.add_argument(
+        "--scenario",
+        type=Path,
+        default=None,
+        help="validate this scenario file (with --label) instead of the family's arms",
+    )
+    ap.add_argument(
+        "--label",
+        default=None,
+        help="the explicit scenario's name for its run tree and artifact "
+        "(artifacts/i24_validation[_<family>]_<label>.json); not an arm's name",
+    )
+    args = ap.parse_args(argv)
+    explicit = args.label is not None or args.scenario is not None
+    if explicit:
+        if args.label is None:
+            ap.error("--scenario needs --label (it names the run tree and the artifact)")
+        if args.scenario is None and not args.criteria_only:
+            ap.error("--label needs --scenario (or --criteria-only, to re-score its artifact)")
+        if args.arms is not None:
+            ap.error("--arms and --scenario/--label are exclusive")
+        if args.scenario is not None and not args.scenario.is_file():
+            ap.error(f"--scenario {args.scenario}: no such file")
+        err = label_error(args.label)
+        if err is not None:
+            ap.error(err)
+    arms_choice = args.arms or "all"
     global FAMILY, OUT_ROOT
     if args.family:
         FAMILY = f"_{args.family}"
@@ -819,24 +987,28 @@ def main() -> None:
         print(f"done in {time.perf_counter() - t0:.0f} s -> {OUT_ROOT / 'ring'}")
         return
     obs = observed_side(OUT_ROOT / "observed_i24.json")
-    shutil.copy(
-        OUT_ROOT / "observed_i24.json", REPO_ROOT / "artifacts" / "i24_validation_observed.json"
-    )
+    if not explicit:  # an explicit scenario's battery leaves the committed observed side alone
+        shutil.copy(
+            OUT_ROOT / "observed_i24.json", REPO_ROOT / "artifacts" / "i24_validation_observed.json"
+        )
     arms = [
         a
         for a in ARMS
-        if args.arms == a
-        or (
-            args.arms == "all"
-            and (
-                a not in ("ramps", "speedcal_heavy")
-                or (REPO_ROOT / "scenarios" / f"{scenario_name(a)}.yaml").is_file()
+        if not explicit
+        and (
+            arms_choice == a
+            or (
+                arms_choice == "all"
+                and (
+                    a not in ("ramps", "speedcal_heavy")
+                    or (REPO_ROOT / "scenarios" / f"{scenario_name(a)}.yaml").is_file()
+                )
             )
+            or (arms_choice == "both" and a in ("tracked", "corrected"))
         )
-        or (args.arms == "both" and a in ("tracked", "corrected"))
     ]
     if args.criteria_only:
-        for arm in arms:
+        for arm in [args.label] if explicit else arms:
             art = artifact_path(arm)
             if not art.is_file():
                 print(f"[{arm}] no artifact at {art}; skipped", flush=True)
@@ -850,6 +1022,17 @@ def main() -> None:
                     flush=True,
                 )
         return
+    if explicit:
+        explicit_battery(
+            args.scenario,
+            args.label,
+            args.replicates,
+            args.procs,
+            obs,
+            ring,
+            args.analysis_procs,
+            args.reuse_runs,
+        )
     for arm in arms:
         cfg = load_scenario(scenario_name(arm))
         print(
@@ -872,22 +1055,7 @@ def main() -> None:
             REPO_ROOT / "scenarios" / f"{scenario_name(arm)}.yaml",
             OUT_ROOT / f"{scenario_name(arm)}.yaml",
         )
-        g = results["geh"]
-        print(
-            f"[{arm}] GEH<5 vs tracked {g['vs_tracked_counts']['fraction_under_5']:.0%}, vs corrected "
-            f"{g['vs_coverage_corrected_counts']['fraction_under_5']:.0%}, vs recommended "
-            f"{g['vs_recommended_coverage_counts']['fraction_under_5']:.0%} | RMSPE {results['rmspe']['value']:.1%} | "
-            f"sim backward wave [{CRITERION_DETECTOR.name}] {sim['criterion_wave_speed_kmh']} km/h "
-            f"(standard {sim['mean_backward_speed_kmh']}, {sim['n_replicates_with_backward_waves']}/{args.replicates} reps) | "
-            f"obs [{CRITERION_DETECTOR.name}] {obs['waves_by_detector'][CRITERION_DETECTOR.name]['mean_backward_speed_kmh']} km/h "
-            f"(standard {obs['waves']['mean_backward_speed_kmh']}, stripe {obs['waves_stripe']['mean_backward_speed_kmh']}) | "
-            f"wall {sim['wall_s']} s",
-            flush=True,
-        )
-        for row in results["criteria"]:
-            print(
-                f"    {row['name']:18s} {'PASS' if row['passed'] else 'FAIL'}  {row['value']}  ({row['threshold']})"
-            )
+        _print_arm(arm, results, sim, obs, args.replicates)
     print(f"done in {time.perf_counter() - t0:.0f} s -> {OUT_ROOT}")
 
 

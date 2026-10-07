@@ -49,7 +49,7 @@ UPLOADED=0
 make_archive() {  # make_archive light|full — atomic replace of $ARCHIVE, then the optional bucket copy
   local mode="${1:-light}" extra=""
   if [ "$mode" = full ]; then
-    extra=$(for d in runs/i24_validation_zip/*/*/ runs/i24_validation/speedcal_heavy/*/; do ls -d "$d"*/ 2>/dev/null | sort | head -1; done)
+    extra=$(for d in runs/i24_validation_zip/*/*/ runs/i24_validation/speedcal_heavy/*/ runs/i24_validation/dc*/*/; do ls -d "$d"*/ 2>/dev/null | sort | head -1; done)
     [ -f runs/i24_validation_zip/ring/ring_benchmark.json ] && extra="runs/i24_validation_zip/ring/ring_benchmark.json $extra"
   fi
   # per-run metrics of the cap sweep ride along in every archive: the sweep is resumable from them
@@ -91,6 +91,9 @@ make_archive() {  # make_archive light|full — atomic replace of $ARCHIVE, then
   # stage 22's grids (<root>/<pair>/<config hash>/<seed>/: readings and meta of every run, the manifest, the lane geometry)
   # and the per-lane data-quality report the observed I-94 lane shares were masked with; the artifacts ride in artifacts/*.json
   extra="$extra $(ls runs/p3/grid_*/*/*/*/readings.json runs/p3/grid_*/*/*/*/meta.json runs/p3/grid_*/MANIFEST.json runs/p3/grid_*/LANES.json runs/p3/dq_lanes/data_quality.json runs/p3/dq_lanes/data_quality.md 2>/dev/null | tr '\n' ' ')"
+  # stage 23's I-24 batteries (runs/i24_validation/dc*/<config hash>/<seed>/): every replicate's meta.json (collision
+  # counters); the I-94 battery's per-seed files ride with the runs/mndot_* line above, its reports with docs/reports
+  extra="$extra $(ls runs/i24_validation/dc*/*/*/meta.json 2>/dev/null | tr '\n' ' ')"
   # shellcheck disable=SC2086
   tar czf "$ARCHIVE.part" --exclude=net artifacts/*.json scenarios/*.yaml logs $extra 2>/dev/null \
     || tar czf "$ARCHIVE.part" artifacts/*.json scenarios/*.yaml logs 2>/dev/null || { rm -f "$ARCHIVE.part"; return 1; }
@@ -1079,6 +1082,126 @@ stage p3_grid_i94 bash -c "set -e; mkdir -p $P3; \
   $RUN scripts/calibrate_driver_grid.py --corridor i94 --plan-only; \
   $RUN scripts/calibrate_driver_grid.py --corridor i94 --procs $(( PROCS < 16 ? PROCS : 16 )) \
     --out $P3/grid_i94 --artifact artifacts/driver_calibration_i94.json" || say "p3_grid_i94 failed; continuing"
+
+# 23. Amendment-1 full tests (step 3, "run the full tests once"; docs/FRISCO_PROTOCOL.md Amendment 1 and §6,
+#     docs/DISCHARGE_CALIBRATION.md §3; written 2026-10-06 before the grid's choice was known). Each corridor's calibrated
+#     scenario is written from the committed grid artifact (artifacts/driver_calibration_{i24,i94}.json, selection.chosen)
+#     by scripts/apply_driver_calibration.py — or, when the file is already committed, checked against that artifact
+#     (--check: a file for another pair stops that corridor) — and run unchanged, as the amendment requires. Needs the
+#     I-24 data set for the I-24 battery (its observed side checks the data hash): launch with the default --data-set i24.
+#   p4_i94_battery_gate: scenarios/${MNDOT}_weave_dc.yaml (name ${MNDOT}_weave_xlsfg_dc: the 4-h weave scenario under the
+#     reference configuration xlsfg, stage p1_mndot_ref's recipe line for line, with the chosen population and keep-right),
+#     20 seeds, full 4 h, against data/mndot/$MNDOT/observations.json, profile fhwa_tat3_2004; then the protocol's baseline
+#     gate (scripts/baseline_gate.py) on the committed phase-1 day sets in artifacts/p1_rehearsal_2026-10-04 (calibration-
+#     and validation-day targets, both quality-masked: source.quality names dq/data_quality.json, sha256 8cae907dec40;
+#     day_split.json, seed 20261004; per_day/ holds the four validation days) -> artifacts/baseline_gate_mndot_dc.json and
+#     docs/reports/${MNDOT}_weave_xlsfg_dc/baseline_gate.md; then the report with its client summary (corridor_battery
+#     --criteria-only --baseline-gate; the gated copy is artifacts/validation_${MNDOT}_weave_xlsfg_dc_gated.json). The
+#     comparison is the uncalibrated reference ON RECORD, not re-run: artifacts/validation_${MNDOT}_weave_xlsfg_p1.json and
+#     artifacts/baseline_gate_${MNDOT}_p1.json (stages p1_mndot_ref / p1_gate: same seeds, same observations, same day sets).
+#   p4_i24_battery: scenarios/i24_replica_flow_speedcal_dc.yaml (the grid's I-24 reference with the chosen population and
+#     keep-right), 20 seeds and the 20-seed ring rows, through scripts/i24_validate.py --scenario/--label dc ->
+#     artifacts/i24_validation_dc.json: the criteria rows of the committed fitted arms (artifacts/i24_validation_flow_speedcal.json
+#     is the same scenario under the old drivers, the direct pair; artifacts/i24_validation_speedcal.json is the canonical
+#     fitted arm), plus the no_collisions row scored from every replicate's collision counter (the collisions block).
+#     Trajectories pruned to the first seed afterwards.
+#     KNOWN CONFOUNDER: I-24's demand scale (s = 0.800) and ramp levels were fit under the old drivers and are NOT refit
+#     here (protocol §7.1 allows a demand refit). Demand fitted to the old, lower discharge can mask or exaggerate the
+#     drivers' effect on the GEH and speed rows. The opt-in stage p4_i24_refit (not in the default list) refits the scale
+#     on the calibrated drivers with the fitter that set 0.800 (scripts/i24_fit_demand_scale.py, corrected profile,
+#     06:30-07:30 fit hour, 07:30-08:30 held out; 12 single-seed runs) and runs the same battery on the refit scenario
+#     (-> artifacts/demand_scale_i24_flow_dc.json, scenarios/i24_replica_flow_speedcal_dc_refit.yaml,
+#     artifacts/i24_validation_dc_refit.json); about 30-35 min more. Ramp levels stay as fitted.
+#   Resilience: each step says when it fails and the next step runs ("... continuing"); a corridor whose scenario cannot be
+#     written or checked is skipped. A stage with a failed step gets no done marker; on a resumed run the I-94 battery is
+#     not repeated when its artifact and logs/p4_i94_battery_gate.battery.ok exist (only the gate and report re-run).
+#   Cost: about 60-75 min of VM time on n2-standard-32 (the I-94 battery 39-48 min at 30 processes, as p1_mndot_ref ran;
+#     gate and report minutes; the I-24 battery about 12 min at 30 processes, 20 runs at once as battery_flow ran on
+#     2026-09-17; plus the I-24 data upload at launch). Size --cap-min at about twice that (150-180). Example, after the two
+#     grid artifacts are committed and pushed (the scenario files may be committed too, or are written here):
+#       scripts/gcp/launch_i24_pipeline.sh --vm flowstate-p4 --bucket gs://<bucket> --self-delete --cap-min 180 \
+#         --pipeline-args '--stages "p4_i94_battery_gate p4_i24_battery"'
+P1A=artifacts/p1_rehearsal_2026-10-04
+DC_I94=scenarios/${MNDOT}_weave_dc.yaml
+DC_I94_NAME=${MNDOT}_weave_xlsfg_dc
+DC_I24=scenarios/i24_replica_flow_speedcal_dc.yaml
+p4_scenario() {  # p4_scenario <corridor> <file> [apply args...]: write <file> from the committed choice, or check it
+  local c="$1" f="$2" art="artifacts/driver_calibration_$1.json"
+  shift 2
+  [ -f "$art" ] || { say "p4: $art is missing (the grid's choice is not committed)"; return 1; }
+  if [ -f "$f" ]; then
+    $RUN scripts/apply_driver_calibration.py --corridor "$c" --artifact "$art" --out "$f" --check "$@"
+  else
+    $RUN scripts/apply_driver_calibration.py --corridor "$c" --artifact "$art" --out "$f" "$@"
+  fi
+}
+p4_prune() {  # p4_prune <root>: keep the first seed's trajectories of each configuration under <root>, drop the rest
+  local h first r
+  for h in "$1"/*/; do
+    [ -d "$h" ] || continue
+    first=$(ls -d "$h"*/ 2>/dev/null | sort | head -1)
+    for r in "$h"*/; do [ "$r" = "$first" ] && continue; rm -f "$r/trajectories.parquet"; done
+  done
+  du -sh "$1" 2>/dev/null || true
+}
+p4_i94_battery_gate_steps() {
+  local rc=0 obs="data/mndot/$MNDOT/observations.json" art="artifacts/validation_${DC_I94_NAME}.json"
+  local rep="docs/reports/${DC_I94_NAME}" out="runs/${DC_I94_NAME}/baseline" ok="logs/p4_i94_battery_gate.battery.ok"
+  p4_scenario i94 "$DC_I94" || { say "p4_i94_battery_gate: no calibrated I-94 scenario; battery, gate and report skipped"; return 1; }
+  if [ -f "$ok" ] && [ -f "$art" ]; then
+    say "p4_i94_battery_gate: battery done earlier ($art), not repeated"
+  elif $RUN scripts/corridor_battery.py --scenario "$DC_I94" --observations "$obs" --replicates "$REPS" --procs "$PROCS" \
+      --out "$out" --artifact "$art" --report-dir "$rep" --criteria-profile fhwa_tat3_2004; then
+    touch "$ok"
+  else
+    say "p4_i94_battery_gate: battery failed; continuing"; rc=1
+  fi
+  [ -f "$art" ] || { say "p4_i94_battery_gate: no battery artifact; gate and report skipped"; return 1; }
+  $RUN scripts/baseline_gate.py --battery-artifact "$art" \
+      --calibration-observations "$P1A/observations_calibration.json" \
+      --validation-observations "$P1A/observations_validation.json" \
+      --day-split "$P1A/day_split.json" --per-day "$P1A/per_day" \
+      --out-json artifacts/baseline_gate_mndot_dc.json --out-md "$rep/baseline_gate.md" \
+    || { say "p4_i94_battery_gate: baseline gate failed; continuing"; rc=1; }
+  $RUN scripts/corridor_battery.py --scenario "$DC_I94" --observations "$obs" --replicates "$REPS" \
+      --out "$out" --artifact "artifacts/validation_${DC_I94_NAME}_gated.json" --report-dir "$rep" \
+      --criteria-profile fhwa_tat3_2004 --criteria-only --baseline-gate \
+      --gate-calibration-observations "$P1A/observations_calibration.json" \
+      --gate-validation-observations "$P1A/observations_validation.json" --gate-day-split "$P1A/day_split.json" \
+    || { say "p4_i94_battery_gate: gated report failed; continuing"; rc=1; }
+  return $rc
+}
+p4_i24_battery_steps() {
+  local rc=0
+  p4_scenario i24 "$DC_I24" || { say "p4_i24_battery: no calibrated I-24 scenario; battery skipped"; return 1; }
+  $RUN scripts/i24_validate.py --scenario "$DC_I24" --label dc --replicates "$REPS" --procs "$PROCS" \
+      --analysis-procs 8 --ring-seeds "$RING" || { say "p4_i24_battery: battery failed; continuing"; rc=1; }
+  p4_prune runs/i24_validation/dc
+  return $rc
+}
+p4_i24_refit_steps() {
+  local rc=0 base="scenarios/i24_replica_flow_corrected_dc.yaml" scn="scenarios/i24_replica_flow_speedcal_dc_refit.yaml" pop
+  p4_scenario i24 "$base" --source scenarios/i24_replica_flow_corrected.yaml \
+    || { say "p4_i24_refit: no calibrated corrected-profile base; refit skipped"; return 1; }
+  pop=$($RUN -c "import yaml; print(yaml.safe_load(open('$base'))['fleet']['idm_calibration'])") \
+    || { say "p4_i24_refit: cannot read the base's population; refit skipped"; return 1; }
+  $RUN scripts/i24_fit_demand_scale.py --base corrected --base-yaml "$base" --fleet-artifact "$pop" --procs "$PROCS" \
+      --write-scenario --out artifacts/demand_scale_i24_flow_dc.json --scenario-out "$scn" \
+      --name i24_replica_flow_speedcal_dc_refit || { say "p4_i24_refit: demand fit failed; battery skipped"; return 1; }
+  $RUN scripts/i24_validate.py --scenario "$scn" --label dc_refit --replicates "$REPS" --procs "$PROCS" \
+      --analysis-procs 8 --ring-seeds "$RING" || { say "p4_i24_refit: battery failed; continuing"; rc=1; }
+  p4_prune runs/i24_validation/dc_refit
+  return $rc
+}
+stage p4_i94_battery_gate p4_i94_battery_gate_steps || say "p4_i94_battery_gate failed; continuing"
+stage p4_i24_battery p4_i24_battery_steps || say "p4_i24_battery failed; continuing"
+# The same-code reference for I-24 (the committed flow_speedcal arm predates today's code and hash policy): the
+# uncalibrated scenario through the same explicit-scenario path, 20 seeds, about 12 min.
+stage p4_i24_ref bash -c "$RUN scripts/i24_validate.py --scenario scenarios/i24_replica_flow_speedcal.yaml --label flow_speedcal_ref \
+    --replicates $REPS --procs $PROCS --analysis-procs 8 --ring-seeds $RING" || say "p4_i24_ref failed; continuing"
+if echo " $STAGES " | grep -q " p4_i24_refit "; then
+  stage p4_i24_refit p4_i24_refit_steps || say "p4_i24_refit failed; continuing"
+fi
 
 # 9. Done marker; the EXIT trap builds the final archives (light, then full with the first-seed replicates).
 echo "PIPELINE_DONE $(date -u +%FT%TZ)" > logs/PIPELINE_DONE
