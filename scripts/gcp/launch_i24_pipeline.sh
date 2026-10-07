@@ -223,7 +223,12 @@ if [ -n "$BUCKET" ]; then
   # one instance; a project that grants the default account no Editor role has neither by default
   SA=$(gcloud compute instances describe "$VM" --project "$PROJECT" --zone "$ZONE" --format='value(serviceAccounts[0].email)')
   echo "== granting $SA: objectAdmin on $BUCKET, instanceAdmin on $VM"
-  gcloud storage buckets add-iam-policy-binding "$BUCKET_ROOT" --member="serviceAccount:$SA" --role=roles/storage.objectAdmin >/dev/null
+  # retried: two launches granting on the same bucket at once race on the policy's etag (HTTP 412, 2026-10-07)
+  for try in 1 2 3 4 5 6; do
+    gcloud storage buckets add-iam-policy-binding "$BUCKET_ROOT" --member="serviceAccount:$SA" --role=roles/storage.objectAdmin >/dev/null && break
+    [ "$try" -eq 6 ] && { echo "== bucket grant failed 6 times" >&2; exit 1; }
+    echo "== bucket grant refused (try $try); retrying" >&2; sleep $((5 * try))
+  done
   [ "$SELF_DELETE" -eq 1 ] && gcloud compute instances add-iam-policy-binding "$VM" --project "$PROJECT" --zone "$ZONE" --member="serviceAccount:$SA" --role=roles/compute.instanceAdmin.v1 >/dev/null
 fi
 if [ "$VIA_BUCKET" -eq 1 ]; then

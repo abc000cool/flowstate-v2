@@ -65,6 +65,7 @@ from fastapi.security import APIKeyHeader
 from fastapi.staticfiles import StaticFiles
 from pydantic import ValidationError
 from starlette.datastructures import Headers
+from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 import api as api_pkg
@@ -2343,8 +2344,28 @@ def create_app() -> FastAPI:
     # Single-origin deploy: serve the built frontend at / when it exists.
     # API routes live under /api/v1/... so statics and API never collide.
     if settings.frontend_dist.is_dir():
-        app.mount("/", StaticFiles(directory=settings.frontend_dist, html=True), name="frontend")
+        app.mount("/", SpaStaticFiles(directory=settings.frontend_dist, html=True), name="frontend")
     return app
+
+
+class SpaStaticFiles(StaticFiles):
+    """The built dashboard, with ``index.html`` for its client-side routes.
+
+    The dashboard routes in the browser (``/runs``, ``/runs/<id>``, ...), so a
+    reload or a shared link on such a path must get ``index.html`` rather than
+    a 404 (2026-10-07: every deep link on the hosted tester answered
+    ``{"detail":"Not Found"}``). Only extension-less paths outside ``/api``
+    fall back; a missing asset (``/assets/x.js``) or API path stays a 404.
+    """
+
+    async def get_response(self, path: str, scope: Any) -> Any:
+        try:
+            return await super().get_response(path, scope)
+        except StarletteHTTPException as exc:
+            last = path.rsplit("/", 1)[-1]
+            if exc.status_code != 404 or path.startswith("api") or "." in last:
+                raise
+            return await super().get_response("index.html", scope)
 
 
 _app: FastAPI | None = None
