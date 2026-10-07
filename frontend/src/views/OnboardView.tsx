@@ -54,6 +54,7 @@ import { PageHeader } from '../components/PageHeader';
 import { SplitAuditTable, isSplitDefect } from '../components/SplitAuditTable';
 import { toast, toastError } from '../components/toast';
 import { Callout } from '../components/ui/Callout';
+import { LaneStrip } from '../components/LaneStrip';
 import { HashValue } from '../components/ui/CopyButton';
 import { EmptyState } from '../components/ui/EmptyState';
 import { ErrorCallout, isShellError } from '../components/ui/ErrorCallout';
@@ -995,6 +996,13 @@ export function OnboardView(): JSX.Element {
               discovered beside it, and the entry inflow peaks at{' '}
               {formatNumber(summary.inflow_peak_veh_h, 0)} veh/h.
             </p>
+
+            {/* the corridor at a glance: lanes per segment, ramps, the split
+                audit's verdicts and lane-count mismatches (§10.2 P2) */}
+            <div className="stack-sm">
+              <h3 className="onboard-col-title">Lane strip</h3>
+              <LaneStrip summary={summary} />
+            </div>
 
             <div className="grid-12 onboard-columns">
               <div className="col-span-6 stack">

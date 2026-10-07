@@ -3,7 +3,8 @@
  * A grouped sidebar (Set up / Simulate / Report; First run, the live
  * connection status and Settings in its footer), a top bar with the
  * breadcrumb, the active corridor and the theme toggle, the auth and offline
- * banners, and the scrolling content column.
+ * banners, and the scrolling content column. The top bar also opens the
+ * command palette, which ⌘K / Ctrl+K opens from anywhere (CommandPalette.tsx).
  *
  * Responsive: the sidebar is 232 px from 1024 px up, a 56 px icon rail from
  * 768 to 1023 px (labels clipped, not removed, so accessible names are
@@ -28,47 +29,14 @@ import {
 import { useAuthFailed, usePoll, wantsContentFocus } from '../lib/hooks';
 import { nextThemePref, setThemePref, THEME_PREF_LABELS, useThemePref } from '../lib/theme';
 import { useAppState } from './AppContext';
+import { CommandPalette, isPaletteShortcut, paletteShortcutLabel } from './CommandPalette';
 import { Icon, type IconName } from './icons';
+import { ALL_PAGES, FIRST_RUN, NAV_GROUPS, type NavEntry } from './navItems';
 import { FOCUSABLE, SettingsDrawer, trapTabKey } from './SettingsDrawer';
 import { Toasts } from './toast';
 
-interface NavEntry {
-  to: string;
-  label: string;
-  icon: IconName;
-}
-
-const NAV_GROUPS: { id: string; label: string; items: NavEntry[] }[] = [
-  {
-    id: 'setup',
-    label: 'Set up',
-    items: [
-      { to: '/onboard', label: 'Onboard corridor', icon: 'map-pin' },
-      { to: '/scenarios', label: 'Scenarios', icon: 'layers' },
-    ],
-  },
-  {
-    id: 'simulate',
-    label: 'Simulate',
-    items: [
-      { to: '/runs', label: 'Runs', icon: 'activity' },
-      { to: '/sweeps', label: 'Sweeps', icon: 'grid-3x3' },
-    ],
-  },
-  {
-    id: 'report',
-    label: 'Report',
-    items: [{ to: '/reports', label: 'Reports', icon: 'file-text' }],
-  },
-];
-
-/** The guided QUICKSTART path, kept in the sidebar footer. */
-const FIRST_RUN: NavEntry = { to: '/first-run', label: 'First run', icon: 'circle-play' };
-
 /** Breadcrumb section names, by first path segment. */
-const SECTION_LABELS = new Map<string, string>(
-  [...NAV_GROUPS.flatMap((g) => g.items), FIRST_RUN].map((n) => [n.to, n.label]),
-);
+const SECTION_LABELS = new Map<string, string>(ALL_PAGES.map((n) => [n.to, n.label]));
 
 /** Width bands of §6.4 (CSS can't read custom properties in media queries,
  * so these mirror the constants in shell.css). */
@@ -192,10 +160,36 @@ function ThemeToggle(): JSX.Element {
   );
 }
 
+/** The top bar's way into the command palette, beside the corridor chip: the
+ * label clips to an icon below 1024 px; the shortcut hint is decorative (the
+ * button announces it through aria-keyshortcuts). */
+function CommandsButton({ onOpen }: { onOpen: () => void }): JSX.Element {
+  const shortcut = paletteShortcutLabel();
+  return (
+    <button
+      type="button"
+      className="btn ghost topbar-cmdk"
+      aria-haspopup="dialog"
+      aria-keyshortcuts="Meta+K Control+K"
+      title={`Commands (${shortcut})`}
+      onClick={onOpen}
+    >
+      <Icon name="search" />
+      <span className="topbar-cmdk-label">Commands</span>
+      <kbd className="topbar-cmdk-kbd" aria-hidden="true">
+        {shortcut}
+      </kbd>
+    </button>
+  );
+}
+
 export function Layout(): JSX.Element {
   const [healthy, setHealthy] = useState<boolean | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [navOpen, setNavOpen] = useState(false);
+  const [paletteOpen, setPaletteOpen] = useState(false);
+  const paletteOpenRef = useRef(paletteOpen);
+  paletteOpenRef.current = paletteOpen;
   const { corridor } = useAppState();
   const mockEnv = isMockEnv();
   const authFailed = useAuthFailed();
@@ -250,10 +244,30 @@ export function Layout(): JSX.Element {
     };
   }, [navOpen]);
 
-  const openSettings = (): void => {
+  const openSettings = useCallback((): void => {
     setNavOpen(false);
     setSettingsOpen(true);
-  };
+  }, []);
+  const closePalette = useCallback((): void => setPaletteOpen(false), []);
+
+  // ⌘K / Ctrl+K opens the command palette from anywhere, and closes it again.
+  // Not over another modal layer (a confirm dialog, Settings, the navigation
+  // drawer): that layer owns the keyboard until it closes.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent): void => {
+      if (!isPaletteShortcut(e)) return;
+      if (paletteOpenRef.current) {
+        e.preventDefault();
+        setPaletteOpen(false);
+        return;
+      }
+      if (document.querySelector('[aria-modal="true"]')) return;
+      e.preventDefault();
+      setPaletteOpen(true);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
 
   const skipToContent = (e: ReactMouseEvent<HTMLAnchorElement>): void => {
     // focus the content without putting #content in the router's URL
@@ -359,6 +373,7 @@ export function Layout(): JSX.Element {
             </button>
             <Breadcrumb />
             <span className="topbar-spacer" />
+            <CommandsButton onOpen={() => setPaletteOpen(true)} />
             <CorridorChip corridor={corridor} />
             <ThemeToggle />
           </header>
@@ -410,6 +425,7 @@ export function Layout(): JSX.Element {
       </div>
 
       <Toasts />
+      {paletteOpen && <CommandPalette onClose={closePalette} onOpenSettings={openSettings} />}
       {settingsOpen && <SettingsDrawer onClose={() => setSettingsOpen(false)} />}
     </>
   );

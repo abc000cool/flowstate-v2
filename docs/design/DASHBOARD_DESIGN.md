@@ -1491,7 +1491,7 @@ live text "Copied" is announced. Hashes display truncated in the middle as `3f9a
 The **demo** placeholder `— demo, no server hash —` is never truncated and never gets a
 copy button.
 
-### 9.19 Command palette (P2, optional; after QA)
+### 9.19 Command palette (P2, optional; after QA) — done 2026-10-07
 
 ⌘K or Ctrl K opens a dialog (`aria-label="Command menu"`, `--z-modal`, 560 px wide,
 `--radius-lg`, top-aligned at 15vh). It holds a 40 px search input (the ARIA
@@ -1504,6 +1504,33 @@ combobox pattern) and a listbox of commands:
 
 The list is filtered by a case-insensitive substring match. Arrows move, Enter runs and
 Esc closes. It needs no new dependency and no data fetching.
+
+**As built** (`components/CommandPalette.tsx`, `lib/fuzzy.ts`, `lib/runsCache.ts`):
+
+* Opened by ⌘K / Ctrl K (toggles; not over another modal layer) and by a `Commands`
+  ghost button in the top bar (search icon, `⌘K`/`Ctrl K` hint, `aria-keyshortcuts`;
+  icon-only below 1024 px).
+* Groups: **Go to** (every sidebar page; the current one says "Current page"),
+  **Actions** ("Launch a ring_sugiyama run…", "Open settings"), **Theme** (System,
+  Light, Dark; the current one says "Current"; "toggle" finds them), **Recent runs**.
+* "Launch a ring_sugiyama run…" opens Runs with router state that selects the ring
+  preset (or its stored copy), resets tier, duration, seed and replicates to the
+  scenario's own values and focuses the scenario select. It never launches; the cost
+  gate is unchanged.
+* Recent runs come from `lib/runsCache`, which records every `GET /runs` the views
+  already make (through `api/client.listRuns`, sequenced, cleared when the API settings
+  change). The palette fetches nothing. Five are listed before typing; a query searches
+  them all. Rows read from the demo backend carry the DEMO badge.
+* Filtering is fuzzy rather than substring: every query word must match the label (prefix
+  > word start > inside > subsequence) or the command's keywords; matched letters are
+  bold in the accent text colour, groups are ordered by their best match.
+* `input[role=combobox]` with `aria-expanded`, `aria-controls` and
+  `aria-activedescendant`; `role=listbox` with labelled `role=group`s and
+  `role=option`s (name = label, description = hint). Up/Down wrap, Enter runs, Escape
+  closes, Tab stays in the box. `.app` is inert while open; focus returns to the opener,
+  or to the new page's `<main>` when a command navigated. A visually hidden status reads
+  the match count. Entrance on `--duration-3` (zero under reduced motion); forced colors
+  outline the active option.
 
 ---
 
@@ -1646,6 +1673,23 @@ Build a scenario from an OpenStreetMap extract and a detector export. Onboarding
     onboarding finishes."
   * History loading: 3 skeleton rows.
   * When the service has no `GET /corridors`: a neutral Callout with the existing text.
+* **P2: lane strip** — **done 2026-10-07** (`components/LaneStrip.tsx`). A "Lane strip"
+  block under the summary's lead: a pure-SVG schematic drawn from the summary already
+  loaded (no request). The carriageway is one band per `lanes_profile` run, right-edge
+  aligned (lane 0, SUMO's rightmost, at the bottom; the profile does not say on which
+  side a lane is added), with dashed lane lines and steps where the count changes. Above
+  it, split-audit verdicts (○ as drawn, ◆ defect, dashed ○ undecided) and lane-count
+  mismatches against the inventory (■); at each split the lanes feeding the exit are
+  shaded over the approach, and the lanes a defect traps (`trapped_lanes` on
+  `through_lane_exit_only`, the feeding lanes on a wrong-side verdict) are hatched in
+  the danger colour. Below it, the demand model's ramps (▲ entrance, ▼ exit), then a km
+  axis. Width follows the container (`ResizeObserver`). Tokens only, through classes in
+  `views/onboard.css`, with explicit system colours under forced colors. The SVG is one
+  `role="img"` named with a one-line summary (also the visible caption); the text
+  alternative is the "Lane strip as text" disclosure, one line per position (lane
+  changes, ramps, each split in words, mismatches), defects and mismatches marked in
+  words as well as colour. A legend lists only what is drawn; markers carry hover
+  titles whose text the list also holds.
 * **Test anchors:**
   * Labels: `Name`, `Bounding box (S, W, N, E)`, `Bearing (deg)`, `Upstream station`,
     `Downstream station`, `Detector CSV`, `Stations CSV`, `Window (s)`, `Duration (s)`,
@@ -1700,6 +1744,16 @@ Launch a scenario and follow its replicates. Every run records its seeds and con
 * **P2: filter chips** above the table: `All 38`, `Running 2`, `Done 30`, `Failed 6`.
   They are client-side, with the count in mono, and use `.chip-toggle` single-select
   semantics (`aria-pressed`).
+  **Done 2026-10-07** (`lib/runFilters.ts`): three labelled groups, Status, Tier and
+  Scenario (Tier and Scenario only when they have two or more values, or one is chosen),
+  each `All` plus `<button class="chip-toggle filter-chip" aria-pressed>` per value with a
+  faceted count (rows it would show given the other groups). Values within a group are
+  alternatives, groups combine, so the chips are multi-select within a group; `All`
+  clears the group. Chip words are capitalised (`Running`), unlike the verbatim status
+  pills. The state is the URL, `?status=running,failed&tier=micro&scenario=<id>`
+  (written with replace), so a filtered view is a link. A filter matching nothing shows
+  EmptyState compact "No runs match these filters." with "Clear filters"; a `Showing n of
+  m` line with "Clear filters" sits at the end of the bar while filters are on.
 * **States:**
   * First load: 5 skeleton rows.
   * Empty: EmptyState compact "No runs yet." with "Runs appear here after you launch
@@ -1769,6 +1823,17 @@ Scenario corridor_10km · Config 3f9a…c21e ⧉ · Seeds 20 ▸ · FD v1_legacy
 * **P2:** a `Report on this run →` secondary button, shown only for `done` + micro. It
   navigates to `/reports?select={run_id}`, and ReportsView preselects that run if it is
   listed.
+  **Done 2026-10-07**, amended by the owner: the button is shown for **every** loaded run,
+  in the page-header actions. A finished micro run gets a `Link` styled `.btn`
+  (arrow-right icon, `FOCUS_CONTENT_STATE`); otherwise a disabled button with the reason
+  visible beside it and linked by `aria-describedby`: macro first ("Reports need
+  finished micro runs: the API refuses a validation report from macro (screening)
+  runs.", `CLAUDE.md` §5.6), then failed, then not yet done. Reports reads `?select=`
+  once the runs list has answered: a finished micro run is checked and scrolled into
+  view, and a status callout under step 1 says so; a macro, failed or unlisted run is
+  explained in a warning callout and not selected; a queued or running run is waited for
+  and selected when done. The parameter is dropped (replace) once dealt with. Outside a
+  router (most Reports tests) nothing is preselected.
 * **Test anchors:**
   * Run id text; `SEEDED`, `MICRO`, `MACRO SCREENING`, `DEMO`;
     `— demo, no server hash —`; `/v1_legacy preset/` containing `(uncalibrated)`.
@@ -1976,7 +2041,7 @@ relief: a legend, direct labels and the table twin.
 * Segmented controls use Left/Right.
 * Dialogs and drawers trap focus, close on Esc and restore focus.
 * The mobile sidebar drawer has the same behavior.
-* P2: ⌘/Ctrl K opens the command palette.
+* P2: ⌘/Ctrl K opens the command palette (done 2026-10-07, §9.19).
 * Add a **skip link** as the first focusable element, "Skip to content", targeting
   `<main id="content">`. It is visible on focus.
 
@@ -2060,7 +2125,7 @@ relief: a legend, direct labels and the table twin.
 | **4. Views** (parallel) | A: Runs, Reports · B: Scenarios, Onboard, First run, `SplitAuditTable` · C: Run detail, Sweeps, `InsertionPanel`, `MergeDiagnostics` | Each owner's view `.tsx` files + its `styles/views/*.css` | §10 per view | Each view's tests green |
 | **5. Cleanup** | A | `tokens.css` (delete the legacy alias block); a grep sweep | Nothing references an alias: `grep -rnE "var\(--(bg|panel|panel-edge|panel-raised|panel-inset|text|muted|faint|accent|accent-dim|amber|amber-dim|danger|danger-dim|ok|ok-dim|s[1-6]|r[1-3]|font-ui|card-shadow|ring)\)" src` returns nothing. No hex outside `tokens.css` and `lib/colormap.ts`: `grep -rnE "#[0-9a-fA-F]{6}" src --include=*.tsx --include=*.css` hits only those two files and tests. `style={{` appears only for computed geometry | Greps clean; tests green |
 | **6. QA** | all | none | Use the browser recipe in the repo notes (LAN address, demo/inline API). Walk all 7 routes in **light and dark** at **1440, 1024 and 768 px**. Run axe DevTools on every route in both themes (0 serious/critical). Emulate forced colors and reduced motion in Chrome DevTools. Run the keyboard-only pass in §11.3 | Checklist in §12.4 ticked |
-| **7. P2 (optional)** | any | `components/CommandPalette.tsx`, Runs filter chips, Run detail "Report on this run", Onboard lane strip | §9.19 and the P2 items in §10 | Separate PRs |
+| **7. P2 (optional)** — **done 2026-10-07** | any | `components/CommandPalette.tsx`, Runs filter chips, Run detail "Report on this run", Onboard lane strip | §9.19 and the P2 items in §10 | Separate PRs. As built: §9.19, §10.2 (lane strip), §10.3, §10.4; 60 tests in `palette`, `runfilters`, `reportpreselect`, `lanestrip`, each with the in-repo a11y audit |
 
 ### 12.3 Parallel split (disjoint files)
 

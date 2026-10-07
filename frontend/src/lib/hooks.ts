@@ -100,3 +100,20 @@ export function wantsContentFocus(state: unknown): boolean {
     (state as { focusContent?: unknown }).focusContent === true
   );
 }
+
+/** Router state that opens the Runs launcher on a preset, prefilled with the
+ * scenario's own values and focused (the command palette's "Launch a ring
+ * run…"). It never launches: the user still presses Launch run, behind the
+ * same cost gate as any other launch. Carries `FOCUS_CONTENT_STATE` too, so
+ * focus has somewhere to be until the launcher's scenario list has loaded. */
+export function launchPresetState(name: string): { focusContent: true; launchPreset: string } {
+  return { ...FOCUS_CONTENT_STATE, launchPreset: name };
+}
+
+/** The preset a location's router state asks the Runs launcher to open on,
+ * or null (see `launchPresetState`). */
+export function wantedLaunchPreset(state: unknown): string | null {
+  if (typeof state !== 'object' || state === null) return null;
+  const name = (state as { launchPreset?: unknown }).launchPreset;
+  return typeof name === 'string' && name !== '' ? name : null;
+}

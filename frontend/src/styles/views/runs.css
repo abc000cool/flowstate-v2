@@ -56,3 +56,44 @@ table.data td.runs-error-cell {
   height: auto;
   padding: var(--space-3);
 }
+
+/* ---- filter chips above the table (§10.3 P2) ---- */
+/* One row per dimension that filters anything: a sentence-case label, then
+   All and the values as toggle chips with faceted counts. */
+.runs-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-6);
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.runs-filter-group {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1-5);
+  min-width: 0;
+}
+
+.runs-filter-label {
+  margin-right: var(--space-1);
+  font-size: var(--text-12);
+  line-height: var(--leading-12);
+  font-weight: var(--weight-medium);
+  color: var(--text-secondary);
+}
+
+.runs-filter-summary {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin-left: auto;
+  font-size: var(--text-12);
+  line-height: var(--leading-12);
+  color: var(--text-secondary);
+}
+.runs-filter-summary .mono {
+  color: var(--text-primary);
+}

@@ -181,3 +181,185 @@ table.data td.remedy code {
   font-family: var(--font-mono);
   letter-spacing: var(--tracking-none);
 }
+
+/* ============================== lane strip (§10.2 P2) =============== */
+/* components/LaneStrip.tsx: the carriageway per lanes_profile run, ramps,
+   split-audit verdicts and lane-count mismatches. Every colour is a token;
+   the defect hatch also differs in shape, and the text list under the plot
+   carries every value. */
+
+.lane-strip {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: 0;
+  min-width: 0;
+}
+
+.lane-strip-plot {
+  min-width: 0;
+  padding: var(--space-2) 0;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  background: var(--bg-surface);
+  overflow: hidden;
+}
+.lane-strip-plot svg {
+  display: block;
+  max-width: 100%;
+  height: auto;
+}
+
+.ls-road {
+  fill: var(--bg-hover);
+}
+.ls-edge {
+  stroke: var(--text-secondary);
+  stroke-width: 1.5;
+}
+.ls-lane-line {
+  stroke: var(--border-strong);
+  stroke-width: 1;
+  stroke-dasharray: 6 5;
+}
+.ls-feed {
+  fill: var(--border-default);
+}
+/* the hatch fill comes from the pattern; the outline marks the lane */
+.ls-trapped {
+  stroke: var(--danger-text);
+  stroke-width: 1.5;
+}
+.ls-trapped-bg {
+  fill: var(--danger-subtle);
+}
+.ls-trapped-hatch {
+  stroke: var(--danger-text);
+  stroke-width: 2;
+}
+.ls-split {
+  stroke: var(--text-secondary);
+  stroke-width: 1;
+}
+.ls-split.is-defect {
+  stroke: var(--danger-text);
+  stroke-width: 1.5;
+}
+.ls-mark-ok {
+  fill: var(--bg-surface);
+  stroke: var(--success-text);
+  stroke-width: 1.75;
+}
+.ls-mark-defect {
+  fill: var(--danger-solid);
+  stroke: var(--danger-text);
+  stroke-width: 1;
+}
+.ls-mark-unknown {
+  fill: var(--bg-surface);
+  stroke: var(--text-secondary);
+  stroke-width: 1.5;
+  stroke-dasharray: 2 2;
+}
+.ls-mark-warn {
+  fill: var(--warning-solid);
+  stroke: var(--warning-text);
+  stroke-width: 1;
+}
+.ls-ramp {
+  fill: var(--text-secondary);
+}
+.ls-axis {
+  stroke: var(--viz-axis);
+  stroke-width: 1;
+}
+.ls-tick-label {
+  fill: var(--viz-tick-text);
+  font-family: var(--font-mono);
+  font-size: var(--text-11);
+}
+
+.lane-strip-caption {
+  max-width: var(--prose-max);
+  font-size: var(--text-12);
+  line-height: var(--leading-12);
+  color: var(--text-secondary);
+}
+
+.lane-strip-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-4);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--text-12);
+  line-height: var(--leading-12);
+  color: var(--text-secondary);
+}
+.lane-strip-legend li {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1-5);
+}
+.lane-strip-swatch {
+  flex: none;
+}
+
+.lane-strip-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin: 0;
+  padding-left: var(--space-5);
+  font-size: var(--text-12);
+  line-height: var(--leading-12);
+  color: var(--text-primary);
+}
+.lane-strip-at {
+  color: var(--text-secondary);
+}
+.lane-strip-list li.is-defect {
+  color: var(--danger-text);
+}
+.lane-strip-list li.is-warning {
+  color: var(--warning-text);
+}
+
+/* Windows high contrast: system colours, set explicitly so the shapes keep
+   apart (fill and stroke would otherwise all collapse to one colour) */
+@media (forced-colors: active) {
+  .lane-strip-plot svg,
+  .lane-strip-swatch {
+    forced-color-adjust: none;
+  }
+  .ls-road,
+  .ls-mark-ok,
+  .ls-mark-unknown,
+  .ls-trapped-bg {
+    fill: Canvas;
+  }
+  .ls-edge,
+  .ls-lane-line,
+  .ls-split,
+  .ls-axis,
+  .ls-mark-ok,
+  .ls-mark-unknown,
+  .ls-trapped,
+  .ls-split.is-defect,
+  .ls-trapped-hatch {
+    stroke: CanvasText;
+  }
+  .ls-feed {
+    fill: GrayText;
+  }
+  .ls-mark-defect,
+  .ls-mark-warn {
+    fill: Highlight;
+    stroke: CanvasText;
+  }
+  .ls-ramp,
+  .ls-tick-label {
+    fill: CanvasText;
+  }
+}

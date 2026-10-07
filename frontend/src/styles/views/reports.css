@@ -139,3 +139,8 @@ table.data td.reports-wrap-cell {
 .reports-source-toggle {
   align-self: flex-start;
 }
+
+/* ---- ?select= preselect note under step 1 (§10.4 P2) ---- */
+.reports-preselect {
+  max-width: var(--content-max-narrow);
+}

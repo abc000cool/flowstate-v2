@@ -27,11 +27,19 @@
  * stops calling it live: the Live pill becomes "Stale — last update hh:mm:ss"
  * with the service's error beside it, until a poll lands again. (`/health`
  * can answer while `GET /runs` fails — a locked store, a 502 from the front
- * end — so the shell's offline banner does not cover this.) */
+ * end — so the shell's offline banner does not cover this.)
+ *
+ * Filter chips above the table (§10.3 P2) narrow the loaded rows by status,
+ * tier and scenario on the client, with faceted counts; the choice lives in
+ * the URL (`?status=running,failed`) so a filtered view can be shared, and a
+ * filter that matches nothing says so with a way to clear it. The command
+ * palette's "Launch a ring run…" lands here with router state that opens the
+ * launcher on the ring preset, prefilled and focused; nothing is queued until
+ * Launch run is pressed. */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { MouseEvent as ReactMouseEvent } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import {
   createRun,
   isMockActive,
@@ -40,7 +48,7 @@ import {
   listScenarios,
   OFFLINE_WRITE_MESSAGE,
 } from '../api/client';
-import type { CreateRunRequest, PresetSummary, RunSummary } from '../api/types';
+import type { CreateRunRequest, PresetSummary, RunStatus, RunSummary } from '../api/types';
 import { ProgressBar, SeededBadge, StatusChip, TierBadge } from '../components/bits';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { Icon } from '../components/icons';
@@ -52,7 +60,7 @@ import { EmptyState } from '../components/ui/EmptyState';
 import { SkeletonRows } from '../components/ui/Skeleton';
 import { DEMO_HASH_LABEL, DEMO_ROW_TITLE } from '../lib/demo';
 import { failureReason, formatClockTime, formatFetchError } from '../lib/format';
-import { useAuthFailed, useOfflineFallback, usePoll } from '../lib/hooks';
+import { useAuthFailed, useOfflineFallback, usePoll, wantedLaunchPreset } from '../lib/hooks';
 import {
   defaultPreset,
   ensureStored,
@@ -74,6 +82,17 @@ import {
   warmupProblem,
 } from '../lib/limits';
 import { MIN_REPLICATES } from '../lib/metrics';
+import {
+  filterRuns,
+  hasRunFilters,
+  NO_RUN_FILTERS,
+  parseRunFilters,
+  runFacet,
+  runFiltersSearch,
+  toggleRunFilter,
+  type RunFilterKey,
+  type RunFilters,
+} from '../lib/runFilters';
 
 const RUNS_POLL_MS = 2000;
 /** Columns of the runs table (skeleton rows and the empty row span them). */
@@ -95,6 +114,69 @@ function numOr(raw: string, fallback: number | null): number | null {
  * seed the runner would reject. */
 function clampRaw(raw: string, lo: number, hi: number): string {
   return raw === '' ? '' : String(clampInt(Number(raw), lo, hi, lo));
+}
+
+/** Chip labels for the status and tier filters. Capitalised, unlike the
+ * verbatim lower-case status pills in the table, so a chip is never mistaken
+ * for a row's status (and never matches it). */
+const STATUS_CHIP_LABELS: Record<RunStatus, string> = {
+  queued: 'Queued',
+  running: 'Running',
+  done: 'Done',
+  failed: 'Failed',
+};
+const TIER_CHIP_LABELS: Record<string, string> = { micro: 'Micro', macro: 'Macro' };
+
+/** One dimension of the filter bar: "All" plus a toggle button per value,
+ * each with the rows it would show. */
+function FilterGroup({
+  id,
+  label,
+  facet,
+  chosen,
+  labelFor,
+  titleFor,
+  onAll,
+  onToggle,
+}: {
+  id: RunFilterKey;
+  label: string;
+  facet: ReturnType<typeof runFacet>;
+  chosen: string[];
+  labelFor: (value: string) => string;
+  titleFor?: (value: string) => string | undefined;
+  onAll: () => void;
+  onToggle: (value: string) => void;
+}): JSX.Element {
+  return (
+    <div className="runs-filter-group" role="group" aria-labelledby={`runs-filter-${id}`}>
+      <span className="runs-filter-label" id={`runs-filter-${id}`}>
+        {label}
+      </span>
+      <button
+        type="button"
+        className="chip-toggle filter-chip"
+        aria-pressed={chosen.length === 0}
+        onClick={onAll}
+      >
+        <span className="filter-chip-label">All</span>
+        <span className="filter-chip-count mono">{facet.total}</span>
+      </button>
+      {facet.values.map(({ value, count }) => (
+        <button
+          key={value}
+          type="button"
+          className="chip-toggle filter-chip"
+          aria-pressed={chosen.includes(value)}
+          title={titleFor?.(value)}
+          onClick={() => onToggle(value)}
+        >
+          <span className="filter-chip-label">{labelFor(value)}</span>
+          <span className="filter-chip-count mono">{count}</span>
+        </button>
+      ))}
+    </div>
+  );
 }
 
 export function RunsView(): JSX.Element {
@@ -121,6 +203,7 @@ export function RunsView(): JSX.Element {
   /** When the rows on screen were read: the stale pill's "last update". */
   const [updatedAt, setUpdatedAt] = useState<Date | null>(null);
   const navigate = useNavigate();
+  const location = useLocation();
   const authFailed = useAuthFailed();
   // POST /runs never falls back to the demo backend, so the launcher says so
   // up front instead of failing on the click (api/client.assertWritable)
@@ -231,6 +314,71 @@ export function RunsView(): JSX.Element {
     setSeedRaw(base ? String(base.seed) : '');
   }, [selectedKey, base]);
 
+  // "Launch a ring run…" from the command palette arrives as router state
+  // (lib/hooks launchPresetState). Taken once and cleared from the history
+  // entry, so a reload or a Back to it does not re-apply it; applied once the
+  // library has loaded. It only prefills and focuses the launcher.
+  const [launchRequest, setLaunchRequest] = useState<string | null>(null);
+  const [focusLauncher, setFocusLauncher] = useState(false);
+  const scenarioSelectRef = useRef<HTMLSelectElement>(null);
+  useEffect(() => {
+    const wanted = wantedLaunchPreset(location.state);
+    if (wanted === null) return;
+    setLaunchRequest(wanted);
+    navigate({ pathname: location.pathname, search: location.search }, { replace: true, state: null });
+  }, [location, navigate]);
+
+  useEffect(() => {
+    if (launchRequest === null || library.length === 0) return;
+    setLaunchRequest(null);
+    const preset = presets.find(
+      (p) => p.name === launchRequest || p.filename === `${launchRequest}.yaml`,
+    );
+    // the preset, or its stored copy (same config hash), or a stored scenario
+    // of that name on a service that serves no presets
+    const item =
+      (preset && library.find((s) => s.config_hash === preset.config_hash)) ??
+      library.find((s) => s.name === launchRequest);
+    if (!item) {
+      toast('info', `This service has no ${launchRequest} scenario; choose one in the launcher.`);
+      setFocusLauncher(true);
+      return;
+    }
+    const cfg = item.config;
+    setLaunchKey(itemKey(item));
+    setLaunchTier('micro');
+    // the scenario's own values, even if this scenario was already selected
+    // and its fields had been edited
+    prefilledFor.current = item.config_hash;
+    lastHash.current = item.config_hash;
+    setRepsRaw(cfg ? String(cfg.replicates) : '');
+    setDurationRaw(cfg ? String(cfg.sim.duration_s) : '');
+    setSeedRaw(cfg ? String(cfg.seed) : '');
+    setFocusLauncher(true);
+  }, [launchRequest, library, presets]);
+
+  // focus the launcher's first field, unless the user has moved focus on
+  // since the request (the shell parks it on the page content meanwhile)
+  useEffect(() => {
+    if (!focusLauncher) return;
+    setFocusLauncher(false);
+    const active = document.activeElement;
+    if (active === null || active === document.body || active.id === 'content') {
+      scenarioSelectRef.current?.focus();
+    }
+  }, [focusLauncher, launchKey]);
+
+  /** The table's filters, read from and written to the URL (lib/runFilters),
+   * so a filtered view is a link. Written with replace: toggling chips does
+   * not fill the Back history. */
+  const filters = useMemo(() => parseRunFilters(location.search), [location.search]);
+  const setFilters = (next: RunFilters): void => {
+    navigate(
+      { pathname: location.pathname, search: runFiltersSearch(location.search, next) },
+      { replace: true },
+    );
+  };
+
   /** Scenario id → name, so the table names the corridor rather than an id
    * (the API's RunOut carries no scenario name). Presets have no id yet, so
    * only the stored side of the library can name a run's scenario. */
@@ -324,6 +472,20 @@ export function RunsView(): JSX.Element {
 
   const replicatesLow = plannedReps !== null && plannedReps < MIN_REPLICATES;
 
+  const visible = useMemo(() => (runs === null ? [] : filterRuns(runs, filters)), [runs, filters]);
+  const filtered = hasRunFilters(filters);
+  const clearFilters = (): void => setFilters(NO_RUN_FILTERS);
+  /** What a scenario chip is called: the library's name for the id, else the
+   * scenario part of a row's name (a row may name its variant after a `·`,
+   * which is the run's, not the scenario's), else the id itself. */
+  const scenarioLabel = (id: string): string =>
+    scenarioNames.get(id) ??
+    runs
+      ?.find((r) => r.scenario_id === id && r.scenario_name)
+      ?.scenario_name?.split('·')[0]
+      .trim() ??
+    id;
+
   let tableBody: JSX.Element;
   if (runs === null) {
     if (authFailed) {
@@ -372,10 +534,27 @@ export function RunsView(): JSX.Element {
         </td>
       </tr>
     );
+  } else if (visible.length === 0) {
+    tableBody = (
+      <tr>
+        <td colSpan={RUN_COLUMNS}>
+          <EmptyState
+            compact
+            title="No runs match these filters."
+            description={`Clear them to see all ${runs.length} run${runs.length === 1 ? '' : 's'}.`}
+            action={
+              <button type="button" className="btn sm" onClick={clearFilters}>
+                Clear filters
+              </button>
+            }
+          />
+        </td>
+      </tr>
+    );
   } else {
     tableBody = (
       <>
-        {runs.map((r) => (
+        {visible.map((r) => (
           <tr key={r.run_id} className="rowlink" onClick={(e) => openRow(e, r.run_id)}>
             <td className="run-id-cell">
               <Link to={`/runs/${r.run_id}`} className="run-id mono">
@@ -501,6 +680,7 @@ export function RunsView(): JSX.Element {
               <label htmlFor="l-scn">Scenario</label>
               <select
                 id="l-scn"
+                ref={scenarioSelectRef}
                 className="input"
                 value={launchKey}
                 onChange={(e) => setLaunchKey(e.target.value)}
@@ -620,6 +800,53 @@ export function RunsView(): JSX.Element {
       </section>
 
       <section className="panel runs-table-panel">
+        {runs !== null && runs.length > 0 && (
+          <div className="runs-filters" role="group" aria-label="Filter runs">
+            {(['status', 'tier', 'scenario'] as RunFilterKey[]).map((key) => {
+              const facet = runFacet(runs, filters, key);
+              const chosen = filters[key] as string[];
+              // a dimension with one value filters nothing: shown only when the
+              // URL already chose something in it
+              if (key !== 'status' && facet.values.length < 2 && chosen.length === 0) return null;
+              return (
+                <FilterGroup
+                  key={key}
+                  id={key}
+                  label={key === 'status' ? 'Status' : key === 'tier' ? 'Tier' : 'Scenario'}
+                  facet={facet}
+                  chosen={chosen}
+                  labelFor={(v) =>
+                    key === 'status'
+                      ? STATUS_CHIP_LABELS[v as RunStatus]
+                      : key === 'tier'
+                        ? TIER_CHIP_LABELS[v]
+                        : scenarioLabel(v)
+                  }
+                  titleFor={
+                    key === 'scenario'
+                      ? (v) => v
+                      : key === 'tier'
+                        ? (v) => (v === 'macro' ? 'CTM screening runs' : 'SUMO microsimulation runs')
+                        : undefined
+                  }
+                  onAll={() => setFilters({ ...filters, [key]: [] })}
+                  onToggle={(v) => setFilters(toggleRunFilter(filters, key, v))}
+                />
+              );
+            })}
+            {filtered && (
+              <div className="runs-filter-summary">
+                <span>
+                  Showing <span className="mono">{visible.length}</span> of{' '}
+                  <span className="mono">{runs.length}</span>
+                </span>
+                <button type="button" className="btn link sm" onClick={clearFilters}>
+                  Clear filters
+                </button>
+              </div>
+            )}
+          </div>
+        )}
         <div className="table-wrap scroll-y" aria-busy={runs === null && !authFailed && loadError === null}>
           <table className="data" aria-label="runs">
             <thead>

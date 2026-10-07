@@ -55,10 +55,17 @@
  * action bar with the selection summary, the button and a persistent refusal
  * callout, then the generated reports. Both tables render skeleton rows until
  * their first answer, an error callout if that first read fails, an empty
- * state, then rows. */
+ * state, then rows.
+ *
+ * `?select=<run_id>` (Run detail's "Report on this run", §10.4 P2) preselects
+ * that run once the runs list has it, and a callout under step 1 says so — or
+ * says why not: a macro run, a failed one, or one this server does not list.
+ * A run still computing is waited for. The parameter is dropped from the URL
+ * once it has been dealt with. */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { MouseEvent as ReactMouseEvent } from 'react';
+import { useInRouterContext, useSearchParams } from 'react-router-dom';
 import {
   ApiError,
   createReport,
@@ -309,8 +316,58 @@ function errorText(err: unknown): string {
 const MACRO_TOOLTIP =
   'Screening tier cannot be validated — macro (CTM) results are labeled tier:"screening" and the API refuses to generate a validation report from them.';
 
+/** What became of a `?select=<run_id>` (Run detail's "Report on this run"):
+ * the run was selected, or why it was not. `waiting` keeps the request open
+ * until the run finishes. */
+type PreselectOutcome = 'selected' | 'macro' | 'waiting' | 'failed' | 'missing';
+
+interface PreselectNote {
+  runId: string;
+  outcome: PreselectOutcome;
+  /** The run's status, for `waiting`. */
+  status?: string;
+}
+
+/** Reports. Inside the app's router the page honours `?select=<run_id>`;
+ * rendered on its own (as most of its tests do) there is no URL to read, and
+ * nothing is preselected. */
 export function ReportsView(): JSX.Element {
+  return useInRouterContext() ? <RoutedReportsView /> : <ReportsPage preselect={null} />;
+}
+
+/** Reads `?select=` and drops it from the URL once it has been dealt with,
+ * so a reload or a later visit does not select the run again. */
+function RoutedReportsView(): JSX.Element {
+  const [params, setParams] = useSearchParams();
+  const preselect = params.get('select');
+  const consume = useCallback(() => {
+    setParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        next.delete('select');
+        return next;
+      },
+      { replace: true },
+    );
+  }, [setParams]);
+  return <ReportsPage preselect={preselect} onPreselectSettled={consume} />;
+}
+
+function ReportsPage({
+  preselect,
+  onPreselectSettled,
+}: {
+  /** A run id to select once the runs list has it (`?select=`), or null. */
+  preselect: string | null;
+  /** Called once `preselect` is selected or cannot be (not while waiting for
+   * the run to finish). */
+  onPreselectSettled?: () => void;
+}): JSX.Element {
   const [runs, setRuns] = useState<RunSummary[]>([]);
+  /** Every run of the last read, finished or not: what a `?select=` that is
+   * not (yet) in the picker is checked against. */
+  const [allRuns, setAllRuns] = useState<RunSummary[]>([]);
+  const [preselectNote, setPreselectNote] = useState<PreselectNote | null>(null);
   /** True when the picker's rows came from the in-browser demo backend: they
    * carry the DEMO tag and no config hash, like the Runs table (lib/demo). */
   const [runsDemo, setRunsDemo] = useState(false);
@@ -398,6 +455,7 @@ export function ReportsView(): JSX.Element {
     const fromDemo = isMockActive();
     try {
       const all = await listRuns();
+      setAllRuns(all);
       setRuns(all.filter((r) => r.status === 'done'));
       setRunsDemo(fromDemo);
       setRunsLoaded(true);
@@ -594,6 +652,48 @@ export function ReportsView(): JSX.Element {
     });
   };
 
+  // `?select=<run_id>`: once the runs list has answered, select the run if it
+  // can be reported on, and say what happened either way — a macro run, a
+  // failed one or one this server does not list is explained, never dropped
+  // silently. A run still computing is waited for, and selected when done.
+  const settledRef = useRef(onPreselectSettled);
+  settledRef.current = onPreselectSettled;
+  useEffect(() => {
+    if (preselect === null || !runsLoaded) return;
+    const run = allRuns.find((r) => r.run_id === preselect);
+    let outcome: PreselectOutcome;
+    if (!run) outcome = 'missing';
+    else if (run.tier === 'macro') outcome = 'macro';
+    else if (run.status === 'done') outcome = 'selected';
+    else if (run.status === 'failed') outcome = 'failed';
+    else outcome = 'waiting';
+    setPreselectNote((prev) =>
+      prev && prev.runId === preselect && prev.outcome === outcome && prev.status === run?.status
+        ? prev
+        : { runId: preselect, outcome, status: run?.status },
+    );
+    if (outcome === 'waiting') return;
+    if (outcome === 'selected') setSelected((s) => (s.has(preselect) ? s : new Set(s).add(preselect)));
+    settledRef.current?.();
+  }, [preselect, runsLoaded, allRuns]);
+
+  // bring a preselected row into view: the picker scrolls, and the run may
+  // sit below its fold
+  useEffect(() => {
+    if (preselectNote?.outcome !== 'selected') return;
+    const id = preselectNote.runId;
+    const row = Array.from(document.querySelectorAll<HTMLElement>('tr[data-run-id]')).find(
+      (tr) => tr.dataset.runId === id,
+    );
+    if (row && typeof row.scrollIntoView === 'function') row.scrollIntoView({ block: 'nearest' });
+  }, [preselectNote]);
+
+  const dismissPreselect = (): void => {
+    // dismissing a run still being waited for also stops the wait
+    if (preselectNote?.outcome === 'waiting') settledRef.current?.();
+    setPreselectNote(null);
+  };
+
   const generate = async (): Promise<void> => {
     const ids = [...selected];
     if (ids.length === 0) return;
@@ -631,6 +731,8 @@ export function ReportsView(): JSX.Element {
       if (demo) show(next);
       else commit(next);
       setSelected(new Set());
+      // "run-x is selected" no longer describes the picker
+      setPreselectNote((n) => (n?.outcome === 'selected' ? null : n));
       if (fromButton) refocus.current = 'list';
       if (rec.status === 'done') toast('ok', `report ${rec.report_id} generated`);
       else if (rec.status === 'failed')
@@ -767,6 +869,7 @@ export function ReportsView(): JSX.Element {
             <tr
               key={r.run_id}
               className={cls}
+              data-run-id={r.run_id}
               title={macro ? MACRO_TOOLTIP : undefined}
               onClick={(e) => clickRow(e, r)}
             >
@@ -1024,6 +1127,13 @@ export function ReportsView(): JSX.Element {
               </span>
               Choose finished micro runs
             </h3>
+            {preselectNote && (
+              <PreselectCallout
+                note={preselectNote}
+                demo={runsDemo}
+                onDismiss={dismissPreselect}
+              />
+            )}
             <div
               className="table-wrap scroll-y reports-picker"
               aria-busy={!runsLoaded && !authFailed && runsError === null}
@@ -1235,6 +1345,69 @@ export function ReportsView(): JSX.Element {
           </table>
         </div>
       </section>
+    </div>
+  );
+}
+
+/** The line under step 1 that answers a `?select=`: which run was selected,
+ * or why it was not. Persistent until dismissed (a toast would be gone before
+ * the user has found the picker). */
+function PreselectCallout({
+  note,
+  demo,
+  onDismiss,
+}: {
+  note: PreselectNote;
+  demo: boolean;
+  onDismiss: () => void;
+}): JSX.Element {
+  const id = <span className="mono">{note.runId}</span>;
+  let tone: 'info' | 'warning' | 'neutral' = 'warning';
+  let body: JSX.Element;
+  switch (note.outcome) {
+    case 'selected':
+      tone = 'info';
+      body = <>{id} is selected. Choose what to score it against, then generate the report.</>;
+      break;
+    case 'macro':
+      body = (
+        <>
+          {id} is a macro (screening) run, so it is not selected: reports need finished micro runs,
+          and the API refuses a validation report from macro runs.
+        </>
+      );
+      break;
+    case 'waiting':
+      tone = 'neutral';
+      body = (
+        <>
+          {id} is {note.status ?? 'not finished'}. It will be selected here once it is done.
+        </>
+      );
+      break;
+    case 'failed':
+      body = <>{id} failed, so it has no results to report and is not selected.</>;
+      break;
+    default:
+      body = demo ? (
+        <>{id} is not in the demo data shown while the API is unreachable, so it is not selected.</>
+      ) : (
+        <>{id} is not in this server's runs list, so it is not selected.</>
+      );
+  }
+  return (
+    <div className="reports-preselect">
+      <Callout
+        tone={tone}
+        role="status"
+        action={
+          <button type="button" className="btn ghost sm" onClick={onDismiss}>
+            Dismiss
+          </button>
+        }
+      >
+        {body}
+      </Callout>
     </div>
   );
 }

@@ -15,6 +15,7 @@
  * cannot freeze the dashboard until someone reloads it, and `clearAuthFailure`
  * is the shell's manual Retry. */
 
+import { beginRunsRead, clearCachedRuns, recordRuns } from '../lib/runsCache';
 import * as mock from '../mocks/mockApi';
 import type {
   CorridorOut,
@@ -79,6 +80,8 @@ export function saveSettings(s: ApiSettings): void {
   }
   // a re-typed key must be retried, not blocked by the previous rejection
   clearAuthFailure();
+  // the runs the palette offers belonged to the old server (lib/runsCache)
+  clearCachedRuns();
 }
 
 /* -------------------- mock mode + connection state -------------------- */
@@ -408,9 +411,15 @@ export async function createScenario(cfg: ScenarioConfig): Promise<CreateScenari
   return request<CreateScenarioResponse>('/scenarios', { method: 'POST', body: cfg });
 }
 
-export function listRuns(): Promise<RunSummary[]> {
-  if (isMockActive()) return mock.mockListRuns();
-  return request<RunSummary[]>('/runs');
+/** `GET /runs`. Every answer is also recorded, with its source, in
+ * `lib/runsCache` — what the command palette's "open a recent run" reads, so
+ * the palette never fetches on its own. */
+export async function listRuns(): Promise<RunSummary[]> {
+  const demo = isMockActive();
+  const seq = beginRunsRead();
+  const rows = demo ? await mock.mockListRuns() : await request<RunSummary[]>('/runs');
+  recordRuns(seq, rows, demo);
+  return rows;
 }
 
 export function getRun(runId: string): Promise<RunDetail> {

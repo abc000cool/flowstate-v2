@@ -253,6 +253,13 @@ const ICON_NODES = {
       <circle cx="11" cy="11" r="8" />
     </>
   ),
+  // added for the P2 items (Run detail "Report on this run")
+  'arrow-right': (
+    <>
+      <path d="M5 12h14" />
+      <path d="m12 5 7 7-7 7" />
+    </>
+  ),
 } satisfies Record<string, ReactElement>;
 
 /** Lucide icon names available in this file. */
@@ -320,3 +327,4 @@ export const IconExternalLink = (p: IconProps): JSX.Element => <Icon name="exter
 export const IconLoaderCircle = (p: IconProps): JSX.Element => <Icon name="loader-circle" {...p} />;
 export const IconRefreshCw = (p: IconProps): JSX.Element => <Icon name="refresh-cw" {...p} />;
 export const IconSearch = (p: IconProps): JSX.Element => <Icon name="search" {...p} />;
+export const IconArrowRight = (p: IconProps): JSX.Element => <Icon name="arrow-right" {...p} />;

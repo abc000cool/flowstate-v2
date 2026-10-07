@@ -429,6 +429,42 @@ input[type='radio'] {
   outline-offset: var(--focus-offset);
 }
 
+/* the same chip as a toggle button (aria-pressed): the Runs filters (§10.3).
+   Words in Inter, the count in mono; pressed reads like a checked chip */
+.chip-toggle.filter-chip {
+  gap: var(--space-1-5);
+  font-family: var(--font-sans);
+  font-size: var(--text-13);
+  letter-spacing: var(--tracking-normal);
+}
+.chip-toggle.filter-chip[aria-pressed='true'] {
+  background: var(--accent-subtle);
+  border-color: var(--accent-border);
+  color: var(--accent-text);
+}
+.chip-toggle.filter-chip[aria-pressed='true']::before {
+  content: '';
+  width: 14px;
+  height: 14px;
+  margin-right: calc(-1 * var(--space-0-5));
+  background: currentColor;
+  -webkit-mask: var(--mask-check) center / contain no-repeat;
+  mask: var(--mask-check) center / contain no-repeat;
+}
+.filter-chip-label {
+  max-width: 24ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.filter-chip-count {
+  font-size: var(--text-12);
+  color: var(--text-secondary);
+}
+.chip-toggle.filter-chip[aria-pressed='true'] .filter-chip-count {
+  color: inherit;
+}
+
 /* form layout */
 .form-grid {
   display: grid;
@@ -1497,7 +1533,8 @@ table.data .copy-btn.copied {
   }
   .seg button.active,
   .seg button[aria-selected='true'],
-  .chip-toggle:has(input:checked) {
+  .chip-toggle:has(input:checked),
+  .chip-toggle.filter-chip[aria-pressed='true'] {
     outline: 2px solid Highlight;
   }
   .progress > i,
@@ -1513,6 +1550,7 @@ table.data .copy-btn.copied {
   .field > span.hint-amber::before,
   .field-hint::before,
   .chip-toggle:has(input:checked)::before,
+  .chip-toggle.filter-chip[aria-pressed='true']::before,
   details.disclosure > summary::before {
     background: CanvasText;
   }

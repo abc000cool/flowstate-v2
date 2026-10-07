@@ -128,3 +128,28 @@ table.data.weave-table th {
   min-width: 72px;
   vertical-align: bottom;
 }
+
+/* ---- "Report on this run" (§10.4 P2), in the page-header actions ---- */
+/* Disabled with its reason beside it when the run cannot be reported (a
+   macro run, or one not done), never hidden. */
+.run-report-action {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: var(--space-1);
+  max-width: 40ch;
+}
+.run-report-reason {
+  font-size: var(--text-12);
+  line-height: var(--leading-12);
+  color: var(--text-secondary);
+  text-align: right;
+}
+@media (max-width: 1023px) {
+  .run-report-action {
+    align-items: flex-start;
+  }
+  .run-report-reason {
+    text-align: left;
+  }
+}

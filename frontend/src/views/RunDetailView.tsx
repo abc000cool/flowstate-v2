@@ -15,7 +15,7 @@
  * assuming the preset. */
 
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
-import { useParams, useSearchParams } from 'react-router-dom';
+import { Link, useParams, useSearchParams } from 'react-router-dom';
 import { getRun, getRunHeatmap, getRunMetrics, isMockActive } from '../api/client';
 import type { HeatField, Heatmap, RunDetail, RunMetrics } from '../api/types';
 import { useAppState } from '../components/AppContext';
@@ -33,7 +33,7 @@ import { EmptyState } from '../components/ui/EmptyState';
 import { Skeleton } from '../components/ui/Skeleton';
 import { DEMO_HASH_LABEL, DEMO_ROW_TITLE } from '../lib/demo';
 import { failureReason, formatFetchError } from '../lib/format';
-import { useAuthFailed, usePoll } from '../lib/hooks';
+import { FOCUS_CONTENT_STATE, useAuthFailed, usePoll } from '../lib/hooks';
 import { groupedMetricKeys } from '../lib/metrics';
 
 const FIELDS: HeatField[] = ['speed', 'density'];
@@ -89,6 +89,54 @@ function FieldTabs({
           {f.toUpperCase()}
         </button>
       ))}
+    </div>
+  );
+}
+
+/** Why a run cannot be reported on yet, or null when it can (done, micro).
+ * Macro comes first: a screening run can never be reported, finished or not
+ * (CLAUDE.md §5.6 — the API refuses a validation report from macro-only
+ * runs), so waiting would not help. */
+export function reportBlockReason(run: Pick<RunDetail, 'status' | 'tier'>): string | null {
+  if (run.tier === 'macro') {
+    return 'Reports need finished micro runs: the API refuses a validation report from macro (screening) runs.';
+  }
+  if (run.status === 'failed') return 'This run failed, so it has no results to report.';
+  if (run.status !== 'done') return `Available once the run is done (it is ${run.status}).`;
+  return null;
+}
+
+/** "Report on this run" (§10.4 P2): Reports with this run preselected
+ * (`/reports?select=<run_id>`). Shown for every run; when it cannot apply,
+ * the button is disabled and says why beside it, rather than vanishing. */
+function ReportOnRun({ runId, run }: { runId: string; run: RunDetail }): JSX.Element {
+  const reason = reportBlockReason(run);
+  const label = (
+    <>
+      Report on this run
+      <Icon name="arrow-right" size={16} />
+    </>
+  );
+  return (
+    <div className="run-report-action">
+      {reason === null ? (
+        <Link
+          className="btn"
+          to={`/reports?select=${encodeURIComponent(runId)}`}
+          state={FOCUS_CONTENT_STATE}
+        >
+          {label}
+        </Link>
+      ) : (
+        <>
+          <button type="button" className="btn" disabled aria-describedby="run-report-reason">
+            {label}
+          </button>
+          <p className="run-report-reason" id="run-report-reason">
+            {reason}
+          </p>
+        </>
+      )}
     </div>
   );
 }
@@ -222,6 +270,7 @@ export function RunDetailView(): JSX.Element {
       <PageHeader
         title={<span className="run-title">{runId}</span>}
         documentTitle={runId}
+        actions={run ? <ReportOnRun runId={runId} run={run} /> : undefined}
         meta={
           run && (
             <>
