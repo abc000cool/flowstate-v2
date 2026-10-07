@@ -76,6 +76,7 @@ from controllers.registry import (
 )
 from controllers.vsl import VSL_SEGMENT_TARGET_M, effective_limit
 from flowstate_core.config import (
+    BOUNDARY_LIMIT_FACTOR_DEFAULT,
     CONFIG_HASH_VERSION,
     SCRIPTED_MERGE_DEFAULTS,
     WEAVE_DEFAULTS,
@@ -6678,11 +6679,25 @@ def run_micro(
     # (WP-109) each step is posted divided by it: the fleet's mean driver
     # then drives the measured speed. A default fleet posts the schedule as
     # written (no division, so its runs are unchanged).
+    # BoundarySpec.limit_factor (amendment B1, docs/I24_DISCHARGE_DIAGNOSIS.md
+    # §8.3, opt-in) multiplies every step first; at its default 1.0 the
+    # schedule is posted exactly as before the field existed.
     boundary_divisor = float(cfg.fleet.speed_factor)
-    boundary_posted = [
-        (ts, vs if boundary_divisor == SPEED_FACTOR_DEFAULT else vs / boundary_divisor)
-        for ts, vs in boundary_steps
-    ]
+    boundary_factor = (
+        float(boundary_spec.limit_factor)
+        if boundary_spec is not None
+        else BOUNDARY_LIMIT_FACTOR_DEFAULT
+    )
+
+    def _posted_limit(v_schedule: float) -> float:
+        v = (
+            v_schedule
+            if boundary_factor == BOUNDARY_LIMIT_FACTOR_DEFAULT
+            else v_schedule * boundary_factor
+        )
+        return v if boundary_divisor == SPEED_FACTOR_DEFAULT else v / boundary_divisor
+
+    boundary_posted = [(ts, _posted_limit(vs)) for ts, vs in boundary_steps]
     boundary_idx = 0
     # Apply every step scheduled at or before t = 0 up front.
     while boundary_idx < len(boundary_steps) and boundary_steps[boundary_idx][0] <= 0.0:
@@ -7855,6 +7870,18 @@ def run_micro(
                 "n_steps_applied": boundary_idx,
                 "v_limit_min_ms": min(v for _, v in boundary_steps),
                 "v_limit_max_ms": max(v for _, v in boundary_steps),
+                # amendment B1 (opt-in): recorded only when set, so a default
+                # run's block keeps its keys; the v_limit_* above stay the
+                # schedule as written, these are the limits as posted
+                **(
+                    {
+                        "limit_factor": boundary_factor,
+                        "v_posted_min_ms": min(v for _, v in boundary_posted),
+                        "v_posted_max_ms": max(v for _, v in boundary_posted),
+                    }
+                    if boundary_factor != BOUNDARY_LIMIT_FACTOR_DEFAULT
+                    else {}
+                ),
             }
             if boundary_steps and boundary_spec is not None
             else None

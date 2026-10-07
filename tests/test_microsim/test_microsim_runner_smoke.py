@@ -273,6 +273,67 @@ class TestCorridorSmoke:
         assert v_step2 < 0.3 * v_step1, (v_step1, v_step2)
         assert v_step3 > 2.0 * v_step2, (v_step2, v_step3)
 
+    def test_boundary_limit_factor_scales_the_posted_limit(self, tmp_path):
+        """Amendment B1 (``BoundarySpec.limit_factor``, docs/I24_DISCHARGE_DIAGNOSIS.md
+        §8.3, opt-in): the exit edge posts ``factor × v_limit``. One lane, light
+        inflow, a 10 m/s schedule: with the factor 1.2 the exit edge is driven at
+        12 m/s, at the default at 10 m/s, and only the factor's run records it
+        in ``meta.json["boundary"]`` (a default run keeps the block's keys)."""
+
+        def cfg(boundary_extra: dict) -> ScenarioConfig:
+            return ScenarioConfig.model_validate(
+                {
+                    "name": "corridor_boundary_limit_factor",
+                    "network": {
+                        "kind": "corridor",
+                        "length_m": 1000.0,
+                        "lanes": 1,
+                        "inflow": [[0.0, 0.1]],
+                        "boundary": {
+                            "steps": [[0.0, 10.0]],
+                            "exit_buffer_m": 300.0,
+                            **boundary_extra,
+                        },
+                    },
+                    "fleet": {"heterogeneity_frac": 0.0},
+                    "sim": {"duration_s": 150.0},
+                    "seed": 5,
+                }
+            )
+
+        plain_cfg, b1_cfg = cfg({}), cfg({"limit_factor": 1.2})
+        assert config_hash(cfg({"limit_factor": 1.0})) == config_hash(plain_cfg)
+        p_plain = run_micro(plain_cfg, 5, tmp_path / "plain")
+        p_b1 = run_micro(b1_cfg, 5, tmp_path / "b1")
+
+        b_plain = json.loads(p_plain.meta.read_text())["boundary"]
+        b_b1 = json.loads(p_b1.meta.read_text())["boundary"]
+        assert set(b_plain) == {
+            "kind",
+            "exit_edge",
+            "exit_buffer_m",
+            "n_steps",
+            "n_steps_applied",
+            "v_limit_min_ms",
+            "v_limit_max_ms",
+        }
+        assert b_b1["limit_factor"] == 1.2
+        assert b_b1["v_limit_min_ms"] == b_b1["v_limit_max_ms"] == 10.0  # the schedule as written
+        assert b_b1["v_posted_min_ms"] == pytest.approx(12.0)
+        assert b_b1["v_posted_max_ms"] == pytest.approx(12.0)
+
+        def exit_speeds(paths) -> pd.Series:
+            # the exit edge's last 150 m (1000 m entry buffer + 1000 m corridor, then the exit edge)
+            df = pd.read_parquet(paths.trajectories, columns=["x", "v"])
+            return df.loc[(df["x"] >= 2150.0) & (df["x"] < 2300.0), "v"]
+
+        v_plain, v_b1 = exit_speeds(p_plain), exit_speeds(p_b1)
+        assert len(v_plain) > 20 and len(v_b1) > 20
+        assert float(v_plain.median()) == pytest.approx(10.0, abs=0.2)
+        assert float(v_plain.max()) <= 10.05
+        assert float(v_b1.median()) == pytest.approx(12.0, abs=0.2)
+        assert float(v_b1.max()) <= 12.05
+
     def test_five_lane_calibrated_fleet_smoke(self, tmp_path):
         """us101_replica shape: 5 lanes + IDMCalibration-driven fleet (M2).
 

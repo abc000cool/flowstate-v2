@@ -732,6 +732,57 @@ Adopt only if A1–A5 hold on the I-24 canonical arm and on I-94; otherwise repo
 and keep the current representation. Cost: about what step 3 cost for the same batteries, one n2-standard-32 for
 about 1 h 45 min, about $2.80 (docs/DISCHARGE_CALIBRATION.md §4) [estimate].
 
+**Factors computed before any run — 2026-10-07** (`scripts/boundary_limit_factor.py`, tested by
+`tests/test_scripts/test_boundary_limit_factor.py`; tracked inputs only: the scenario YAML, the population JSON and
+the committed observed side, never the I-24 MOTION table or a run tree):
+
+- **I-24.** v̄ = 13.86885 m/s (49.93 km/h), the time-weighted mean of the schedule over sim 600–7,800 s; the
+  canonical, `_dc` and `_dc_refit` scenarios carry the same schedule, and their populations (k = 0 and k = 1) the
+  same T 1.32217 s and s0 2.53271 m. q̄: 6,008.7 veh/h at data x 5,400 m (`artifacts/i24_validation_observed.json`,
+  recommended coverage), 4 lanes (edge 108162464), 1,502.2 veh/h/lane; l = 5 m
+  (`microsim.vehicles.VEHICLE_LENGTH_M`). f = 1.21846 from the flow as the record quotes it (6,009), i.e.
+  **1.2185**, the registered value; 1.21842 from the unrounded flow, the same to four significant digits (the
+  difference is the rounding alone). The stage applies 1.2185. A2 band 5,829–6,309 veh/h, as fixed.
+- **I-94** (`mndot_i94_wb_stpaul_weave_dc`, hash db9fbab5fc6e). It has a `BoundarySpec`: the schedule is station
+  S97's speed series (checked step for step), and S97, the last mainline station, where the last corridor edge
+  that hosts the schedule begins, has a measured flow: 4,112.8 veh/h over the study window (sim 1,800–14,400 s,
+  06:00–09:30; the nine-day mean profile of `data/mndot/mndot_i94_wb_stpaul/observations.json`), 3 lanes,
+  1,370.9 veh/h/lane, at v̄ = 18.946 m/s (68.2 km/h). **A2 band: 3,990–4,319 veh/h** (4,113 −3 % / +5 %).
+  **B1 does not apply to I-94.** Its fleet is EIDM, whose car-following core is the improved IDM: below the
+  desired speed the equilibrium gap is s0 + v·T whatever the desired speed (docs/WEAVE_MODEL_PLAN.md WP-68,
+  measured on this fleet; WP-73, read in SUMO's source). For these drivers the defining equation does not contain
+  v0, so no factor is defined. At v̄ the mean EIDM driver can hold any flow up to 2,093 veh/h/lane under the
+  schedule as posted, above the recorded 1,371, so the free-road deficit B1 corrects does not arise there. The IDM
+  formula would give 1.1269; it does not describe these drivers and is recorded only. So the stage covers I-24
+  only, and "adopt only if A1–A5 hold … and on I-94" cannot be met as written: whether B1 can be adopted on I-24
+  alone is the owner's call.
+
+**Implemented, opt-in — 2026-10-07.** `BoundarySpec.limit_factor` (default 1.0; > 0 and finite; hash-neutral and
+absent from `model_dump` at 1.0; docs/CONTRACTS.md §2). The runner multiplies every step as posted (before the
+`FleetSpec.speed_factor` division) on the edge it already uses: on an OSM corridor the last corridor edge (I-24:
+634155175, 992 m), the edge the L5 fixture scaled. So B1 is exactly L5's representation. When the factor is set,
+`meta.json["boundary"]` records it and the posted extremes. No committed scenario sets it. The opt-in stage
+`p12_i24_b1` (scripts/gcp/pipeline_i24.sh, not in the default list) runs the canonical, `_dc_refit` and `_dc` arms,
+in that order, each with its same-code reference on the step-3 seeds through step 3's battery path. The readout
+`artifacts/i24_discharge_2026-10-07/harness/corridor_b1.py` writes `artifacts/boundary_b1_corridor.json`. How A1–A5
+are read off recorded outputs (none re-thresholded):
+
+- A1's steps below −8.9 m/s² are recorded only in the trajectories. A VM-side counter
+  (`harness/hard_braking.py`) reads them there before the trajectories are pruned.
+- A2's zone speed is the Edie speed of the runner's `edges.parquet` cells that lie wholly in data x 5,492–6,437 m,
+  over the study window, against the schedule's 49.93 km/h.
+- A3 is read literally (B1's mean realised share ≥ the reference's). Amendment 2's 1-point tolerance is reported
+  beside it.
+- A4's fronts are `n_backward` of the standard and stripe detectors (§7.5's criterion (d)); the wave-verdict half
+  binds where the same-code reference passes.
+- A5's 15-min RMSPE averages both fields over three 5-min windows, the convention of docs/I24_VALIDATION.md §0.5(a);
+  on the committed arms it reproduces the published 0.263 / 0.271.
+
+Adoption reading: A1 on every arm, A2 on `_dc_refit`, A3–A5 on the canonical arm. Lane shares (reported, not
+gating) are not computed: only the trajectories carry per-lane section crossings. The FHWA re-sequence is a
+follow-up, not part of the stage. Cost on n2d-standard-16: about 2 h 30 min of stage time, about $1.9 billed;
+`--cap-min 300` bounds it at about $3.4 [estimate].
+
 ### 8.4 Measure the target before using it again
 
 A data-only cloud stage (no simulation): Edie flows (vehicle-distance per cell,

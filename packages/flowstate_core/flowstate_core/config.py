@@ -32,6 +32,9 @@ from flowstate_core.constants import (
     SPEED_FACTOR_DEFAULT,
 )
 
+#: Default of ``BoundarySpec.limit_factor``: the schedule is posted as written.
+BOUNDARY_LIMIT_FACTOR_DEFAULT: Final[float] = 1.0
+
 #: Ceiling on ``ScenarioConfig.replicates``. Generous next to the ≥ 20 seeds a
 #: headline claim needs (CLAUDE.md §0.6) and next to every scenario shipped
 #: here (1–20), while keeping one config from queueing unbounded simulation
@@ -73,6 +76,41 @@ class BoundarySpec(BaseModel):
     the end of the run)."""
     exit_buffer_m: float = Field(default=200.0, gt=0)
     """Length of the appended exit-buffer edge the limit applies to [m]."""
+    limit_factor: float = Field(default=BOUNDARY_LIMIT_FACTOR_DEFAULT, gt=0.0, allow_inf_nan=False)
+    """Multiplier of every step's limit as posted (2026-10-07; amendment B1,
+    docs/I24_DISCHARGE_DIAGNOSIS.md §8.3, PROPOSED, not adopted). The schedule
+    is a measured mean speed, but the runner posts it as every vehicle's
+    speed limit, which an IDM driver takes as its desired speed; the IDM's
+    free-road term then keeps gaps longer than the measured traffic kept, so
+    the edge carries less than the road did (§5.1, §7.5). B1 posts
+    ``f × v_limit`` with one factor ``f`` computed (not fitted) by
+    ``scripts/boundary_limit_factor.py`` so that the population's mean driver,
+    in IDM equilibrium at the schedule's study-window mean speed with desired
+    speed ``f × that speed``, carries the recorded flow per lane at the last
+    measured section (I-24: 1.2185). Applied before the ``FleetSpec.speed_factor``
+    division. The schedule as written stays in ``steps`` (and in
+    ``meta.json["boundary"]``'s ``v_limit_*``); ``meta.json["boundary"]`` adds
+    ``limit_factor`` and the posted extremes only when the factor is not 1.
+    1.0 (the default) posts the schedule as written, exactly as before the
+    field existed. Hash-neutral and absent from ``model_dump`` (so from
+    ``meta.json["config"]`` and YAML) at the default (:meth:`_serialize`)."""
+
+    # No return annotation on purpose (as on WeaveSpec._serialize): pydantic
+    # builds a model's serialization JSON schema from its serializer's return
+    # annotation and keeps the model's own schema without one.
+    @model_serializer(mode="wrap")
+    def _serialize(self, handler: SerializerFunctionWrapHandler):  # type: ignore[no-untyped-def]
+        """Drop ``limit_factor`` from every dump while it is at its default (1.0).
+
+        So a boundary block dumps (``model_dump``, ``meta.json["config"]``,
+        YAML) exactly as before the field existed (2026-10-07). A wrap
+        serializer, not ``Field(exclude_if=...)``, for the reason given on
+        :meth:`WeaveSpec._serialize` (``exclude_if`` needs pydantic >= 2.12).
+        """
+        data = handler(self)
+        if self.limit_factor == BOUNDARY_LIMIT_FACTOR_DEFAULT and isinstance(data, dict):
+            data.pop("limit_factor", None)
+        return data
 
     @model_validator(mode="after")
     def _check_steps(self) -> Self:

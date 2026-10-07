@@ -88,6 +88,18 @@ Pydantic v2 models, YAML round-trip via `ScenarioConfig.from_yaml(path)` /
   recorded wherever results are reported. Macro tier: not implemented
   (screening runs stay free-outflow; a run needing the boundary is a
   micro-tier run).
+  `limit_factor: float = 1.0` (> 0, finite; 2026-10-07, amendment B1 of
+  docs/I24_DISCHARGE_DIAGNOSIS.md §8.3, PROPOSED, not adopted, opt-in): every
+  step is posted as `limit_factor × v_limit` (then divided by
+  `FleetSpec.speed_factor` when that is set). The factor is computed, not
+  fitted, by `scripts/boundary_limit_factor.py`: the population's mean
+  driver, in IDM equilibrium at the schedule's study-window mean speed with
+  desired speed `f ×` that speed, carries the recorded flow per lane at the
+  last measured section (I-24: 1.2185; not defined for an EIDM fleet, whose
+  equilibrium gap below the desired speed does not depend on it). Hash-neutral
+  and absent from `model_dump` / `meta.json["config"]` / YAML at 1.0; when set,
+  `meta.json["boundary"]` adds `limit_factor`, `v_posted_min_ms` and
+  `v_posted_max_ms` (the `v_limit_*` keys stay the schedule as written).
 - `OSMNetwork(kind="osm", bbox: (S, W, N, E) | osm_file: str, corridor_edges: list[str],
   inflow, boundary: BoundarySpec | None = None, ramps: list[RampSpec] = [])`
   # Phase 6 (I-24 flagship) additions:
@@ -1731,7 +1743,8 @@ runs/<config_hash>/<seed>/
 Sampled at `sim.output_hz`. On corridors, `x` spans entry buffer + corridor
 proper (+ exit buffer when a `BoundarySpec` is configured); micro `meta.json`
 then carries a `boundary` object (`kind`, `exit_edge`, `exit_buffer_m`,
-`n_steps`, `n_steps_applied`, `v_limit_min_ms`, `v_limit_max_ms`).
+`n_steps`, `n_steps_applied`, `v_limit_min_ms`, `v_limit_max_ms`; plus
+`limit_factor`, `v_posted_min_ms`, `v_posted_max_ms` when `BoundarySpec.limit_factor` is set).
 
 `vehicles.parquet` (micro, since 2026-09-25, WP-69; `microsim.runner.VEHICLES_FILE`, read with
 `validation.vehicles.read_vehicles`): the trajectories record corridor edges only and carry no route, and

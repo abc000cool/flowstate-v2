@@ -208,6 +208,55 @@ def test_ramp_to_ramp_share_is_hash_neutral_until_it_is_set():
             with_share(bad)
 
 
+#: Config hashes of the committed scenarios B1's stage copies (policy v3), as
+#: their step-3 battery artifacts record them (artifacts/i24_validation_dc_refit.json,
+#: artifacts/i24_validation_flow_speedcal_ref.json, validation_mndot_..._xlsfg_dc.json).
+KNOWN_BOUNDARY_SCENARIO_HASHES = {
+    "i24_replica_flow_speedcal_dc_refit.yaml": "ada3f406504b",
+    "i24_replica_flow_speedcal.yaml": "ae5861a4d906",
+    "mndot_i94_wb_stpaul_weave_dc.yaml": "db9fbab5fc6e",
+}
+
+
+def test_boundary_limit_factor_is_hash_neutral_until_it_is_set():
+    """``BoundarySpec.limit_factor`` (2026-10-07, amendment B1, opt-in) is a new
+    field: at its default 1.0 every committed boundary scenario hashes and dumps
+    (``meta.json["config"]``, YAML) exactly as before it existed; set, the hash
+    moves and the value round-trips."""
+    root = Path(__file__).resolve().parents[2]
+    for name, known in KNOWN_BOUNDARY_SCENARIO_HASHES.items():
+        cfg = ScenarioConfig.from_yaml(root / "scenarios" / name)
+        assert config_hash(cfg) == known, name
+        raw = cfg.model_dump(mode="json")
+        assert "limit_factor" not in raw["network"]["boundary"], name
+        assert "limit_factor" not in json.dumps(config_hash_payload(cfg)), name
+        assert "limit_factor" not in cfg.network.boundary.model_dump_json()  # type: ignore[union-attr]
+
+        explicit = json.loads(json.dumps(raw))
+        explicit["network"]["boundary"]["limit_factor"] = 1.0
+        explicit_cfg = ScenarioConfig.model_validate(explicit)
+        assert config_hash(explicit_cfg) == known, name
+        assert explicit_cfg.model_dump(mode="json") == raw, name
+
+        def with_factor(factor: float, doc: dict = raw) -> ScenarioConfig:
+            d = json.loads(json.dumps(doc))
+            d["network"]["boundary"]["limit_factor"] = factor
+            return ScenarioConfig.model_validate(d)
+
+        b1 = with_factor(1.2185)
+        assert config_hash(b1) != known, name
+        assert config_hash(with_factor(1.3)) != config_hash(b1), name
+        dumped = b1.model_dump(mode="json")
+        assert dumped["network"]["boundary"]["limit_factor"] == 1.2185
+        assert ScenarioConfig.model_validate(dumped) == b1  # YAML/JSON round trip
+    # the field's serialization schema is still the model's own (no return annotation)
+    from flowstate_core.config import BoundarySpec
+
+    schema = BoundarySpec.model_json_schema(mode="serialization")
+    assert "limit_factor" in schema["properties"]
+    assert schema == BoundarySpec.model_json_schema(mode="validation")
+
+
 def test_unset_fields_are_dropped_without_pydantic_2_12_features():
     """The packages declare ``pydantic>=2.10``; ``Field(exclude_if=...)`` exists
     from 2.12 only (on 2.10/2.11 it is a deprecated extra: nothing is excluded

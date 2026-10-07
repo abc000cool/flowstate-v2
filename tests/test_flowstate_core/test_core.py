@@ -165,6 +165,22 @@ class TestBoundarySpec:
         cfg = _corridor_config(boundary={"steps": [(0.0, 9.0)]})
         assert cfg.seeded is False
 
+    def test_limit_factor_defaults_to_one_and_must_be_positive_and_finite(self, tmp_path):
+        """Amendment B1 (docs/I24_DISCHARGE_DIAGNOSIS.md §8.3): the multiplier of
+        every posted step is 1 unless set, refused at or below 0 and when not
+        finite, and a set value survives the YAML round trip."""
+        assert BoundarySpec(steps=[(0.0, 10.0)]).limit_factor == 1.0
+        for bad in (0.0, -1.2185, math.inf, math.nan):
+            with pytest.raises(ValueError, match="limit_factor"):
+                BoundarySpec(steps=[(0.0, 10.0)], limit_factor=bad)
+        cfg = _corridor_config(boundary={"steps": [(0.0, 12.0)], "limit_factor": 1.2185})
+        assert cfg.network.boundary is not None
+        assert cfg.network.boundary.limit_factor == 1.2185
+        p = tmp_path / "b1.yaml"
+        cfg.to_yaml(p)
+        assert "limit_factor: 1.2185" in p.read_text()
+        assert ScenarioConfig.from_yaml(p) == cfg
+
 
 def _osm_network(**overrides):
     base = {

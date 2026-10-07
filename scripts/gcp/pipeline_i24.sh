@@ -140,6 +140,10 @@ make_archive() {  # make_archive light|full [tries] — atomic replace of $ARCHI
   # stage p8c's re-runs (runs/p8c/<arm>/<config hash>/<seed>/): the pair manifest, every run's meta.json and
   # vehicles.parquet and the reader's window slice; never the trajectories (a few GB each)
   extra="$extra $(ls runs/p8c/PAIRS.json runs/p8c/*/*/*/meta.json runs/p8c/*/*/*/vehicles.parquet runs/p8c/*/*/*/collision_slice.parquet 2>/dev/null | tr '\n' ' ')"
+  # stage p12's batteries (runs/i24_validation/p12_*/<config hash>/<seed>/): every replicate's meta.json and edges.parquet
+  # and each battery's braking counts, the B1 readout's inputs (corridor_b1.py evaluate re-runs from them); never the
+  # trajectories (the labels do not start with dc, so the full archive's first-seed line above does not take them)
+  extra="$extra $(ls runs/i24_validation/p12_*/*/*/meta.json runs/i24_validation/p12_*/*/*/edges.parquet runs/i24_validation/p12_*/hard_braking.json 2>/dev/null | tr '\n' ' ')"
   # shellcheck disable=SC2086
   if tar czf "$ARCHIVE.part" --exclude=net artifacts/*.json scenarios/*.yaml logs $extra 2>/dev/null; then
     mv -f "$ARCHIVE.part" "$ARCHIVE"; ARCHIVE_FRESH=1
@@ -1628,6 +1632,79 @@ fi
 # ..._dc_cal_netfix_w1b and ..._dc_cal_netfix_w1b_w2 and the readout to artifacts/weave_w2_corridor_netfix.json
 # (--context artifacts/validation_${MNDOT}_weave_xlsfg_dc_cal_netfix.json): two more batteries, about +2.0 h and
 # +$1.6 on the same machine (--cap-min 330 for both pairs).
+
+# p12 (opt-in; docs/I24_DISCHARGE_DIAGNOSIS.md §8.3; not in the default list). Amendment B1's corridor round: the
+#     equilibrium-consistent downstream boundary limit (BoundarySpec.limit_factor; PROPOSED, not adopted; criteria
+#     A1-A5 fixed in §8.3 before any run). Three I-24 pairs, each a same-code reference and its B1 copy on step 3's
+#     20 seeds (spawn_seeds(42, 20), as every battery of stage p4), both run here on one code tree through step 3's
+#     path (scripts/i24_validate.py --scenario/--label, 20 seeds, the 20-seed ring rows, --analysis-procs 8), in
+#     this order (the adoption reading needs the canonical arm and dc_refit first):
+#       canonical  scenarios/i24_replica_flow_speedcal.yaml (hash ae5861a4d906; its B1 copy 8378b1c05b1f), scale 0.800
+#       dc_refit   scenarios/i24_replica_flow_speedcal_dc_refit.yaml (ada3f406504b; copy 843b3b0c8634), scale 0.925
+#       dc         scenarios/i24_replica_flow_speedcal_dc.yaml (8976a1773674; copy 1a14bf3f9e7e), scale 0.800
+#     Each B1 copy (scenarios/<stem>_b1.yaml, name <stem>_b1) is written here by corridor_b1.py make-copy, which
+#     refuses a source at another hash and a copy that differs from it in anything but its name and
+#     network.boundary.limit_factor 1.2185 (§7.5's value, the one the L5 fixture applied on the same 992-m last edge;
+#     scripts/boundary_limit_factor.py reproduces it from tracked inputs). I-94 is not run: its fleet is EIDM, for
+#     which the factor is not defined (§8.3, note of 2026-10-07). Per battery: artifacts/i24_validation_p12_<arm>_
+#     {ref,b1}.json; then hard_braking.py counts A1's vehicle-steps below -8.9 m/s^2 from that battery's
+#     trajectories here on the VM (columns t, x, a, in record batches), before p4_prune keeps the first seed's
+#     only -> runs/i24_validation/p12_<arm>_*/hard_braking.json. After each pair, corridor_b1.py evaluate reads
+#     the battery artifacts, every replicate's meta.json and edges.parquet and the braking counts (never
+#     trajectories) -> artifacts/boundary_b1_corridor.json, so a stage cut short still leaves its finished pairs
+#     read. Resumable per battery (logs/<label>.battery.ok). Lane shares (reported, not gating) are not
+#     computed: only the trajectories carry per-lane section crossings. The FHWA re-sequence of the demand level
+#     (§8.3: only if A1-A5 hold) is a follow-up, not part of this stage. Needs the I-24 data set (the batteries'
+#     observed side checks its hash): launch with --data-set i24.
+#     Cost on n2d-standard-16 at the default --procs (14; 20 runs in two waves) [estimate]: step 3's batteries
+#     simulated in 699 / 889 / 566 s (canonical / dc_refit / dc) as one wave of 20 on n2-standard-32, and stage
+#     p7's 20-seed I-24 batteries took 1,403-1,404 s on n2-standard-16 at 14 processes (about 1.6 x the one-wave
+#     time), so about 1,100 / 1,400 / 900 s here, each twice: about 1 h 55 min of simulation; plus per battery
+#     about 4-5 min of analysis, ring rows and observed side and about 1 min of braking counts: about 2 h 30 min
+#     of stage time; about 2 h 45 min billed with boot, setup and the I-24 data through the bucket, about $1.9 at
+#     about $0.68/h (disk and bucket cents extra). --cap-min 300 (about twice the stage) bounds it at about $3.4.
+#     Memory: stage p7 ran the same 14 I-24 runs and 8 analysis processes in 64 GB.
+#       scripts/gcp/launch_i24_pipeline.sh --vm flowstate-p12 --machine n2d-standard-16 \
+#         --zone us-central1-a,us-central1-b,us-central1-c,us-east1-b --bucket gs://<bucket>/p12 \
+#         --self-delete --via-bucket --data-set i24 --cap-min 300 --pipeline-args '--stages "p12_i24_b1"'
+P12_FACTOR=1.2185
+P12_H=artifacts/i24_discharge_2026-10-07/harness
+# <arm>:<scenario stem>:<its config hash>:<the committed step-3 battery's label, for the reproduction row>
+P12_ARMS=(
+  canonical:i24_replica_flow_speedcal:ae5861a4d906:flow_speedcal_ref
+  dc_refit:i24_replica_flow_speedcal_dc_refit:ada3f406504b:dc_refit
+  dc:i24_replica_flow_speedcal_dc:8976a1773674:dc
+)
+p12_battery() {  # p12_battery <label> <scenario>: one 20-seed battery through step 3's path, its braking counts, prune
+  local label="$1" scn="$2" ok="logs/$1.battery.ok"
+  if [ -f "$ok" ] && [ -f "artifacts/i24_validation_$label.json" ]; then
+    say "p12: battery $label done earlier, not repeated"; return 0
+  fi
+  $RUN scripts/i24_validate.py --scenario "$scn" --label "$label" --replicates "$REPS" --procs "$PROCS" \
+      --analysis-procs 8 --ring-seeds "$RING" || { say "p12: battery $label failed"; return 1; }
+  $RUN "$P12_H/hard_braking.py" --artifact "artifacts/i24_validation_$label.json" \
+      --out "runs/i24_validation/$label/hard_braking.json" || { say "p12: braking counts of $label failed"; return 1; }
+  p4_prune "runs/i24_validation/$label"
+  touch "$ok"
+}
+p12_steps() {
+  local rc=0 spec arm stem hash committed
+  local -a arms=()
+  for spec in "${P12_ARMS[@]}"; do
+    IFS=: read -r arm stem hash committed <<< "$spec"
+    $RUN "$P12_H/corridor_b1.py" make-copy --source "scenarios/$stem.yaml" --out "scenarios/${stem}_b1.yaml" \
+        --factor "$P12_FACTOR" --source-hash "$hash" || { say "p12: no B1 copy of $stem; arm $arm skipped"; rc=1; continue; }
+    p12_battery "p12_${arm}_ref" "scenarios/$stem.yaml" || rc=1
+    p12_battery "p12_${arm}_b1" "scenarios/${stem}_b1.yaml" || rc=1
+    arms+=(--arm "$arm" "p12_${arm}_ref" "p12_${arm}_b1" "artifacts/i24_validation_$committed.json")
+    $RUN "$P12_H/corridor_b1.py" evaluate --factor "$P12_FACTOR" --out artifacts/boundary_b1_corridor.json "${arms[@]}" \
+      || { say "p12: corridor readout failed after arm $arm"; rc=1; }
+  done
+  return $rc
+}
+if echo " $STAGES " | grep -q " p12_i24_b1 "; then
+  stage p12_i24_b1 p12_steps || say "p12_i24_b1 failed; continuing"
+fi
 
 # 9. Done marker; the EXIT trap builds the final archives (light, then full with the first-seed replicates).
 echo "PIPELINE_DONE $(date -u +%FT%TZ)" > logs/PIPELINE_DONE
