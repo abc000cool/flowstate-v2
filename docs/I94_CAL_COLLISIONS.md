@@ -1204,7 +1204,7 @@ registered definition (§13.4) asks only for the last entries into lane k *befor
 - **No other change.** No criterion, threshold or set was changed. The registration's R and lock definitions are
   implemented as written.
 
-### 14.8 The corridor round (cloud; written, not launched)
+### 14.8 The corridor round (cloud; written, not launched — ran 2026-10-07 as stage p10, results in §16)
 
 **Status.** Under §13.5 the fixture failure of G6 keeps W2 off. The corridor round of §13.6 is run only on the
 owner's decision.
@@ -1361,3 +1361,39 @@ Both are what W2's three switches address (§13–§14); W2 reproduced and remov
 failed its no-new-lock criterion alone, and the corridor round of W1b + W2 (stage `p10_i94_cal_w1b_w2`) is the
 next test. The weave commands were not logged (no recorder in the runner), so which rule issued each command is
 inferred, not read.
+
+## 16. The corridor round, run — 2026-10-07 (stage p10 on one n2d-standard-16 in us-east1-b, about 1 h 45 min of stage time, about $1.4, self-deleted)
+
+`artifacts/weave_w2_corridor.json`; batteries `artifacts/validation_mndot_i94_wb_stpaul_weave_xlsfg_dc_cal_w1b{,_w2}.json`
+(+ `_gated`, `baseline_gate_*`); log `artifacts/weave_collision_guards_2026-10-07/p10_i94_cal_w1b_w2.log.txt`; the two
+scenarios written on the VM are committed under `scenarios/`. Arm A is the calibration-day inputs with W1b on both
+weaves (`mndot_i94_wb_stpaul_weave_xlsfg_dc_cal_w1b`, hash 0d26de2a5f01); arm B adds the three W2 switches
+(`…_w1b_w2`, hash 5080d84d4725). Step 3's 20 seeds, paired.
+
+| # | criterion (§13.6) | result | verdict |
+|---|---|---|---|
+| CW1 | S790 06:30–07:30 flow, paired B − A, 95 % lower bound > −50 veh/h | −13.5 veh/h [−32.8, +5.8] | pass |
+| CW2 | departed share, paired B − A, lower bound > −1.0 pp | +0.01 pp [−0.04, +0.07] | pass |
+| CW3 | zero collisions in B | B: 0 in 20 runs. A: 1 (T.H.52, one run) | pass |
+| CW4 | zero locks in B (front-row reader and `validation.locks`) | none in either arm; readers agree | pass |
+| CW5a | given-up exits per weave, B ≤ A + 2 + 2·√(2A) | Ruth St 599 vs bound 608 (A 540); T.H.52 990 vs 1,043 (A 954) | pass |
+| CW5b | W1b's releases ≤ 1 % of each entrance's departures, pooled | Ruth St **257 of 20,340 = 1.26 %**; T.H.52 1 of 91,644 | **fail** |
+
+**Reading.** CW1–CW4 and CW5a hold: W2 removed the calibration-day corridor's only collision without a measurable
+cost in flow, departures, locks or given-up exits. CW5b fails, and it fails identically in arm A: W1b alone
+releases the same 257 stuck entrants of 20,340 at Ruth St (1.26 %; T.H.52: 3) on these inputs — the clause measures
+W1b on the calibration-day Ruth St weave, which is denser than the weave p9 passed it on (`_dc`, ≤ 1 %), and W2 does
+not change it. By the rule fixed in §13.6, W2 is **not adopted on this round**: the criteria are read as written, and
+CW5b is one of them. What the round shows is that the failing clause is W1b's on `_dc_cal`, not W2's; whether to re-run
+W1b's release bound against the arm it measures (A), or to treat 1.26 % as the calibration-day cost of W1b, is the
+owner's call and not re-thresholded here. Both arms fail the battery gate as every `_dc_cal` arm has (GEH share
+44.3 % → 46.1 %, wave 5.7 km/h both; `no_locks` pass in both; `no_collisions` A fail / B pass).
+
+**What W2 did in arm B** (counters over 20 seeds; Ruth St / T.H.52): hand-back skips 3,546 / 2,880; close-leader
+withheld 427 / 101; opposing entries deferred 6,985 / 16,767, of which vetoed 6,908 / 16,011. The counters are
+recorded only when the switches are on (§14.4). Arm A's one collision is at T.H.52; p8's `_dc_cal` battery without
+W1b had two, both at Ruth St (§10): W1b changes which contacts occur, not that they occur, and W2 removes them.
+
+**Limits.** One recording's calibration-day inputs; 20 seeds; the two readers of CW4 agree but were written by the
+same hand; the W2 counters are not paired with per-vehicle outcomes (no weave command recorder, §15). The round
+does not test W2 without W1b (G6's standing lock, §14.7) — that pairing is what the fixtures rejected.

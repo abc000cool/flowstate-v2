@@ -2068,6 +2068,20 @@ Headline reporting requires `n >= 20` (CLAUDE.md §0.6); `aggregate` sets
   p_lane ∝ flow_share_lane × heavy_fraction_lane (I-24: 0.048 / 0.172 / 0.459 /
   0.321).
 
+### Seeds in JSON responses — 2026-10-07
+
+Every seed the API returns is a **decimal string** in JSON (`RunOut.seeds`,
+`ReplicateMetricsOut.seed`, `MergeDiagnosticsOut.seed`, `HeatmapOut.seed`;
+`api.schemas.Seed`), and stays an `int` inside Python. FlowState's replicate
+seeds are 64-bit (e.g. 6914975401685141156), above the 2^53 that JavaScript's
+`JSON.parse` keeps exactly, so the dashboard showed rounded seeds the run never
+used and a `?seed=` heatmap request for one answered 404 (third regression
+review, 2026-10-07). The dashboard treats seeds as strings end to end; the
+`?seed=` query already took a string. Inputs that take a seed
+(`CalibrationParams.seed`) accept an int or a decimal string. A JSON consumer
+that parsed seeds as numbers must stop doing so.
+
+
 ## Detector observations (`flowstate.observations/1`) and demand (`flowstate.demand/1`) — 2026-09-22
 
 Corridor onboarding from public detector archives (WP-A; CLAUDE.md §6.1/§6.3).

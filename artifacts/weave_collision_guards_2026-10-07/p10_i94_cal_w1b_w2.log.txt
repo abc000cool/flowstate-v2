@@ -1,0 +1,420 @@
+scenarios/mndot_i94_wb_stpaul_weave_dc_cal_w1b.yaml: 20 replicate(s), config 0d26de2a5f01, 10 simulation proc(s) ...
+    seed 3011106312394044631: departed 31899/32354 (0.986), arrived 30607 — ok
+    seed 2378473973028931053: departed 31854/32354 (0.985), arrived 30551 — ok
+    seed 6134032994440706937: departed 31857/32354 (0.985), arrived 30356 — ok
+    seed 6953598295321596746: departed 31767/32354 (0.982), arrived 30133 — ok
+    seed 3747978530954135749: departed 31820/32354 (0.983), arrived 30084 — ok
+    seed 677105600768189526: departed 31874/32354 (0.985), arrived 30193 — ok
+    seed 134183728835869882: departed 31803/32354 (0.983), arrived 30266 — ok
+    seed 165503670820534583: departed 31806/32354 (0.983), arrived 30362 — ok
+    seed 661281422688282993: departed 31897/32354 (0.986), arrived 30399 — ok
+    seed 6914975401685141156: departed 31819/32354 (0.983), arrived 30133 — ok
+    seed 6143473282319009404: departed 31816/32354 (0.983), arrived 30587 — ok
+    seed 6904272788004776631: departed 31831/32354 (0.984), arrived 30395 — ok
+    seed 8557154790156791364: departed 31823/32354 (0.984), arrived 30454 — ok
+    seed 6538422657834023852: departed 31771/32354 (0.982), arrived 30126 — ok
+    seed 3944094060050347669: departed 31816/32354 (0.983), arrived 30203 — ok
+    seed 4910985839736976611: departed 31846/32354 (0.984), arrived 30176 — ok
+    seed 5690692725577505498: departed 31810/32354 (0.983), arrived 30405 — ok
+    seed 7382187975121682178: departed 31835/32354 (0.984), arrived 30468 — ok
+    seed 887972120279483394: departed 31849/32354 (0.984), arrived 30289 — ok
+    seed 8026499204807041784: departed 31842/32354 (0.984), arrived 30192 — ok
+Warning! pyarrow is installed with version 25.0.1 which might be incompatible with libsumo which is compiled against libarrow2300.
+ Try to uninstall pyarrow or install a matching pyarrow version, if you encounter problems.
+Warning! pyarrow is installed with version 25.0.1 which might be incompatible with libsumo which is compiled against libarrow2300.
+ Try to uninstall pyarrow or install a matching pyarrow version, if you encounter problems.
+Warning! pyarrow is installed with version 25.0.1 which might be incompatible with libsumo which is compiled against libarrow2300.
+ Try to uninstall pyarrow or install a matching pyarrow version, if you encounter problems.
+Warning! pyarrow is installed with version 25.0.1 which might be incompatible with libsumo which is compiled against libarrow2300.
+ Try to uninstall pyarrow or install a matching pyarrow version, if you encounter problems.
+Warning! pyarrow is installed with version 25.0.1 which might be incompatible with libsumo which is compiled against libarrow2300.
+ Try to uninstall pyarrow or install a matching pyarrow version, if you encounter problems.
+Warning! pyarrow is installed with version 25.0.1 which might be incompatible with libsumo which is compiled against libarrow2300.
+ Try to uninstall pyarrow or install a matching pyarrow version, if you encounter problems.
+Warning! pyarrow is installed with version 25.0.1 which might be incompatible with libsumo which is compiled against libarrow2300.
+ Try to uninstall pyarrow or install a matching pyarrow version, if you encounter problems.
+Warning! pyarrow is installed with version 25.0.1 which might be incompatible with libsumo which is compiled against libarrow2300.
+ Try to uninstall pyarrow or install a matching pyarrow version, if you encounter problems.
+Warning! pyarrow is installed with version 25.0.1 which might be incompatible with libsumo which is compiled against libarrow2300.
+ Try to uninstall pyarrow or install a matching pyarrow version, if you encounter problems.
+Warning! pyarrow is installed with version 25.0.1 which might be incompatible with libsumo which is compiled against libarrow2300.
+ Try to uninstall pyarrow or install a matching pyarrow version, if you encounter problems.
+    phase simulate: 2978.0 s
+scoring 20 replicate(s), 6 proc(s); est. 7.5 GB per worker over 43,508,163 rows, 66 GB available ...
+    seed 3747978530954135749: scored at 27.0 s
+    seed 2378473973028931053: scored at 27.5 s
+    seed 134183728835869882: scored at 27.9 s
+    seed 661281422688282993: scored at 28.3 s
+    seed 6914975401685141156: scored at 29.6 s
+    seed 677105600768189526: scored at 30.0 s
+    seed 3011106312394044631: scored at 49.5 s
+    seed 165503670820534583: scored at 52.0 s
+    seed 6134032994440706937: scored at 53.3 s
+    seed 6953598295321596746: scored at 54.2 s
+    seed 8557154790156791364: scored at 54.3 s
+    seed 6538422657834023852: scored at 56.9 s
+    seed 6904272788004776631: scored at 72.6 s
+    seed 6143473282319009404: scored at 76.1 s
+    seed 7382187975121682178: scored at 78.0 s
+    seed 3944094060050347669: scored at 78.9 s
+    seed 5690692725577505498: scored at 80.2 s
+    seed 4910985839736976611: scored at 80.3 s
+    seed 887972120279483394: scored at 93.4 s
+    seed 8026499204807041784: scored at 96.6 s
+    phase score: 97.0 s
+    phase ring: 0.0 s
+    phase report: 5.5 s
+    phase prune: 3.2 s
+pruned 19 trajectory file(s); the first seed's is kept
+    insertion          ok             departed 636635/647080 (mean 0.984, lowest 0.982)
+    weave exits        on-ramp 745524613: 540 of 30677 reached exiters given up (1.8 %, within the 2 % threshold, 20 run(s))
+    weave exits        on-ramp 769818012: 954 of 77928 reached exiters given up (1.2 %, within the 2 % threshold, 20 run(s))
+    collisions         1 over 20 replicate(s), 1 with any, 0.00157 per 1,000 departed; most on lane 51388891_1 (1 logged)
+    locks              0 of 20 replicate(s) locked (0 %, 95 % CI 0–17 %)
+    waiting            total delay incl. waiting 5327.8 veh-h (95 % CI 5160.1 to 5495.5), of which waiting to enter 1125.2 veh-h, over 20 of 20 replicate(s)
+    link_flows_geh     FAIL           0.44285714285714284  (GEH < 5 for > 85% of link-hour comparisons)
+    wave_speed         FAIL           5.72575775175821  (backward wave speed in [14, 22] km/h (emergent, unseeded))
+    ring_emergence     NOT EVALUATED  None  (Sugiyama ring emergence benchmark reproduced)
+    ring_dampening     NOT EVALUATED  None  (Stern single-AV dampening benchmark reproduced)
+    n_seeds            PASS           20.0  (n_seeds >= 20)
+    sensitivity_grid   NOT EVALUATED  None  (penetration {1%, 2%, 5%, 10%, 15%, 20%} x compliance {25%, 50%, 80%, 100%} grid published with CIs)
+    no_collisions      FAIL           1.0  (zero SUMO collisions in every run, each run recording the counter)
+    no_locks           PASS           0.0  (no run locked (no queue standing without discharge for 10 min or more), every run recorded)
+phases: simulate 2978.0 s | score 97.0 s | ring 0.0 s | report 5.5 s | prune 3.2 s
+done in 3084 s -> artifacts/validation_mndot_i94_wb_stpaul_weave_xlsfg_dc_cal_w1b.json, docs/reports/mndot_i94_wb_stpaul_weave_xlsfg_dc_cal_w1b/report.md
+Baseline gate FAILED (docs/FRISCO_PROTOCOL.md section 6): C1 link flows (calibration), C3 speeds (calibration), C1 link flows (validation), C3 speeds (validation), C4 wave speed (calibration), C5 collisions (all runs). No strategy recommendation may be made from this model.
+  replicates all runs     pass           Replicates: 20 seeded replicate(s); the protocol scores every check over at least 20.
+  days       both day sets pass           Day sets: the calibration-day artifact holds exactly the split's 5 calibration day(s) and the validation-day artifact its 4 validation day(s), none shared.
+  quality    both day sets pass           Targets quality-masked: calibration days: runs/p1_rehearsal/dq/data_quality.json (sha256 8cae907dec40): 24 masked detector-day(s) (24 excluded whole), 912 reading(s) set aside; validation days: runs/p1_rehearsal/dq/data_quality.json (sha256 8cae907dec40): 19 masked detector-day(s) (19 excluded whole), 720 reading(s) set aside.
+  C1         calibration  fail           Link flows, calibration days: GEH < 5 on 36.2 % of 840 station-hour comparisons pooled over 20 replicate(s) (per-replicate mean 36.2 %, 95 % interval 33.7 % to 38.7 %); the target is >= 85.0 %, short by 48.8 percentage points; hours anchored at the study period's start (1800 s).
+  C2         calibration  fail           (not gating) Link flows, Texas criterion, calibration days: GEH < 3 on 23.7 % of 840 station-hour comparisons pooled over 20 replicate(s) (per-replicate mean 36.2 %, 95 % interval 33.7 % to 38.7 %); the target is >= 100.0 %, short by 76.3 percentage points; hours anchored at the study period's start (1800 s).
+  C3         calibration  fail           Speeds, calibration days: RMSPE of 15-minute station mean speeds 38.4 % (mean over 20 replicate(s), 95 % interval 37.6 % to 39.2 %; point speeds at the stations, as a loop reads them); the target is at most 15.0 %, over by 23.4 percentage points (diagnostics: 5 min 39.8 %; 60 min 35.1 %).
+  C6         calibration  pass           Bottlenecks, calibration days: 0 observed bottleneck(s), 0 active for 30 min or more, compared with 20 replicate(s) (point speeds at the stations, as a loop reads them); all four rules hold.
+  C1         validation   fail           Link flows, validation days: GEH < 5 on 33.2 % of 840 station-hour comparisons pooled over 20 replicate(s) (per-replicate mean 33.2 %, 95 % interval 30.8 % to 35.6 %); the target is >= 85.0 %, short by 51.8 percentage points; hours anchored at the study period's start (1800 s).
+  C2         validation   fail           (not gating) Link flows, Texas criterion, validation days: GEH < 3 on 23.3 % of 840 station-hour comparisons pooled over 20 replicate(s) (per-replicate mean 33.2 %, 95 % interval 30.8 % to 35.6 %); the target is >= 100.0 %, short by 76.7 percentage points; hours anchored at the study period's start (1800 s).
+  C3         validation   fail           Speeds, validation days: RMSPE of 15-minute station mean speeds 37.8 % (mean over 20 replicate(s), 95 % interval 37.0 % to 38.6 %; point speeds at the stations, as a loop reads them); the target is at most 15.0 %, over by 22.8 percentage points (diagnostics: 5 min 39.6 %; 60 min 33.6 %).
+  C6         validation   pass           Bottlenecks, validation days: 1 observed bottleneck(s), 0 active for 30 min or more, compared with 20 replicate(s) (point speeds at the stations, as a loop reads them); all four rules hold.
+  C4         calibration  fail           Wave speed: a backward front in 20 of 20 replicate(s) (100.0 %; at least 80.0 % needed, a replicate without a front counting as a miss); simulated backward wave speed 5.7 km/h, 95 % interval 5.6 to 5.8 km/h over those replicates (stack detector); the band is 14-22 km/h, outside it by 8.3 km/h; observed on the calibration days (detector cross-correlation): median 19.1 km/h from 7 of 13 station pairs.
+  C5         all runs     fail           Collisions: 1 SUMO collision(s) in 1 of 20 run(s) that record the counter; the gate requires zero.
+validation days one by one (reported, not gating):
+  20260901: C1 fail, C3 fail, C6 fail
+  20260909: C1 fail, C3 fail, C6 fail
+  20260910: C1 fail, C3 fail, C6 fail
+  20260917: C1 fail, C3 fail, C6 fail
+20 replicate(s) of 0d26de2a5f01; 20 with a backward front; wrote artifacts/baseline_gate_mndot_i94_wb_stpaul_weave_xlsfg_dc_cal_w1b.json, docs/reports/mndot_i94_wb_stpaul_weave_xlsfg_dc_cal_w1b/baseline_gate.md
+    seed 6914975401685141156: ok
+    seed 134183728835869882: ok
+    seed 2378473973028931053: ok
+    seed 3747978530954135749: ok
+    seed 677105600768189526: ok
+    seed 661281422688282993: ok
+    seed 3011106312394044631: ok
+    seed 6953598295321596746: ok
+    seed 165503670820534583: ok
+    seed 6134032994440706937: ok
+    seed 8557154790156791364: ok
+    seed 6538422657834023852: ok
+    seed 6904272788004776631: ok
+    seed 6143473282319009404: ok
+    seed 3944094060050347669: ok
+    seed 4910985839736976611: ok
+    seed 7382187975121682178: ok
+    seed 5690692725577505498: ok
+    seed 887972120279483394: ok
+    seed 8026499204807041784: ok
+    phase score: 0.4 s
+    phase ring: 0.0 s
+    phase report: 4.6 s
+    insertion          ok             departed 636635/647080 (mean 0.984, lowest 0.982)
+    weave exits        on-ramp 745524613: 540 of 30677 reached exiters given up (1.8 %, within the 2 % threshold, 20 run(s))
+    weave exits        on-ramp 769818012: 954 of 77928 reached exiters given up (1.2 %, within the 2 % threshold, 20 run(s))
+    collisions         1 over 20 replicate(s), 1 with any, 0.00157 per 1,000 departed; most on lane 51388891_1 (1 logged)
+    locks              0 of 20 replicate(s) locked (0 %, 95 % CI 0–17 %)
+    waiting            total delay incl. waiting 5327.8 veh-h (95 % CI 5160.1 to 5495.5), of which waiting to enter 1125.2 veh-h, over 20 of 20 replicate(s)
+    link_flows_geh     FAIL           0.44285714285714284  (GEH < 5 for > 85% of link-hour comparisons)
+    wave_speed         FAIL           5.72575775175821  (backward wave speed in [14, 22] km/h (emergent, unseeded))
+    ring_emergence     NOT EVALUATED  None  (Sugiyama ring emergence benchmark reproduced)
+    ring_dampening     NOT EVALUATED  None  (Stern single-AV dampening benchmark reproduced)
+    n_seeds            PASS           20.0  (n_seeds >= 20)
+    sensitivity_grid   NOT EVALUATED  None  (penetration {1%, 2%, 5%, 10%, 15%, 20%} x compliance {25%, 50%, 80%, 100%} grid published with CIs)
+    no_collisions      FAIL           1.0  (zero SUMO collisions in every run, each run recording the counter)
+    no_locks           PASS           0.0  (no run locked (no queue standing without discharge for 10 min or more), every run recorded)
+    Baseline gate FAILED (docs/FRISCO_PROTOCOL.md section 6): C1 link flows (calibration), C3 speeds (calibration), C1 link flows (validation), C3 speeds (validation), C4 wave speed (calibration), C5 collisions (all runs). No strategy recommendation may be made from this model.
+      replicates pass           Replicates: 20 seeded replicate(s); the protocol scores every check over at least 20.
+      days       pass           Day sets: the calibration-day artifact holds exactly the split's 5 calibration day(s) and the validation-day artifact its 4 validation day(s), none shared.
+      quality    pass           Targets quality-masked: calibration days: runs/p1_rehearsal/dq/data_quality.json (sha256 8cae907dec40): 24 masked detector-day(s) (24 excluded whole), 912 reading(s) set aside; validation days: runs/p1_rehearsal/dq/data_quality.json (sha256 8cae907dec40): 19 masked detector-day(s) (19 excluded whole), 720 reading(s) set aside.
+      C1         fail           Link flows, calibration days: GEH < 5 on 36.2 % of 840 station-hour comparisons pooled over 20 replicate(s) (per-replicate mean 36.2 %, 95 % interval 33.7 % to 38.7 %); the target is >= 85.0 %, short by 48.8 percentage points; hours anchored at the study period's start (1800 s).
+      C2         fail           (not gating) Link flows, Texas criterion, calibration days: GEH < 3 on 23.7 % of 840 station-hour comparisons pooled over 20 replicate(s) (per-replicate mean 36.2 %, 95 % interval 33.7 % to 38.7 %); the target is >= 100.0 %, short by 76.3 percentage points; hours anchored at the study period's start (1800 s).
+      C3         fail           Speeds, calibration days: RMSPE of 15-minute station mean speeds 38.4 % (mean over 20 replicate(s), 95 % interval 37.6 % to 39.2 %; point speeds at the stations, as a loop reads them); the target is at most 15.0 %, over by 23.4 percentage points (diagnostics: 5 min 39.8 %; 60 min 35.1 %).
+      C6         pass           Bottlenecks, calibration days: 0 observed bottleneck(s), 0 active for 30 min or more, compared with 20 replicate(s) (point speeds at the stations, as a loop reads them); all four rules hold.
+      C1         fail           Link flows, validation days: GEH < 5 on 33.2 % of 840 station-hour comparisons pooled over 20 replicate(s) (per-replicate mean 33.2 %, 95 % interval 30.8 % to 35.6 %); the target is >= 85.0 %, short by 51.8 percentage points; hours anchored at the study period's start (1800 s).
+      C2         fail           (not gating) Link flows, Texas criterion, validation days: GEH < 3 on 23.3 % of 840 station-hour comparisons pooled over 20 replicate(s) (per-replicate mean 33.2 %, 95 % interval 30.8 % to 35.6 %); the target is >= 100.0 %, short by 76.7 percentage points; hours anchored at the study period's start (1800 s).
+      C3         fail           Speeds, validation days: RMSPE of 15-minute station mean speeds 37.8 % (mean over 20 replicate(s), 95 % interval 37.0 % to 38.6 %; point speeds at the stations, as a loop reads them); the target is at most 15.0 %, over by 22.8 percentage points (diagnostics: 5 min 39.6 %; 60 min 33.6 %).
+      C6         pass           Bottlenecks, validation days: 1 observed bottleneck(s), 0 active for 30 min or more, compared with 20 replicate(s) (point speeds at the stations, as a loop reads them); all four rules hold.
+      C4         fail           Wave speed: a backward front in 20 of 20 replicate(s) (100.0 %; at least 80.0 % needed, a replicate without a front counting as a miss); simulated backward wave speed 5.7 km/h, 95 % interval 5.6 to 5.8 km/h over those replicates (stack detector); the band is 14-22 km/h, outside it by 8.3 km/h; observed on the calibration days (detector cross-correlation): median 19.1 km/h from 7 of 13 station pairs.
+      C5         fail           Collisions: 1 SUMO collision(s) in 1 of 20 run(s) that record the counter; the gate requires zero.
+phases: simulate 0.0 s | score 0.4 s | ring 0.0 s | report 4.6 s | prune 0.0 s
+done in 6 s -> artifacts/validation_mndot_i94_wb_stpaul_weave_xlsfg_dc_cal_w1b_gated.json, docs/reports/mndot_i94_wb_stpaul_weave_xlsfg_dc_cal_w1b/report.md
+scenarios/mndot_i94_wb_stpaul_weave_dc_cal_w1b_w2.yaml: 20 replicate(s), config 5080d84d4725, 10 simulation proc(s) ...
+    seed 2378473973028931053: departed 31838/32354 (0.984), arrived 30556 — ok
+    seed 661281422688282993: departed 31865/32354 (0.985), arrived 30546 — ok
+    seed 134183728835869882: departed 31847/32354 (0.984), arrived 30231 — ok
+    seed 6914975401685141156: departed 31817/32354 (0.983), arrived 30430 — ok
+    seed 3011106312394044631: departed 31824/32354 (0.984), arrived 30336 — ok
+    seed 3747978530954135749: departed 31846/32354 (0.984), arrived 30185 — ok
+    seed 165503670820534583: departed 31857/32354 (0.985), arrived 30475 — ok
+    seed 677105600768189526: departed 31871/32354 (0.985), arrived 30080 — ok
+    seed 6953598295321596746: departed 31837/32354 (0.984), arrived 30251 — ok
+    seed 6134032994440706937: departed 31834/32354 (0.984), arrived 29940 — ok
+    seed 8557154790156791364: departed 31757/32354 (0.982), arrived 30389 — ok
+    seed 6143473282319009404: departed 31870/32354 (0.985), arrived 30504 — ok
+    seed 3944094060050347669: departed 31843/32354 (0.984), arrived 30371 — ok
+    seed 6538422657834023852: departed 31762/32354 (0.982), arrived 30099 — ok
+    seed 6904272788004776631: departed 31825/32354 (0.984), arrived 30433 — ok
+    seed 4910985839736976611: departed 31818/32354 (0.983), arrived 30370 — ok
+    seed 5690692725577505498: departed 31820/32354 (0.983), arrived 30400 — ok
+    seed 7382187975121682178: departed 31871/32354 (0.985), arrived 30416 — ok
+    seed 8026499204807041784: departed 31852/32354 (0.984), arrived 30124 — ok
+    seed 887972120279483394: departed 31870/32354 (0.985), arrived 30203 — ok
+Warning! pyarrow is installed with version 25.0.1 which might be incompatible with libsumo which is compiled against libarrow2300.
+ Try to uninstall pyarrow or install a matching pyarrow version, if you encounter problems.
+Warning! pyarrow is installed with version 25.0.1 which might be incompatible with libsumo which is compiled against libarrow2300.
+ Try to uninstall pyarrow or install a matching pyarrow version, if you encounter problems.
+Warning! pyarrow is installed with version 25.0.1 which might be incompatible with libsumo which is compiled against libarrow2300.
+ Try to uninstall pyarrow or install a matching pyarrow version, if you encounter problems.
+Warning! pyarrow is installed with version 25.0.1 which might be incompatible with libsumo which is compiled against libarrow2300.
+ Try to uninstall pyarrow or install a matching pyarrow version, if you encounter problems.
+Warning! pyarrow is installed with version 25.0.1 which might be incompatible with libsumo which is compiled against libarrow2300.
+ Try to uninstall pyarrow or install a matching pyarrow version, if you encounter problems.
+Warning! pyarrow is installed with version 25.0.1 which might be incompatible with libsumo which is compiled against libarrow2300.
+ Try to uninstall pyarrow or install a matching pyarrow version, if you encounter problems.
+Warning! pyarrow is installed with version 25.0.1 which might be incompatible with libsumo which is compiled against libarrow2300.
+ Try to uninstall pyarrow or install a matching pyarrow version, if you encounter problems.
+Warning! pyarrow is installed with version 25.0.1 which might be incompatible with libsumo which is compiled against libarrow2300.
+ Try to uninstall pyarrow or install a matching pyarrow version, if you encounter problems.
+Warning! pyarrow is installed with version 25.0.1 which might be incompatible with libsumo which is compiled against libarrow2300.
+ Try to uninstall pyarrow or install a matching pyarrow version, if you encounter problems.
+Warning! pyarrow is installed with version 25.0.1 which might be incompatible with libsumo which is compiled against libarrow2300.
+ Try to uninstall pyarrow or install a matching pyarrow version, if you encounter problems.
+    phase simulate: 2986.9 s
+scoring 20 replicate(s), 6 proc(s); est. 7.7 GB per worker over 44,560,947 rows, 66 GB available ...
+    seed 2378473973028931053: scored at 24.7 s
+    seed 6914975401685141156: scored at 26.0 s
+    seed 661281422688282993: scored at 26.3 s
+    seed 3747978530954135749: scored at 27.8 s
+    seed 134183728835869882: scored at 27.8 s
+    seed 677105600768189526: scored at 28.5 s
+    seed 165503670820534583: scored at 50.7 s
+    seed 3011106312394044631: scored at 51.1 s
+    seed 8557154790156791364: scored at 51.9 s
+    seed 6953598295321596746: scored at 52.3 s
+    seed 6134032994440706937: scored at 55.8 s
+    seed 6538422657834023852: scored at 55.9 s
+    seed 6904272788004776631: scored at 75.2 s
+    seed 6143473282319009404: scored at 76.4 s
+    seed 3944094060050347669: scored at 76.6 s
+    seed 4910985839736976611: scored at 77.2 s
+    seed 7382187975121682178: scored at 79.7 s
+    seed 5690692725577505498: scored at 80.6 s
+    seed 887972120279483394: scored at 95.9 s
+    seed 8026499204807041784: scored at 97.6 s
+    phase score: 98.0 s
+    phase ring: 0.0 s
+    phase report: 4.4 s
+    phase prune: 3.2 s
+pruned 19 trajectory file(s); the first seed's is kept
+    insertion          ok             departed 636724/647080 (mean 0.984, lowest 0.982)
+    weave exits        on-ramp 745524613: 599 of 30717 reached exiters given up (2.0 %, within the 2 % threshold, 20 run(s))
+    weave exits        on-ramp 769818012: 990 of 77870 reached exiters given up (1.3 %, within the 2 % threshold, 20 run(s))
+    collisions         0 over 20 replicate(s), 0 with any, 0 per 1,000 departed
+    locks              0 of 20 replicate(s) locked (0 %, 95 % CI 0–17 %)
+    waiting            total delay incl. waiting 5330.7 veh-h (95 % CI 5145.4 to 5516.0), of which waiting to enter 1125.8 veh-h, over 20 of 20 replicate(s)
+    link_flows_geh     FAIL           0.4607142857142857  (GEH < 5 for > 85% of link-hour comparisons)
+    wave_speed         FAIL           5.669352038106529  (backward wave speed in [14, 22] km/h (emergent, unseeded))
+    ring_emergence     NOT EVALUATED  None  (Sugiyama ring emergence benchmark reproduced)
+    ring_dampening     NOT EVALUATED  None  (Stern single-AV dampening benchmark reproduced)
+    n_seeds            PASS           20.0  (n_seeds >= 20)
+    sensitivity_grid   NOT EVALUATED  None  (penetration {1%, 2%, 5%, 10%, 15%, 20%} x compliance {25%, 50%, 80%, 100%} grid published with CIs)
+    no_collisions      PASS           0.0  (zero SUMO collisions in every run, each run recording the counter)
+    no_locks           PASS           0.0  (no run locked (no queue standing without discharge for 10 min or more), every run recorded)
+phases: simulate 2986.9 s | score 98.0 s | ring 0.0 s | report 4.4 s | prune 3.2 s
+done in 3093 s -> artifacts/validation_mndot_i94_wb_stpaul_weave_xlsfg_dc_cal_w1b_w2.json, docs/reports/mndot_i94_wb_stpaul_weave_xlsfg_dc_cal_w1b_w2/report.md
+Baseline gate FAILED (docs/FRISCO_PROTOCOL.md section 6): C1 link flows (calibration), C3 speeds (calibration), C1 link flows (validation), C3 speeds (validation), C4 wave speed (calibration). No strategy recommendation may be made from this model.
+  replicates all runs     pass           Replicates: 20 seeded replicate(s); the protocol scores every check over at least 20.
+  days       both day sets pass           Day sets: the calibration-day artifact holds exactly the split's 5 calibration day(s) and the validation-day artifact its 4 validation day(s), none shared.
+  quality    both day sets pass           Targets quality-masked: calibration days: runs/p1_rehearsal/dq/data_quality.json (sha256 8cae907dec40): 24 masked detector-day(s) (24 excluded whole), 912 reading(s) set aside; validation days: runs/p1_rehearsal/dq/data_quality.json (sha256 8cae907dec40): 19 masked detector-day(s) (19 excluded whole), 720 reading(s) set aside.
+  C1         calibration  fail           Link flows, calibration days: GEH < 5 on 36.1 % of 840 station-hour comparisons pooled over 20 replicate(s) (per-replicate mean 36.1 %, 95 % interval 34.3 % to 37.9 %); the target is >= 85.0 %, short by 48.9 percentage points; hours anchored at the study period's start (1800 s).
+  C2         calibration  fail           (not gating) Link flows, Texas criterion, calibration days: GEH < 3 on 25.2 % of 840 station-hour comparisons pooled over 20 replicate(s) (per-replicate mean 36.1 %, 95 % interval 34.3 % to 37.9 %); the target is >= 100.0 %, short by 74.8 percentage points; hours anchored at the study period's start (1800 s).
+  C3         calibration  fail           Speeds, calibration days: RMSPE of 15-minute station mean speeds 38.3 % (mean over 20 replicate(s), 95 % interval 37.5 % to 39.2 %; point speeds at the stations, as a loop reads them); the target is at most 15.0 %, over by 23.3 percentage points (diagnostics: 5 min 39.8 %; 60 min 34.8 %).
+  C6         calibration  pass           Bottlenecks, calibration days: 0 observed bottleneck(s), 0 active for 30 min or more, compared with 20 replicate(s) (point speeds at the stations, as a loop reads them); all four rules hold.
+  C1         validation   fail           Link flows, validation days: GEH < 5 on 33.0 % of 840 station-hour comparisons pooled over 20 replicate(s) (per-replicate mean 33.0 %, 95 % interval 30.9 % to 35.1 %); the target is >= 85.0 %, short by 52.0 percentage points; hours anchored at the study period's start (1800 s).
+  C2         validation   fail           (not gating) Link flows, Texas criterion, validation days: GEH < 3 on 23.2 % of 840 station-hour comparisons pooled over 20 replicate(s) (per-replicate mean 33.0 %, 95 % interval 30.9 % to 35.1 %); the target is >= 100.0 %, short by 76.8 percentage points; hours anchored at the study period's start (1800 s).
+  C3         validation   fail           Speeds, validation days: RMSPE of 15-minute station mean speeds 37.9 % (mean over 20 replicate(s), 95 % interval 37.0 % to 38.7 %; point speeds at the stations, as a loop reads them); the target is at most 15.0 %, over by 22.9 percentage points (diagnostics: 5 min 39.7 %; 60 min 33.2 %).
+  C6         validation   pass           Bottlenecks, validation days: 1 observed bottleneck(s), 0 active for 30 min or more, compared with 20 replicate(s) (point speeds at the stations, as a loop reads them); all four rules hold.
+  C4         calibration  fail           Wave speed: a backward front in 20 of 20 replicate(s) (100.0 %; at least 80.0 % needed, a replicate without a front counting as a miss); simulated backward wave speed 5.7 km/h, 95 % interval 5.5 to 5.8 km/h over those replicates (stack detector); the band is 14-22 km/h, outside it by 8.3 km/h; observed on the calibration days (detector cross-correlation): median 19.1 km/h from 7 of 13 station pairs.
+  C5         all runs     pass           Collisions: none in 20 run(s).
+validation days one by one (reported, not gating):
+  20260901: C1 fail, C3 fail, C6 fail
+  20260909: C1 fail, C3 fail, C6 fail
+  20260910: C1 fail, C3 fail, C6 fail
+  20260917: C1 fail, C3 fail, C6 fail
+20 replicate(s) of 5080d84d4725; 20 with a backward front; wrote artifacts/baseline_gate_mndot_i94_wb_stpaul_weave_xlsfg_dc_cal_w1b_w2.json, docs/reports/mndot_i94_wb_stpaul_weave_xlsfg_dc_cal_w1b_w2/baseline_gate.md
+    seed 6914975401685141156: ok
+    seed 134183728835869882: ok
+    seed 2378473973028931053: ok
+    seed 3747978530954135749: ok
+    seed 677105600768189526: ok
+    seed 661281422688282993: ok
+    seed 3011106312394044631: ok
+    seed 6953598295321596746: ok
+    seed 165503670820534583: ok
+    seed 6134032994440706937: ok
+    seed 8557154790156791364: ok
+    seed 6538422657834023852: ok
+    seed 6904272788004776631: ok
+    seed 6143473282319009404: ok
+    seed 3944094060050347669: ok
+    seed 4910985839736976611: ok
+    seed 7382187975121682178: ok
+    seed 5690692725577505498: ok
+    seed 887972120279483394: ok
+    seed 8026499204807041784: ok
+    phase score: 0.4 s
+    phase ring: 0.0 s
+    phase report: 4.5 s
+    insertion          ok             departed 636724/647080 (mean 0.984, lowest 0.982)
+    weave exits        on-ramp 745524613: 599 of 30717 reached exiters given up (2.0 %, within the 2 % threshold, 20 run(s))
+    weave exits        on-ramp 769818012: 990 of 77870 reached exiters given up (1.3 %, within the 2 % threshold, 20 run(s))
+    collisions         0 over 20 replicate(s), 0 with any, 0 per 1,000 departed
+    locks              0 of 20 replicate(s) locked (0 %, 95 % CI 0–17 %)
+    waiting            total delay incl. waiting 5330.7 veh-h (95 % CI 5145.4 to 5516.0), of which waiting to enter 1125.8 veh-h, over 20 of 20 replicate(s)
+    link_flows_geh     FAIL           0.4607142857142857  (GEH < 5 for > 85% of link-hour comparisons)
+    wave_speed         FAIL           5.669352038106529  (backward wave speed in [14, 22] km/h (emergent, unseeded))
+    ring_emergence     NOT EVALUATED  None  (Sugiyama ring emergence benchmark reproduced)
+    ring_dampening     NOT EVALUATED  None  (Stern single-AV dampening benchmark reproduced)
+    n_seeds            PASS           20.0  (n_seeds >= 20)
+    sensitivity_grid   NOT EVALUATED  None  (penetration {1%, 2%, 5%, 10%, 15%, 20%} x compliance {25%, 50%, 80%, 100%} grid published with CIs)
+    no_collisions      PASS           0.0  (zero SUMO collisions in every run, each run recording the counter)
+    no_locks           PASS           0.0  (no run locked (no queue standing without discharge for 10 min or more), every run recorded)
+    Baseline gate FAILED (docs/FRISCO_PROTOCOL.md section 6): C1 link flows (calibration), C3 speeds (calibration), C1 link flows (validation), C3 speeds (validation), C4 wave speed (calibration). No strategy recommendation may be made from this model.
+      replicates pass           Replicates: 20 seeded replicate(s); the protocol scores every check over at least 20.
+      days       pass           Day sets: the calibration-day artifact holds exactly the split's 5 calibration day(s) and the validation-day artifact its 4 validation day(s), none shared.
+      quality    pass           Targets quality-masked: calibration days: runs/p1_rehearsal/dq/data_quality.json (sha256 8cae907dec40): 24 masked detector-day(s) (24 excluded whole), 912 reading(s) set aside; validation days: runs/p1_rehearsal/dq/data_quality.json (sha256 8cae907dec40): 19 masked detector-day(s) (19 excluded whole), 720 reading(s) set aside.
+      C1         fail           Link flows, calibration days: GEH < 5 on 36.1 % of 840 station-hour comparisons pooled over 20 replicate(s) (per-replicate mean 36.1 %, 95 % interval 34.3 % to 37.9 %); the target is >= 85.0 %, short by 48.9 percentage points; hours anchored at the study period's start (1800 s).
+      C2         fail           (not gating) Link flows, Texas criterion, calibration days: GEH < 3 on 25.2 % of 840 station-hour comparisons pooled over 20 replicate(s) (per-replicate mean 36.1 %, 95 % interval 34.3 % to 37.9 %); the target is >= 100.0 %, short by 74.8 percentage points; hours anchored at the study period's start (1800 s).
+      C3         fail           Speeds, calibration days: RMSPE of 15-minute station mean speeds 38.3 % (mean over 20 replicate(s), 95 % interval 37.5 % to 39.2 %; point speeds at the stations, as a loop reads them); the target is at most 15.0 %, over by 23.3 percentage points (diagnostics: 5 min 39.8 %; 60 min 34.8 %).
+      C6         pass           Bottlenecks, calibration days: 0 observed bottleneck(s), 0 active for 30 min or more, compared with 20 replicate(s) (point speeds at the stations, as a loop reads them); all four rules hold.
+      C1         fail           Link flows, validation days: GEH < 5 on 33.0 % of 840 station-hour comparisons pooled over 20 replicate(s) (per-replicate mean 33.0 %, 95 % interval 30.9 % to 35.1 %); the target is >= 85.0 %, short by 52.0 percentage points; hours anchored at the study period's start (1800 s).
+      C2         fail           (not gating) Link flows, Texas criterion, validation days: GEH < 3 on 23.2 % of 840 station-hour comparisons pooled over 20 replicate(s) (per-replicate mean 33.0 %, 95 % interval 30.9 % to 35.1 %); the target is >= 100.0 %, short by 76.8 percentage points; hours anchored at the study period's start (1800 s).
+      C3         fail           Speeds, validation days: RMSPE of 15-minute station mean speeds 37.9 % (mean over 20 replicate(s), 95 % interval 37.0 % to 38.7 %; point speeds at the stations, as a loop reads them); the target is at most 15.0 %, over by 22.9 percentage points (diagnostics: 5 min 39.7 %; 60 min 33.2 %).
+      C6         pass           Bottlenecks, validation days: 1 observed bottleneck(s), 0 active for 30 min or more, compared with 20 replicate(s) (point speeds at the stations, as a loop reads them); all four rules hold.
+      C4         fail           Wave speed: a backward front in 20 of 20 replicate(s) (100.0 %; at least 80.0 % needed, a replicate without a front counting as a miss); simulated backward wave speed 5.7 km/h, 95 % interval 5.5 to 5.8 km/h over those replicates (stack detector); the band is 14-22 km/h, outside it by 8.3 km/h; observed on the calibration days (detector cross-correlation): median 19.1 km/h from 7 of 13 station pairs.
+      C5         pass           Collisions: none in 20 run(s).
+phases: simulate 0.0 s | score 0.4 s | ring 0.0 s | report 4.5 s | prune 0.0 s
+done in 6 s -> artifacts/validation_mndot_i94_wb_stpaul_weave_xlsfg_dc_cal_w1b_w2_gated.json, docs/reports/mndot_i94_wb_stpaul_weave_xlsfg_dc_cal_w1b_w2/report.md
+{
+ "CW1": {
+  "pass": true,
+  "paired_s790_veh_h": [
+   -13.5,
+   -32.790454369616555,
+   5.790454369616551
+  ]
+ },
+ "CW2": {
+  "pass": true,
+  "paired_departed_share": [
+   0.0001375409532051619,
+   -0.00041779569226726266,
+   0.0006928775986775864
+  ]
+ },
+ "CW3": {
+  "pass": true,
+  "collisions_b": 0,
+  "collisions_a": 1,
+  "by_section_b": [
+   {},
+   {},
+   {},
+   {},
+   {},
+   {},
+   {},
+   {},
+   {},
+   {},
+   {},
+   {},
+   {},
+   {},
+   {},
+   {},
+   {},
+   {},
+   {},
+   {}
+  ],
+  "by_section_a": [
+   {},
+   {},
+   {},
+   {},
+   {},
+   {},
+   {},
+   {},
+   {},
+   {},
+   {
+    "T.H.52": 1
+   },
+   {},
+   {},
+   {},
+   {},
+   {},
+   {},
+   {},
+   {},
+   {}
+  ]
+ },
+ "CW4": {
+  "pass": true,
+  "front_row_locks_b": [],
+  "front_row_locks_a": [],
+  "battery_locked_b": [],
+  "battery_locked_a": [],
+  "readers_disagree_b": []
+ },
+ "CW5": {
+  "pass": false,
+  "given_up_exits": {
+   "on-ramp 745524613": {
+    "a": 540,
+    "b": 599,
+    "bound": 607.7267069006199,
+    "pass": true
+   },
+   "on-ramp 769818012": {
+    "a": 954,
+    "b": 990,
+    "bound": 1043.3613186713662,
+    "pass": true
+   }
+  },
+  "w1b_releases_b": {
+   "on-ramp 745524613": {
+    "releases": 257,
+    "entrance_departed": 20340,
+    "share": 0.01263520157325467
+   },
+   "on-ramp 769818012": {
+    "releases": 1,
+    "entrance_departed": 91644,
+    "share": 1.0911789096940335e-05
+   }
+  }
+ }
+}

@@ -1,0 +1,4569 @@
+{
+ "seeds": [
+  134183728835869882,
+  165503670820534583,
+  661281422688282993,
+  677105600768189526,
+  887972120279483394,
+  2378473973028931053,
+  3011106312394044631,
+  3747978530954135749,
+  3944094060050347669,
+  4910985839736976611,
+  5690692725577505498,
+  6134032994440706937,
+  6143473282319009404,
+  6538422657834023852,
+  6904272788004776631,
+  6914975401685141156,
+  6953598295321596746,
+  7382187975121682178,
+  8026499204807041784,
+  8557154790156791364
+ ],
+ "criteria": {
+  "CW1": {
+   "pass": true,
+   "paired_s790_veh_h": [
+    -13.5,
+    -32.790454369616555,
+    5.790454369616551
+   ]
+  },
+  "CW2": {
+   "pass": true,
+   "paired_departed_share": [
+    0.0001375409532051619,
+    -0.00041779569226726266,
+    0.0006928775986775864
+   ]
+  },
+  "CW3": {
+   "pass": true,
+   "collisions_b": 0,
+   "collisions_a": 1,
+   "by_section_b": [
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {}
+   ],
+   "by_section_a": [
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {
+     "T.H.52": 1
+    },
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {}
+   ]
+  },
+  "CW4": {
+   "pass": true,
+   "front_row_locks_b": [],
+   "front_row_locks_a": [],
+   "battery_locked_b": [],
+   "battery_locked_a": [],
+   "readers_disagree_b": []
+  },
+  "CW5": {
+   "pass": false,
+   "given_up_exits": {
+    "on-ramp 745524613": {
+     "a": 540,
+     "b": 599,
+     "bound": 607.7267069006199,
+     "pass": true
+    },
+    "on-ramp 769818012": {
+     "a": 954,
+     "b": 990,
+     "bound": 1043.3613186713662,
+     "pass": true
+    }
+   },
+   "w1b_releases_b": {
+    "on-ramp 745524613": {
+     "releases": 257,
+     "entrance_departed": 20340,
+     "share": 0.01263520157325467
+    },
+    "on-ramp 769818012": {
+     "releases": 1,
+     "entrance_departed": 91644,
+     "share": 1.0911789096940335e-05
+    }
+   }
+  }
+ },
+ "w2_counters_b": {
+  "134183728835869882": {
+   "on-ramp 745524613": {
+    "n_handback_skips": 175,
+    "n_close_leader_withheld": 112,
+    "n_opposing_deferred": 340,
+    "n_opposing_vetoed": 337
+   },
+   "on-ramp 769818012": {
+    "n_handback_skips": 168,
+    "n_close_leader_withheld": 8,
+    "n_opposing_deferred": 843,
+    "n_opposing_vetoed": 806
+   }
+  },
+  "165503670820534583": {
+   "on-ramp 745524613": {
+    "n_handback_skips": 235,
+    "n_close_leader_withheld": 12,
+    "n_opposing_deferred": 368,
+    "n_opposing_vetoed": 358
+   },
+   "on-ramp 769818012": {
+    "n_handback_skips": 179,
+    "n_close_leader_withheld": 3,
+    "n_opposing_deferred": 831,
+    "n_opposing_vetoed": 794
+   }
+  },
+  "661281422688282993": {
+   "on-ramp 745524613": {
+    "n_handback_skips": 150,
+    "n_close_leader_withheld": 1,
+    "n_opposing_deferred": 334,
+    "n_opposing_vetoed": 329
+   },
+   "on-ramp 769818012": {
+    "n_handback_skips": 101,
+    "n_close_leader_withheld": 2,
+    "n_opposing_deferred": 810,
+    "n_opposing_vetoed": 771
+   }
+  },
+  "677105600768189526": {
+   "on-ramp 745524613": {
+    "n_handback_skips": 222,
+    "n_close_leader_withheld": 8,
+    "n_opposing_deferred": 400,
+    "n_opposing_vetoed": 394
+   },
+   "on-ramp 769818012": {
+    "n_handback_skips": 139,
+    "n_close_leader_withheld": 1,
+    "n_opposing_deferred": 831,
+    "n_opposing_vetoed": 800
+   }
+  },
+  "887972120279483394": {
+   "on-ramp 745524613": {
+    "n_handback_skips": 138,
+    "n_close_leader_withheld": 13,
+    "n_opposing_deferred": 372,
+    "n_opposing_vetoed": 370
+   },
+   "on-ramp 769818012": {
+    "n_handback_skips": 199,
+    "n_close_leader_withheld": 5,
+    "n_opposing_deferred": 828,
+    "n_opposing_vetoed": 793
+   }
+  },
+  "2378473973028931053": {
+   "on-ramp 745524613": {
+    "n_handback_skips": 154,
+    "n_close_leader_withheld": 45,
+    "n_opposing_deferred": 294,
+    "n_opposing_vetoed": 291
+   },
+   "on-ramp 769818012": {
+    "n_handback_skips": 163,
+    "n_close_leader_withheld": 5,
+    "n_opposing_deferred": 811,
+    "n_opposing_vetoed": 771
+   }
+  },
+  "3011106312394044631": {
+   "on-ramp 745524613": {
+    "n_handback_skips": 178,
+    "n_close_leader_withheld": 12,
+    "n_opposing_deferred": 375,
+    "n_opposing_vetoed": 369
+   },
+   "on-ramp 769818012": {
+    "n_handback_skips": 115,
+    "n_close_leader_withheld": 6,
+    "n_opposing_deferred": 866,
+    "n_opposing_vetoed": 834
+   }
+  },
+  "3747978530954135749": {
+   "on-ramp 745524613": {
+    "n_handback_skips": 210,
+    "n_close_leader_withheld": 35,
+    "n_opposing_deferred": 376,
+    "n_opposing_vetoed": 374
+   },
+   "on-ramp 769818012": {
+    "n_handback_skips": 118,
+    "n_close_leader_withheld": 12,
+    "n_opposing_deferred": 812,
+    "n_opposing_vetoed": 770
+   }
+  },
+  "3944094060050347669": {
+   "on-ramp 745524613": {
+    "n_handback_skips": 181,
+    "n_close_leader_withheld": 1,
+    "n_opposing_deferred": 307,
+    "n_opposing_vetoed": 304
+   },
+   "on-ramp 769818012": {
+    "n_handback_skips": 148,
+    "n_close_leader_withheld": 2,
+    "n_opposing_deferred": 871,
+    "n_opposing_vetoed": 828
+   }
+  },
+  "4910985839736976611": {
+   "on-ramp 745524613": {
+    "n_handback_skips": 173,
+    "n_close_leader_withheld": 9,
+    "n_opposing_deferred": 328,
+    "n_opposing_vetoed": 324
+   },
+   "on-ramp 769818012": {
+    "n_handback_skips": 159,
+    "n_close_leader_withheld": 16,
+    "n_opposing_deferred": 824,
+    "n_opposing_vetoed": 797
+   }
+  },
+  "5690692725577505498": {
+   "on-ramp 745524613": {
+    "n_handback_skips": 223,
+    "n_close_leader_withheld": 22,
+    "n_opposing_deferred": 403,
+    "n_opposing_vetoed": 399
+   },
+   "on-ramp 769818012": {
+    "n_handback_skips": 122,
+    "n_close_leader_withheld": 4,
+    "n_opposing_deferred": 825,
+    "n_opposing_vetoed": 787
+   }
+  },
+  "6134032994440706937": {
+   "on-ramp 745524613": {
+    "n_handback_skips": 179,
+    "n_close_leader_withheld": 1,
+    "n_opposing_deferred": 376,
+    "n_opposing_vetoed": 375
+   },
+   "on-ramp 769818012": {
+    "n_handback_skips": 123,
+    "n_close_leader_withheld": 6,
+    "n_opposing_deferred": 859,
+    "n_opposing_vetoed": 822
+   }
+  },
+  "6143473282319009404": {
+   "on-ramp 745524613": {
+    "n_handback_skips": 138,
+    "n_close_leader_withheld": 4,
+    "n_opposing_deferred": 346,
+    "n_opposing_vetoed": 343
+   },
+   "on-ramp 769818012": {
+    "n_handback_skips": 114,
+    "n_close_leader_withheld": 2,
+    "n_opposing_deferred": 804,
+    "n_opposing_vetoed": 770
+   }
+  },
+  "6538422657834023852": {
+   "on-ramp 745524613": {
+    "n_handback_skips": 173,
+    "n_close_leader_withheld": 10,
+    "n_opposing_deferred": 321,
+    "n_opposing_vetoed": 321
+   },
+   "on-ramp 769818012": {
+    "n_handback_skips": 190,
+    "n_close_leader_withheld": 13,
+    "n_opposing_deferred": 846,
+    "n_opposing_vetoed": 795
+   }
+  },
+  "6904272788004776631": {
+   "on-ramp 745524613": {
+    "n_handback_skips": 140,
+    "n_close_leader_withheld": 11,
+    "n_opposing_deferred": 330,
+    "n_opposing_vetoed": 326
+   },
+   "on-ramp 769818012": {
+    "n_handback_skips": 146,
+    "n_close_leader_withheld": 1,
+    "n_opposing_deferred": 819,
+    "n_opposing_vetoed": 778
+   }
+  },
+  "6914975401685141156": {
+   "on-ramp 745524613": {
+    "n_handback_skips": 154,
+    "n_close_leader_withheld": 16,
+    "n_opposing_deferred": 288,
+    "n_opposing_vetoed": 285
+   },
+   "on-ramp 769818012": {
+    "n_handback_skips": 145,
+    "n_close_leader_withheld": 5,
+    "n_opposing_deferred": 856,
+    "n_opposing_vetoed": 821
+   }
+  },
+  "6953598295321596746": {
+   "on-ramp 745524613": {
+    "n_handback_skips": 219,
+    "n_close_leader_withheld": 56,
+    "n_opposing_deferred": 389,
+    "n_opposing_vetoed": 386
+   },
+   "on-ramp 769818012": {
+    "n_handback_skips": 148,
+    "n_close_leader_withheld": 2,
+    "n_opposing_deferred": 889,
+    "n_opposing_vetoed": 845
+   }
+  },
+  "7382187975121682178": {
+   "on-ramp 745524613": {
+    "n_handback_skips": 189,
+    "n_close_leader_withheld": 36,
+    "n_opposing_deferred": 368,
+    "n_opposing_vetoed": 362
+   },
+   "on-ramp 769818012": {
+    "n_handback_skips": 161,
+    "n_close_leader_withheld": 5,
+    "n_opposing_deferred": 804,
+    "n_opposing_vetoed": 765
+   }
+  },
+  "8026499204807041784": {
+   "on-ramp 745524613": {
+    "n_handback_skips": 167,
+    "n_close_leader_withheld": 3,
+    "n_opposing_deferred": 339,
+    "n_opposing_vetoed": 334
+   },
+   "on-ramp 769818012": {
+    "n_handback_skips": 109,
+    "n_close_leader_withheld": 3,
+    "n_opposing_deferred": 873,
+    "n_opposing_vetoed": 843
+   }
+  },
+  "8557154790156791364": {
+   "on-ramp 745524613": {
+    "n_handback_skips": 148,
+    "n_close_leader_withheld": 20,
+    "n_opposing_deferred": 331,
+    "n_opposing_vetoed": 327
+   },
+   "on-ramp 769818012": {
+    "n_handback_skips": 133,
+    "n_close_leader_withheld": 0,
+    "n_opposing_deferred": 865,
+    "n_opposing_vetoed": 821
+   }
+  }
+ },
+ "per_seed": {
+  "134183728835869882": {
+   "a": {
+    "s790": 3914.9999999999995,
+    "departed": 0.9829696482660567,
+    "collisions": 0,
+    "sections": [
+     {
+      "ramp": "on-ramp 745524613",
+      "exit": "C-D split 18208090",
+      "gore_x_m": 5316.64,
+      "next_entrance_x_m": 5929.85,
+      "n_past_gore": 135,
+      "fronts": [
+       {
+        "lane": 0,
+        "veh_id": "v11902",
+        "kind": "exiter",
+        "short_of_gore_m": 4.11
+       },
+       {
+        "lane": 1,
+        "veh_id": "v17620",
+        "kind": "entrant",
+        "short_of_gore_m": 53.93
+       },
+       {
+        "lane": 2,
+        "veh_id": "v16589",
+        "kind": "through",
+        "short_of_gore_m": 1.09
+       },
+       {
+        "lane": 3,
+        "veh_id": "v15295",
+        "kind": "through",
+        "short_of_gore_m": 15.77
+       }
+      ],
+      "locked": false,
+      "n_entrant_took_exit": 18,
+      "entrance_departed": 1017
+     },
+     {
+      "ramp": "on-ramp 769818012",
+      "exit": "off-ramp 18207598",
+      "gore_x_m": 10731.640000000001,
+      "next_entrance_x_m": Infinity,
+      "n_past_gore": 28,
+      "fronts": [
+       {
+        "lane": 0,
+        "veh_id": "v13613",
+        "kind": "exiter",
+        "short_of_gore_m": 4.93
+       },
+       {
+        "lane": 1,
+        "veh_id": "v31725",
+        "kind": "entrant",
+        "short_of_gore_m": 15.88
+       },
+       {
+        "lane": 2,
+        "veh_id": "v27232",
+        "kind": "through",
+        "short_of_gore_m": 38.71
+       },
+       {
+        "lane": 3,
+        "veh_id": "v11305",
+        "kind": "through",
+        "short_of_gore_m": 20.61
+       }
+      ],
+      "locked": false,
+      "n_entrant_took_exit": 1,
+      "entrance_departed": 4549
+     }
+    ],
+    "battery_locks": 0,
+    "battery_locked": false,
+    "collisions_by_section": {},
+    "collisions_logged": [],
+    "weaves": {
+     "on-ramp 745524613": {
+      "n_missed_exit": 32,
+      "n_entrant_took_exit": 18,
+      "n_handback_skips": null,
+      "n_close_leader_withheld": null,
+      "n_opposing_deferred": null,
+      "n_opposing_vetoed": null
+     },
+     "on-ramp 769818012": {
+      "n_missed_exit": 51,
+      "n_entrant_took_exit": 1,
+      "n_handback_skips": null,
+      "n_close_leader_withheld": null,
+      "n_opposing_deferred": null,
+      "n_opposing_vetoed": null
+     }
+    }
+   },
+   "b": {
+    "s790": 3883.9999999999995,
+    "departed": 0.9843296037584225,
+    "collisions": 0,
+    "sections": [
+     {
+      "ramp": "on-ramp 745524613",
+      "exit": "C-D split 18208090",
+      "gore_x_m": 5316.64,
+      "next_entrance_x_m": 5929.85,
+      "n_past_gore": 122,
+      "fronts": [
+       {
+        "lane": 0,
+        "veh_id": "v17619",
+        "kind": "entrant",
+        "short_of_gore_m": 0.08
+       },
+       {
+        "lane": 1,
+        "veh_id": "v11819",
+        "kind": "through",
+        "short_of_gore_m": 5.51
+       },
+       {
+        "lane": 2,
+        "veh_id": "v11797",
+        "kind": "through",
+        "short_of_gore_m": 1.69
+       },
+       {
+        "lane": 3,
+        "veh_id": "v11830",
+        "kind": "through",
+        "short_of_gore_m": 4.03
+       }
+      ],
+      "locked": false,
+      "n_entrant_took_exit": 13,
+      "entrance_departed": 1017
+     },
+     {
+      "ramp": "on-ramp 769818012",
+      "exit": "off-ramp 18207598",
+      "gore_x_m": 10731.640000000001,
+      "next_entrance_x_m": Infinity,
+      "n_past_gore": 27,
+      "fronts": [
+       {
+        "lane": 0,
+        "veh_id": "v16511",
+        "kind": "exiter",
+        "short_of_gore_m": 2.16
+       },
+       {
+        "lane": 1,
+        "veh_id": "v10786",
+        "kind": "exiter",
+        "short_of_gore_m": 40.99
+       },
+       {
+        "lane": 2,
+        "veh_id": "v31769",
+        "kind": "entrant",
+        "short_of_gore_m": 22.32
+       },
+       {
+        "lane": 3,
+        "veh_id": "v11145",
+        "kind": "through",
+        "short_of_gore_m": 38.32
+       }
+      ],
+      "locked": false,
+      "n_entrant_took_exit": 0,
+      "entrance_departed": 4593
+     }
+    ],
+    "battery_locks": 0,
+    "battery_locked": false,
+    "collisions_by_section": {},
+    "collisions_logged": [],
+    "weaves": {
+     "on-ramp 745524613": {
+      "n_missed_exit": 25,
+      "n_entrant_took_exit": 13,
+      "n_handback_skips": 175,
+      "n_close_leader_withheld": 112,
+      "n_opposing_deferred": 340,
+      "n_opposing_vetoed": 337
+     },
+     "on-ramp 769818012": {
+      "n_missed_exit": 51,
+      "n_entrant_took_exit": 0,
+      "n_handback_skips": 168,
+      "n_close_leader_withheld": 8,
+      "n_opposing_deferred": 843,
+      "n_opposing_vetoed": 806
+     }
+    }
+   }
+  },
+  "165503670820534583": {
+   "a": {
+    "s790": 3896.0,
+    "departed": 0.9830623725041726,
+    "collisions": 0,
+    "sections": [
+     {
+      "ramp": "on-ramp 745524613",
+      "exit": "C-D split 18208090",
+      "gore_x_m": 5316.64,
+      "next_entrance_x_m": 5929.85,
+      "n_past_gore": 157,
+      "fronts": [
+       {
+        "lane": 0,
+        "veh_id": "v17621",
+        "kind": "entrant",
+        "short_of_gore_m": 0.1
+       },
+       {
+        "lane": 1,
+        "veh_id": "v11931",
+        "kind": "through",
+        "short_of_gore_m": 5.08
+       },
+       {
+        "lane": 2,
+        "veh_id": "v11961",
+        "kind": "through",
+        "short_of_gore_m": 15.47
+       },
+       {
+        "lane": 3,
+        "veh_id": "v11990",
+        "kind": "through",
+        "short_of_gore_m": 13.18
+       }
+      ],
+      "locked": false,
+      "n_entrant_took_exit": 10,
+      "entrance_departed": 1017
+     },
+     {
+      "ramp": "on-ramp 769818012",
+      "exit": "off-ramp 18207598",
+      "gore_x_m": 10731.640000000001,
+      "next_entrance_x_m": Infinity,
+      "n_past_gore": 42,
+      "fronts": [
+       {
+        "lane": 0,
+        "veh_id": "v15173",
+        "kind": "exiter",
+        "short_of_gore_m": 34.99
+       },
+       {
+        "lane": 1,
+        "veh_id": "v25030",
+        "kind": "through",
+        "short_of_gore_m": 104.53
+       },
+       {
+        "lane": 2,
+        "veh_id": "v15160",
+        "kind": "exiter",
+        "short_of_gore_m": 116.05
+       },
+       {
+        "lane": 3,
+        "veh_id": "v25123",
+        "kind": "through",
+        "short_of_gore_m": 23.95
+       }
+      ],
+      "locked": false,
+      "n_entrant_took_exit": 0,
+      "entrance_departed": 4552
+     }
+    ],
+    "battery_locks": 0,
+    "battery_locked": false,
+    "collisions_by_section": {},
+    "collisions_logged": [],
+    "weaves": {
+     "on-ramp 745524613": {
+      "n_missed_exit": 17,
+      "n_entrant_took_exit": 10,
+      "n_handback_skips": null,
+      "n_close_leader_withheld": null,
+      "n_opposing_deferred": null,
+      "n_opposing_vetoed": null
+     },
+     "on-ramp 769818012": {
+      "n_missed_exit": 40,
+      "n_entrant_took_exit": 0,
+      "n_handback_skips": null,
+      "n_close_leader_withheld": null,
+      "n_opposing_deferred": null,
+      "n_opposing_vetoed": null
+     }
+    }
+   },
+   "b": {
+    "s790": 3846.0,
+    "departed": 0.984638684552142,
+    "collisions": 0,
+    "sections": [
+     {
+      "ramp": "on-ramp 745524613",
+      "exit": "C-D split 18208090",
+      "gore_x_m": 5316.64,
+      "next_entrance_x_m": 5929.85,
+      "n_past_gore": 53,
+      "fronts": [
+       {
+        "lane": 0,
+        "veh_id": "v11999",
+        "kind": "exiter",
+        "short_of_gore_m": 45.8
+       },
+       {
+        "lane": 2,
+        "veh_id": "v16602",
+        "kind": "through",
+        "short_of_gore_m": 13.78
+       },
+       {
+        "lane": 3,
+        "veh_id": "v12005",
+        "kind": "through",
+        "short_of_gore_m": 41.15
+       }
+      ],
+      "locked": false,
+      "n_entrant_took_exit": 9,
+      "entrance_departed": 1017
+     },
+     {
+      "ramp": "on-ramp 769818012",
+      "exit": "off-ramp 18207598",
+      "gore_x_m": 10731.640000000001,
+      "next_entrance_x_m": Infinity,
+      "n_past_gore": 52,
+      "fronts": [
+       {
+        "lane": 0,
+        "veh_id": "v31799",
+        "kind": "exiter",
+        "short_of_gore_m": 3.42
+       },
+       {
+        "lane": 1,
+        "veh_id": "v11419",
+        "kind": "exiter",
+        "short_of_gore_m": 73.52
+       },
+       {
+        "lane": 2,
+        "veh_id": "v27239",
+        "kind": "through",
+        "short_of_gore_m": 10.49
+       },
+       {
+        "lane": 3,
+        "veh_id": "v19200",
+        "kind": "through",
+        "short_of_gore_m": 3.16
+       }
+      ],
+      "locked": false,
+      "n_entrant_took_exit": 0,
+      "entrance_departed": 4603
+     }
+    ],
+    "battery_locks": 0,
+    "battery_locked": false,
+    "collisions_by_section": {},
+    "collisions_logged": [],
+    "weaves": {
+     "on-ramp 745524613": {
+      "n_missed_exit": 30,
+      "n_entrant_took_exit": 9,
+      "n_handback_skips": 235,
+      "n_close_leader_withheld": 12,
+      "n_opposing_deferred": 368,
+      "n_opposing_vetoed": 358
+     },
+     "on-ramp 769818012": {
+      "n_missed_exit": 43,
+      "n_entrant_took_exit": 0,
+      "n_handback_skips": 179,
+      "n_close_leader_withheld": 3,
+      "n_opposing_deferred": 831,
+      "n_opposing_vetoed": 794
+     }
+    }
+   }
+  },
+  "661281422688282993": {
+   "a": {
+    "s790": 3887.0,
+    "departed": 0.9858750077270199,
+    "collisions": 0,
+    "sections": [
+     {
+      "ramp": "on-ramp 745524613",
+      "exit": "C-D split 18208090",
+      "gore_x_m": 5316.64,
+      "next_entrance_x_m": 5929.85,
+      "n_past_gore": 123,
+      "fronts": [
+       {
+        "lane": 1,
+        "veh_id": "v11919",
+        "kind": "through",
+        "short_of_gore_m": 9.28
+       },
+       {
+        "lane": 2,
+        "veh_id": "v11903",
+        "kind": "through",
+        "short_of_gore_m": 27.17
+       },
+       {
+        "lane": 3,
+        "veh_id": "v11979",
+        "kind": "through",
+        "short_of_gore_m": 19.45
+       }
+      ],
+      "locked": false,
+      "n_entrant_took_exit": 15,
+      "entrance_departed": 1017
+     },
+     {
+      "ramp": "on-ramp 769818012",
+      "exit": "off-ramp 18207598",
+      "gore_x_m": 10731.640000000001,
+      "next_entrance_x_m": Infinity,
+      "n_past_gore": 42,
+      "fronts": [
+       {
+        "lane": 0,
+        "veh_id": "v25069",
+        "kind": "exiter",
+        "short_of_gore_m": 7.83
+       },
+       {
+        "lane": 1,
+        "veh_id": "v31840",
+        "kind": "entrant",
+        "short_of_gore_m": 61.66
+       },
+       {
+        "lane": 2,
+        "veh_id": "v10630",
+        "kind": "through",
+        "short_of_gore_m": 0.0
+       },
+       {
+        "lane": 3,
+        "veh_id": "v10773",
+        "kind": "through",
+        "short_of_gore_m": 20.95
+       }
+      ],
+      "locked": false,
+      "n_entrant_took_exit": 0,
+      "entrance_departed": 4643
+     }
+    ],
+    "battery_locks": 0,
+    "battery_locked": false,
+    "collisions_by_section": {},
+    "collisions_logged": [],
+    "weaves": {
+     "on-ramp 745524613": {
+      "n_missed_exit": 25,
+      "n_entrant_took_exit": 15,
+      "n_handback_skips": null,
+      "n_close_leader_withheld": null,
+      "n_opposing_deferred": null,
+      "n_opposing_vetoed": null
+     },
+     "on-ramp 769818012": {
+      "n_missed_exit": 48,
+      "n_entrant_took_exit": 0,
+      "n_handback_skips": null,
+      "n_close_leader_withheld": null,
+      "n_opposing_deferred": null,
+      "n_opposing_vetoed": null
+     }
+    }
+   },
+   "b": {
+    "s790": 3923.0,
+    "departed": 0.9848859491871175,
+    "collisions": 0,
+    "sections": [
+     {
+      "ramp": "on-ramp 745524613",
+      "exit": "C-D split 18208090",
+      "gore_x_m": 5316.64,
+      "next_entrance_x_m": 5929.85,
+      "n_past_gore": 86,
+      "fronts": [
+       {
+        "lane": 0,
+        "veh_id": "v11995",
+        "kind": "exiter",
+        "short_of_gore_m": 12.55
+       },
+       {
+        "lane": 1,
+        "veh_id": "v11988",
+        "kind": "exiter",
+        "short_of_gore_m": 20.46
+       },
+       {
+        "lane": 2,
+        "veh_id": "v12004",
+        "kind": "through",
+        "short_of_gore_m": 2.26
+       },
+       {
+        "lane": 3,
+        "veh_id": "v12007",
+        "kind": "through",
+        "short_of_gore_m": 61.56
+       }
+      ],
+      "locked": false,
+      "n_entrant_took_exit": 10,
+      "entrance_departed": 1017
+     },
+     {
+      "ramp": "on-ramp 769818012",
+      "exit": "off-ramp 18207598",
+      "gore_x_m": 10731.640000000001,
+      "next_entrance_x_m": Infinity,
+      "n_past_gore": 32,
+      "fronts": [
+       {
+        "lane": 0,
+        "veh_id": "v19159",
+        "kind": "exiter",
+        "short_of_gore_m": 1.97
+       },
+       {
+        "lane": 1,
+        "veh_id": "v31801",
+        "kind": "entrant",
+        "short_of_gore_m": 5.75
+       },
+       {
+        "lane": 2,
+        "veh_id": "v24917",
+        "kind": "through",
+        "short_of_gore_m": 7.77
+       },
+       {
+        "lane": 3,
+        "veh_id": "v16501",
+        "kind": "through",
+        "short_of_gore_m": 14.53
+       }
+      ],
+      "locked": false,
+      "n_entrant_took_exit": 1,
+      "entrance_departed": 4611
+     }
+    ],
+    "battery_locks": 0,
+    "battery_locked": false,
+    "collisions_by_section": {},
+    "collisions_logged": [],
+    "weaves": {
+     "on-ramp 745524613": {
+      "n_missed_exit": 24,
+      "n_entrant_took_exit": 10,
+      "n_handback_skips": 150,
+      "n_close_leader_withheld": 1,
+      "n_opposing_deferred": 334,
+      "n_opposing_vetoed": 329
+     },
+     "on-ramp 769818012": {
+      "n_missed_exit": 51,
+      "n_entrant_took_exit": 1,
+      "n_handback_skips": 101,
+      "n_close_leader_withheld": 2,
+      "n_opposing_deferred": 810,
+      "n_opposing_vetoed": 771
+     }
+    }
+   }
+  },
+  "677105600768189526": {
+   "a": {
+    "s790": 3848.0000000000005,
+    "departed": 0.9851641219014651,
+    "collisions": 0,
+    "sections": [
+     {
+      "ramp": "on-ramp 745524613",
+      "exit": "C-D split 18208090",
+      "gore_x_m": 5316.64,
+      "next_entrance_x_m": 5929.85,
+      "n_past_gore": 98,
+      "fronts": [
+       {
+        "lane": 0,
+        "veh_id": "v17619",
+        "kind": "exiter",
+        "short_of_gore_m": 49.69
+       },
+       {
+        "lane": 1,
+        "veh_id": "v17617",
+        "kind": "entrant",
+        "short_of_gore_m": 8.59
+       },
+       {
+        "lane": 2,
+        "veh_id": "v11685",
+        "kind": "through",
+        "short_of_gore_m": 23.85
+       },
+       {
+        "lane": 3,
+        "veh_id": "v11845",
+        "kind": "through",
+        "short_of_gore_m": 18.7
+       }
+      ],
+      "locked": false,
+      "n_entrant_took_exit": 16,
+      "entrance_departed": 1017
+     },
+     {
+      "ramp": "on-ramp 769818012",
+      "exit": "off-ramp 18207598",
+      "gore_x_m": 10731.640000000001,
+      "next_entrance_x_m": Infinity,
+      "n_past_gore": 37,
+      "fronts": [
+       {
+        "lane": 0,
+        "veh_id": "v11176",
+        "kind": "exiter",
+        "short_of_gore_m": 1.11
+       },
+       {
+        "lane": 1,
+        "veh_id": "v31811",
+        "kind": "entrant",
+        "short_of_gore_m": 68.76
+       },
+       {
+        "lane": 2,
+        "veh_id": "v27241",
+        "kind": "through",
+        "short_of_gore_m": 2.51
+       },
+       {
+        "lane": 3,
+        "veh_id": "v13377",
+        "kind": "through",
+        "short_of_gore_m": 7.3
+       }
+      ],
+      "locked": false,
+      "n_entrant_took_exit": 0,
+      "entrance_departed": 4620
+     }
+    ],
+    "battery_locks": 0,
+    "battery_locked": false,
+    "collisions_by_section": {},
+    "collisions_logged": [],
+    "weaves": {
+     "on-ramp 745524613": {
+      "n_missed_exit": 41,
+      "n_entrant_took_exit": 16,
+      "n_handback_skips": null,
+      "n_close_leader_withheld": null,
+      "n_opposing_deferred": null,
+      "n_opposing_vetoed": null
+     },
+     "on-ramp 769818012": {
+      "n_missed_exit": 59,
+      "n_entrant_took_exit": 0,
+      "n_handback_skips": null,
+      "n_close_leader_withheld": null,
+      "n_opposing_deferred": null,
+      "n_opposing_vetoed": null
+     }
+    }
+   },
+   "b": {
+    "s790": 3793.0,
+    "departed": 0.9850713976633492,
+    "collisions": 0,
+    "sections": [
+     {
+      "ramp": "on-ramp 745524613",
+      "exit": "C-D split 18208090",
+      "gore_x_m": 5316.64,
+      "next_entrance_x_m": 5929.85,
+      "n_past_gore": 105,
+      "fronts": [
+       {
+        "lane": 0,
+        "veh_id": "v17617",
+        "kind": "entrant",
+        "short_of_gore_m": 59.89
+       },
+       {
+        "lane": 1,
+        "veh_id": "v17615",
+        "kind": "entrant",
+        "short_of_gore_m": 2.36
+       },
+       {
+        "lane": 2,
+        "veh_id": "v16570",
+        "kind": "through",
+        "short_of_gore_m": 4.6
+       },
+       {
+        "lane": 3,
+        "veh_id": "v11845",
+        "kind": "through",
+        "short_of_gore_m": 37.71
+       }
+      ],
+      "locked": false,
+      "n_entrant_took_exit": 13,
+      "entrance_departed": 1017
+     },
+     {
+      "ramp": "on-ramp 769818012",
+      "exit": "off-ramp 18207598",
+      "gore_x_m": 10731.640000000001,
+      "next_entrance_x_m": Infinity,
+      "n_past_gore": 41,
+      "fronts": [
+       {
+        "lane": 0,
+        "veh_id": "v10230",
+        "kind": "exiter",
+        "short_of_gore_m": 45.07
+       },
+       {
+        "lane": 1,
+        "veh_id": "v31810",
+        "kind": "entrant",
+        "short_of_gore_m": 13.69
+       },
+       {
+        "lane": 2,
+        "veh_id": "v25113",
+        "kind": "through",
+        "short_of_gore_m": 2.78
+       },
+       {
+        "lane": 3,
+        "veh_id": "v25090",
+        "kind": "through",
+        "short_of_gore_m": 13.64
+       }
+      ],
+      "locked": false,
+      "n_entrant_took_exit": 0,
+      "entrance_departed": 4617
+     }
+    ],
+    "battery_locks": 0,
+    "battery_locked": false,
+    "collisions_by_section": {},
+    "collisions_logged": [],
+    "weaves": {
+     "on-ramp 745524613": {
+      "n_missed_exit": 34,
+      "n_entrant_took_exit": 13,
+      "n_handback_skips": 222,
+      "n_close_leader_withheld": 8,
+      "n_opposing_deferred": 400,
+      "n_opposing_vetoed": 394
+     },
+     "on-ramp 769818012": {
+      "n_missed_exit": 46,
+      "n_entrant_took_exit": 0,
+      "n_handback_skips": 139,
+      "n_close_leader_withheld": 1,
+      "n_opposing_deferred": 831,
+      "n_opposing_vetoed": 800
+     }
+    }
+   }
+  },
+  "887972120279483394": {
+   "a": {
+    "s790": 3863.0000000000005,
+    "departed": 0.9843914199171664,
+    "collisions": 0,
+    "sections": [
+     {
+      "ramp": "on-ramp 745524613",
+      "exit": "C-D split 18208090",
+      "gore_x_m": 5316.64,
+      "next_entrance_x_m": 5929.85,
+      "n_past_gore": 144,
+      "fronts": [
+       {
+        "lane": 0,
+        "veh_id": "v17621",
+        "kind": "entrant",
+        "short_of_gore_m": 19.18
+       },
+       {
+        "lane": 1,
+        "veh_id": "v13672",
+        "kind": "through",
+        "short_of_gore_m": 1.39
+       },
+       {
+        "lane": 2,
+        "veh_id": "v15263",
+        "kind": "through",
+        "short_of_gore_m": 6.56
+       },
+       {
+        "lane": 3,
+        "veh_id": "v11943",
+        "kind": "through",
+        "short_of_gore_m": 9.61
+       }
+      ],
+      "locked": false,
+      "n_entrant_took_exit": 18,
+      "entrance_departed": 1017
+     },
+     {
+      "ramp": "on-ramp 769818012",
+      "exit": "off-ramp 18207598",
+      "gore_x_m": 10731.640000000001,
+      "next_entrance_x_m": Infinity,
+      "n_past_gore": 42,
+      "fronts": [
+       {
+        "lane": 0,
+        "veh_id": "v31786",
+        "kind": "exiter",
+        "short_of_gore_m": 11.0
+       },
+       {
+        "lane": 1,
+        "veh_id": "v31788",
+        "kind": "entrant",
+        "short_of_gore_m": 23.05
+       },
+       {
+        "lane": 2,
+        "veh_id": "v27235",
+        "kind": "through",
+        "short_of_gore_m": 29.72
+       },
+       {
+        "lane": 3,
+        "veh_id": "v17465",
+        "kind": "through",
+        "short_of_gore_m": 13.86
+       }
+      ],
+      "locked": false,
+      "n_entrant_took_exit": 0,
+      "entrance_departed": 4595
+     }
+    ],
+    "battery_locks": 0,
+    "battery_locked": false,
+    "collisions_by_section": {},
+    "collisions_logged": [],
+    "weaves": {
+     "on-ramp 745524613": {
+      "n_missed_exit": 27,
+      "n_entrant_took_exit": 18,
+      "n_handback_skips": null,
+      "n_close_leader_withheld": null,
+      "n_opposing_deferred": null,
+      "n_opposing_vetoed": null
+     },
+     "on-ramp 769818012": {
+      "n_missed_exit": 42,
+      "n_entrant_took_exit": 0,
+      "n_handback_skips": null,
+      "n_close_leader_withheld": null,
+      "n_opposing_deferred": null,
+      "n_opposing_vetoed": null
+     }
+    }
+   },
+   "b": {
+    "s790": 3863.9999999999995,
+    "departed": 0.9850404895839773,
+    "collisions": 0,
+    "sections": [
+     {
+      "ramp": "on-ramp 745524613",
+      "exit": "C-D split 18208090",
+      "gore_x_m": 5316.64,
+      "next_entrance_x_m": 5929.85,
+      "n_past_gore": 118,
+      "fronts": [
+       {
+        "lane": 0,
+        "veh_id": "v11626",
+        "kind": "exiter",
+        "short_of_gore_m": 36.97
+       },
+       {
+        "lane": 1,
+        "veh_id": "v16565",
+        "kind": "through",
+        "short_of_gore_m": 83.3
+       },
+       {
+        "lane": 2,
+        "veh_id": "v11665",
+        "kind": "through",
+        "short_of_gore_m": 6.76
+       },
+       {
+        "lane": 3,
+        "veh_id": "v11906",
+        "kind": "through",
+        "short_of_gore_m": 2.34
+       }
+      ],
+      "locked": false,
+      "n_entrant_took_exit": 14,
+      "entrance_departed": 1017
+     },
+     {
+      "ramp": "on-ramp 769818012",
+      "exit": "off-ramp 18207598",
+      "gore_x_m": 10731.640000000001,
+      "next_entrance_x_m": Infinity,
+      "n_past_gore": 44,
+      "fronts": [
+       {
+        "lane": 0,
+        "veh_id": "v25041",
+        "kind": "exiter",
+        "short_of_gore_m": 56.23
+       },
+       {
+        "lane": 1,
+        "veh_id": "v31803",
+        "kind": "entrant",
+        "short_of_gore_m": 19.23
+       },
+       {
+        "lane": 2,
+        "veh_id": "v31804",
+        "kind": "entrant",
+        "short_of_gore_m": 17.4
+       },
+       {
+        "lane": 3,
+        "veh_id": "v13289",
+        "kind": "through",
+        "short_of_gore_m": 50.05
+       }
+      ],
+      "locked": false,
+      "n_entrant_took_exit": 0,
+      "entrance_departed": 4616
+     }
+    ],
+    "battery_locks": 0,
+    "battery_locked": false,
+    "collisions_by_section": {},
+    "collisions_logged": [],
+    "weaves": {
+     "on-ramp 745524613": {
+      "n_missed_exit": 26,
+      "n_entrant_took_exit": 14,
+      "n_handback_skips": 138,
+      "n_close_leader_withheld": 13,
+      "n_opposing_deferred": 372,
+      "n_opposing_vetoed": 370
+     },
+     "on-ramp 769818012": {
+      "n_missed_exit": 60,
+      "n_entrant_took_exit": 0,
+      "n_handback_skips": 199,
+      "n_close_leader_withheld": 5,
+      "n_opposing_deferred": 828,
+      "n_opposing_vetoed": 793
+     }
+    }
+   }
+  },
+  "2378473973028931053": {
+   "a": {
+    "s790": 3877.0,
+    "departed": 0.9845459603140261,
+    "collisions": 0,
+    "sections": [
+     {
+      "ramp": "on-ramp 745524613",
+      "exit": "C-D split 18208090",
+      "gore_x_m": 5316.64,
+      "next_entrance_x_m": 5929.85,
+      "n_past_gore": 17,
+      "fronts": [
+       {
+        "lane": 1,
+        "veh_id": "v12003",
+        "kind": "through",
+        "short_of_gore_m": 93.6
+       },
+       {
+        "lane": 2,
+        "veh_id": "v12005",
+        "kind": "through",
+        "short_of_gore_m": 5.55
+       }
+      ],
+      "locked": false,
+      "n_entrant_took_exit": 5,
+      "entrance_departed": 1017
+     },
+     {
+      "ramp": "on-ramp 769818012",
+      "exit": "off-ramp 18207598",
+      "gore_x_m": 10731.640000000001,
+      "next_entrance_x_m": Infinity,
+      "n_past_gore": 34,
+      "fronts": [
+       {
+        "lane": 0,
+        "veh_id": "v31788",
+        "kind": "entrant",
+        "short_of_gore_m": 0.85
+       },
+       {
+        "lane": 1,
+        "veh_id": "v19117",
+        "kind": "exiter",
+        "short_of_gore_m": 6.16
+       },
+       {
+        "lane": 2,
+        "veh_id": "v31789",
+        "kind": "entrant",
+        "short_of_gore_m": 29.33
+       },
+       {
+        "lane": 3,
+        "veh_id": "v16454",
+        "kind": "exiter",
+        "short_of_gore_m": 82.73
+       }
+      ],
+      "locked": false,
+      "n_entrant_took_exit": 1,
+      "entrance_departed": 4600
+     }
+    ],
+    "battery_locks": 0,
+    "battery_locked": false,
+    "collisions_by_section": {},
+    "collisions_logged": [],
+    "weaves": {
+     "on-ramp 745524613": {
+      "n_missed_exit": 22,
+      "n_entrant_took_exit": 5,
+      "n_handback_skips": null,
+      "n_close_leader_withheld": null,
+      "n_opposing_deferred": null,
+      "n_opposing_vetoed": null
+     },
+     "on-ramp 769818012": {
+      "n_missed_exit": 52,
+      "n_entrant_took_exit": 1,
+      "n_handback_skips": null,
+      "n_close_leader_withheld": null,
+      "n_opposing_deferred": null,
+      "n_opposing_vetoed": null
+     }
+    }
+   },
+   "b": {
+    "s790": 3885.0,
+    "departed": 0.9840514310440749,
+    "collisions": 0,
+    "sections": [
+     {
+      "ramp": "on-ramp 745524613",
+      "exit": "C-D split 18208090",
+      "gore_x_m": 5316.64,
+      "next_entrance_x_m": 5929.85,
+      "n_past_gore": 18,
+      "fronts": [
+       {
+        "lane": 1,
+        "veh_id": "v12006",
+        "kind": "through",
+        "short_of_gore_m": 80.49
+       },
+       {
+        "lane": 2,
+        "veh_id": "v12007",
+        "kind": "through",
+        "short_of_gore_m": 63.73
+       },
+       {
+        "lane": 3,
+        "veh_id": "v12008",
+        "kind": "through",
+        "short_of_gore_m": 89.84
+       }
+      ],
+      "locked": false,
+      "n_entrant_took_exit": 9,
+      "entrance_departed": 1017
+     },
+     {
+      "ramp": "on-ramp 769818012",
+      "exit": "off-ramp 18207598",
+      "gore_x_m": 10731.640000000001,
+      "next_entrance_x_m": Infinity,
+      "n_past_gore": 33,
+      "fronts": [
+       {
+        "lane": 0,
+        "veh_id": "v13547",
+        "kind": "exiter",
+        "short_of_gore_m": 1.87
+       },
+       {
+        "lane": 1,
+        "veh_id": "v31764",
+        "kind": "entrant",
+        "short_of_gore_m": 5.68
+       },
+       {
+        "lane": 2,
+        "veh_id": "v13523",
+        "kind": "through",
+        "short_of_gore_m": 34.85
+       },
+       {
+        "lane": 3,
+        "veh_id": "v25129",
+        "kind": "through",
+        "short_of_gore_m": 20.07
+       }
+      ],
+      "locked": false,
+      "n_entrant_took_exit": 0,
+      "entrance_departed": 4584
+     }
+    ],
+    "battery_locks": 0,
+    "battery_locked": false,
+    "collisions_by_section": {},
+    "collisions_logged": [],
+    "weaves": {
+     "on-ramp 745524613": {
+      "n_missed_exit": 24,
+      "n_entrant_took_exit": 9,
+      "n_handback_skips": 154,
+      "n_close_leader_withheld": 45,
+      "n_opposing_deferred": 294,
+      "n_opposing_vetoed": 291
+     },
+     "on-ramp 769818012": {
+      "n_missed_exit": 51,
+      "n_entrant_took_exit": 0,
+      "n_handback_skips": 163,
+      "n_close_leader_withheld": 5,
+      "n_opposing_deferred": 811,
+      "n_opposing_vetoed": 771
+     }
+    }
+   }
+  },
+  "3011106312394044631": {
+   "a": {
+    "s790": 3882.0,
+    "departed": 0.9859368238857638,
+    "collisions": 0,
+    "sections": [
+     {
+      "ramp": "on-ramp 745524613",
+      "exit": "C-D split 18208090",
+      "gore_x_m": 5316.64,
+      "next_entrance_x_m": 5929.85,
+      "n_past_gore": 21,
+      "fronts": [
+       {
+        "lane": 0,
+        "veh_id": "v12005",
+        "kind": "exiter",
+        "short_of_gore_m": 100.51
+       },
+       {
+        "lane": 1,
+        "veh_id": "v13707",
+        "kind": "through",
+        "short_of_gore_m": 63.36
+       },
+       {
+        "lane": 2,
+        "veh_id": "v12003",
+        "kind": "through",
+        "short_of_gore_m": 68.45
+       },
+       {
+        "lane": 3,
+        "veh_id": "v12006",
+        "kind": "through",
+        "short_of_gore_m": 43.32
+       }
+      ],
+      "locked": false,
+      "n_entrant_took_exit": 11,
+      "entrance_departed": 1017
+     },
+     {
+      "ramp": "on-ramp 769818012",
+      "exit": "off-ramp 18207598",
+      "gore_x_m": 10731.640000000001,
+      "next_entrance_x_m": Infinity,
+      "n_past_gore": 38,
+      "fronts": [
+       {
+        "lane": 0,
+        "veh_id": "v31826",
+        "kind": "exiter",
+        "short_of_gore_m": 3.96
+       },
+       {
+        "lane": 1,
+        "veh_id": "v11356",
+        "kind": "exiter",
+        "short_of_gore_m": 68.8
+       },
+       {
+        "lane": 2,
+        "veh_id": "v13531",
+        "kind": "through",
+        "short_of_gore_m": 49.51
+       },
+       {
+        "lane": 3,
+        "veh_id": "v10944",
+        "kind": "through",
+        "short_of_gore_m": 59.73
+       }
+      ],
+      "locked": false,
+      "n_entrant_took_exit": 0,
+      "entrance_departed": 4645
+     }
+    ],
+    "battery_locks": 0,
+    "battery_locked": false,
+    "collisions_by_section": {},
+    "collisions_logged": [],
+    "weaves": {
+     "on-ramp 745524613": {
+      "n_missed_exit": 31,
+      "n_entrant_took_exit": 11,
+      "n_handback_skips": null,
+      "n_close_leader_withheld": null,
+      "n_opposing_deferred": null,
+      "n_opposing_vetoed": null
+     },
+     "on-ramp 769818012": {
+      "n_missed_exit": 34,
+      "n_entrant_took_exit": 0,
+      "n_handback_skips": null,
+      "n_close_leader_withheld": null,
+      "n_opposing_deferred": null,
+      "n_opposing_vetoed": null
+     }
+    }
+   },
+   "b": {
+    "s790": 3904.0000000000005,
+    "departed": 0.9836187179328677,
+    "collisions": 0,
+    "sections": [
+     {
+      "ramp": "on-ramp 745524613",
+      "exit": "C-D split 18208090",
+      "gore_x_m": 5316.64,
+      "next_entrance_x_m": 5929.85,
+      "n_past_gore": 145,
+      "fronts": [
+       {
+        "lane": 1,
+        "veh_id": "v11958",
+        "kind": "through",
+        "short_of_gore_m": 5.89
+       },
+       {
+        "lane": 2,
+        "veh_id": "v16597",
+        "kind": "through",
+        "short_of_gore_m": 53.41
+       },
+       {
+        "lane": 3,
+        "veh_id": "v11984",
+        "kind": "through",
+        "short_of_gore_m": 26.96
+       }
+      ],
+      "locked": false,
+      "n_entrant_took_exit": 13,
+      "entrance_departed": 1017
+     },
+     {
+      "ramp": "on-ramp 769818012",
+      "exit": "off-ramp 18207598",
+      "gore_x_m": 10731.640000000001,
+      "next_entrance_x_m": Infinity,
+      "n_past_gore": 46,
+      "fronts": [
+       {
+        "lane": 0,
+        "veh_id": "v16408",
+        "kind": "exiter",
+        "short_of_gore_m": 120.37
+       },
+       {
+        "lane": 1,
+        "veh_id": "v31757",
+        "kind": "entrant",
+        "short_of_gore_m": 27.04
+       },
+       {
+        "lane": 2,
+        "veh_id": "v31758",
+        "kind": "entrant",
+        "short_of_gore_m": 57.71
+       },
+       {
+        "lane": 3,
+        "veh_id": "v10603",
+        "kind": "through",
+        "short_of_gore_m": 13.37
+       }
+      ],
+      "locked": false,
+      "n_entrant_took_exit": 0,
+      "entrance_departed": 4570
+     }
+    ],
+    "battery_locks": 0,
+    "battery_locked": false,
+    "collisions_by_section": {},
+    "collisions_logged": [],
+    "weaves": {
+     "on-ramp 745524613": {
+      "n_missed_exit": 38,
+      "n_entrant_took_exit": 13,
+      "n_handback_skips": 178,
+      "n_close_leader_withheld": 12,
+      "n_opposing_deferred": 375,
+      "n_opposing_vetoed": 369
+     },
+     "on-ramp 769818012": {
+      "n_missed_exit": 53,
+      "n_entrant_took_exit": 0,
+      "n_handback_skips": 115,
+      "n_close_leader_withheld": 6,
+      "n_opposing_deferred": 866,
+      "n_opposing_vetoed": 834
+     }
+    }
+   }
+  },
+  "3747978530954135749": {
+   "a": {
+    "s790": 3921.0,
+    "departed": 0.9834950856153799,
+    "collisions": 0,
+    "sections": [
+     {
+      "ramp": "on-ramp 745524613",
+      "exit": "C-D split 18208090",
+      "gore_x_m": 5316.64,
+      "next_entrance_x_m": 5929.85,
+      "n_past_gore": 79,
+      "fronts": [
+       {
+        "lane": 0,
+        "veh_id": "v17608",
+        "kind": "entrant",
+        "short_of_gore_m": 0.09
+       },
+       {
+        "lane": 1,
+        "veh_id": "v16561",
+        "kind": "through",
+        "short_of_gore_m": 9.82
+       },
+       {
+        "lane": 2,
+        "veh_id": "v13579",
+        "kind": "through",
+        "short_of_gore_m": 16.49
+       },
+       {
+        "lane": 3,
+        "veh_id": "v13682",
+        "kind": "through",
+        "short_of_gore_m": 19.0
+       }
+      ],
+      "locked": false,
+      "n_entrant_took_exit": 12,
+      "entrance_departed": 1017
+     },
+     {
+      "ramp": "on-ramp 769818012",
+      "exit": "off-ramp 18207598",
+      "gore_x_m": 10731.640000000001,
+      "next_entrance_x_m": Infinity,
+      "n_past_gore": 16,
+      "fronts": [
+       {
+        "lane": 0,
+        "veh_id": "v31736",
+        "kind": "exiter",
+        "short_of_gore_m": 5.38
+       },
+       {
+        "lane": 1,
+        "veh_id": "v31735",
+        "kind": "entrant",
+        "short_of_gore_m": 30.56
+       },
+       {
+        "lane": 2,
+        "veh_id": "v19118",
+        "kind": "through",
+        "short_of_gore_m": 34.89
+       },
+       {
+        "lane": 3,
+        "veh_id": "v10374",
+        "kind": "through",
+        "short_of_gore_m": 3.7
+       }
+      ],
+      "locked": false,
+      "n_entrant_took_exit": 0,
+      "entrance_departed": 4566
+     }
+    ],
+    "battery_locks": 0,
+    "battery_locked": false,
+    "collisions_by_section": {},
+    "collisions_logged": [],
+    "weaves": {
+     "on-ramp 745524613": {
+      "n_missed_exit": 28,
+      "n_entrant_took_exit": 12,
+      "n_handback_skips": null,
+      "n_close_leader_withheld": null,
+      "n_opposing_deferred": null,
+      "n_opposing_vetoed": null
+     },
+     "on-ramp 769818012": {
+      "n_missed_exit": 52,
+      "n_entrant_took_exit": 0,
+      "n_handback_skips": null,
+      "n_close_leader_withheld": null,
+      "n_opposing_deferred": null,
+      "n_opposing_vetoed": null
+     }
+    }
+   },
+   "b": {
+    "s790": 3858.9999999999995,
+    "departed": 0.9842986956790505,
+    "collisions": 0,
+    "sections": [
+     {
+      "ramp": "on-ramp 745524613",
+      "exit": "C-D split 18208090",
+      "gore_x_m": 5316.64,
+      "next_entrance_x_m": 5929.85,
+      "n_past_gore": 125,
+      "fronts": [
+       {
+        "lane": 0,
+        "veh_id": "v17618",
+        "kind": "entrant",
+        "short_of_gore_m": 0.08
+       },
+       {
+        "lane": 1,
+        "veh_id": "v16577",
+        "kind": "through",
+        "short_of_gore_m": 12.08
+       },
+       {
+        "lane": 2,
+        "veh_id": "v11702",
+        "kind": "through",
+        "short_of_gore_m": 21.59
+       },
+       {
+        "lane": 3,
+        "veh_id": "v13688",
+        "kind": "through",
+        "short_of_gore_m": 9.13
+       }
+      ],
+      "locked": false,
+      "n_entrant_took_exit": 16,
+      "entrance_departed": 1017
+     },
+     {
+      "ramp": "on-ramp 769818012",
+      "exit": "off-ramp 18207598",
+      "gore_x_m": 10731.640000000001,
+      "next_entrance_x_m": Infinity,
+      "n_past_gore": 48,
+      "fronts": [
+       {
+        "lane": 0,
+        "veh_id": "v31781",
+        "kind": "entrant",
+        "short_of_gore_m": 56.58
+       },
+       {
+        "lane": 1,
+        "veh_id": "v13443",
+        "kind": "exiter",
+        "short_of_gore_m": 47.1
+       },
+       {
+        "lane": 2,
+        "veh_id": "v25058",
+        "kind": "through",
+        "short_of_gore_m": 13.12
+       },
+       {
+        "lane": 3,
+        "veh_id": "v11100",
+        "kind": "through",
+        "short_of_gore_m": 36.19
+       }
+      ],
+      "locked": false,
+      "n_entrant_took_exit": 0,
+      "entrance_departed": 4592
+     }
+    ],
+    "battery_locks": 0,
+    "battery_locked": false,
+    "collisions_by_section": {},
+    "collisions_logged": [],
+    "weaves": {
+     "on-ramp 745524613": {
+      "n_missed_exit": 34,
+      "n_entrant_took_exit": 16,
+      "n_handback_skips": 210,
+      "n_close_leader_withheld": 35,
+      "n_opposing_deferred": 376,
+      "n_opposing_vetoed": 374
+     },
+     "on-ramp 769818012": {
+      "n_missed_exit": 46,
+      "n_entrant_took_exit": 0,
+      "n_handback_skips": 118,
+      "n_close_leader_withheld": 12,
+      "n_opposing_deferred": 812,
+      "n_opposing_vetoed": 770
+     }
+    }
+   }
+  },
+  "3944094060050347669": {
+   "a": {
+    "s790": 3894.9999999999995,
+    "departed": 0.9833714532978921,
+    "collisions": 0,
+    "sections": [
+     {
+      "ramp": "on-ramp 745524613",
+      "exit": "C-D split 18208090",
+      "gore_x_m": 5316.64,
+      "next_entrance_x_m": 5929.85,
+      "n_past_gore": 141,
+      "fronts": [
+       {
+        "lane": 0,
+        "veh_id": "v17612",
+        "kind": "entrant",
+        "short_of_gore_m": 0.18
+       },
+       {
+        "lane": 1,
+        "veh_id": "v11841",
+        "kind": "through",
+        "short_of_gore_m": 8.79
+       },
+       {
+        "lane": 2,
+        "veh_id": "v15285",
+        "kind": "through",
+        "short_of_gore_m": 1.74
+       },
+       {
+        "lane": 3,
+        "veh_id": "v12003",
+        "kind": "through",
+        "short_of_gore_m": 86.5
+       }
+      ],
+      "locked": false,
+      "n_entrant_took_exit": 7,
+      "entrance_departed": 1017
+     },
+     {
+      "ramp": "on-ramp 769818012",
+      "exit": "off-ramp 18207598",
+      "gore_x_m": 10731.640000000001,
+      "next_entrance_x_m": Infinity,
+      "n_past_gore": 39,
+      "fronts": [
+       {
+        "lane": 0,
+        "veh_id": "v25039",
+        "kind": "exiter",
+        "short_of_gore_m": 59.52
+       },
+       {
+        "lane": 1,
+        "veh_id": "v31756",
+        "kind": "entrant",
+        "short_of_gore_m": 63.5
+       },
+       {
+        "lane": 2,
+        "veh_id": "v27224",
+        "kind": "through",
+        "short_of_gore_m": 19.32
+       },
+       {
+        "lane": 3,
+        "veh_id": "v11370",
+        "kind": "through",
+        "short_of_gore_m": 7.78
+       }
+      ],
+      "locked": false,
+      "n_entrant_took_exit": 0,
+      "entrance_departed": 4562
+     }
+    ],
+    "battery_locks": 0,
+    "battery_locked": false,
+    "collisions_by_section": {},
+    "collisions_logged": [],
+    "weaves": {
+     "on-ramp 745524613": {
+      "n_missed_exit": 25,
+      "n_entrant_took_exit": 7,
+      "n_handback_skips": null,
+      "n_close_leader_withheld": null,
+      "n_opposing_deferred": null,
+      "n_opposing_vetoed": null
+     },
+     "on-ramp 769818012": {
+      "n_missed_exit": 34,
+      "n_entrant_took_exit": 0,
+      "n_handback_skips": null,
+      "n_close_leader_withheld": null,
+      "n_opposing_deferred": null,
+      "n_opposing_vetoed": null
+     }
+    }
+   },
+   "b": {
+    "s790": 3918.0,
+    "departed": 0.9842059714409347,
+    "collisions": 0,
+    "sections": [
+     {
+      "ramp": "on-ramp 745524613",
+      "exit": "C-D split 18208090",
+      "gore_x_m": 5316.64,
+      "next_entrance_x_m": 5929.85,
+      "n_past_gore": 141,
+      "fronts": [
+       {
+        "lane": 0,
+        "veh_id": "v12004",
+        "kind": "exiter",
+        "short_of_gore_m": 95.46
+       },
+       {
+        "lane": 1,
+        "veh_id": "v11988",
+        "kind": "through",
+        "short_of_gore_m": 8.92
+       },
+       {
+        "lane": 2,
+        "veh_id": "v12002",
+        "kind": "through",
+        "short_of_gore_m": 0.8
+       },
+       {
+        "lane": 3,
+        "veh_id": "v12005",
+        "kind": "through",
+        "short_of_gore_m": 39.85
+       }
+      ],
+      "locked": false,
+      "n_entrant_took_exit": 15,
+      "entrance_departed": 1017
+     },
+     {
+      "ramp": "on-ramp 769818012",
+      "exit": "off-ramp 18207598",
+      "gore_x_m": 10731.640000000001,
+      "next_entrance_x_m": Infinity,
+      "n_past_gore": 29,
+      "fronts": [
+       {
+        "lane": 0,
+        "veh_id": "v31773",
+        "kind": "exiter",
+        "short_of_gore_m": 5.95
+       },
+       {
+        "lane": 1,
+        "veh_id": "v31775",
+        "kind": "entrant",
+        "short_of_gore_m": 111.31
+       },
+       {
+        "lane": 2,
+        "veh_id": "v31774",
+        "kind": "entrant",
+        "short_of_gore_m": 31.04
+       },
+       {
+        "lane": 3,
+        "veh_id": "v15233",
+        "kind": "through",
+        "short_of_gore_m": 113.67
+       }
+      ],
+      "locked": false,
+      "n_entrant_took_exit": 0,
+      "entrance_departed": 4589
+     }
+    ],
+    "battery_locks": 0,
+    "battery_locked": false,
+    "collisions_by_section": {},
+    "collisions_logged": [],
+    "weaves": {
+     "on-ramp 745524613": {
+      "n_missed_exit": 26,
+      "n_entrant_took_exit": 15,
+      "n_handback_skips": 181,
+      "n_close_leader_withheld": 1,
+      "n_opposing_deferred": 307,
+      "n_opposing_vetoed": 304
+     },
+     "on-ramp 769818012": {
+      "n_missed_exit": 58,
+      "n_entrant_took_exit": 0,
+      "n_handback_skips": 148,
+      "n_close_leader_withheld": 2,
+      "n_opposing_deferred": 871,
+      "n_opposing_vetoed": 828
+     }
+    }
+   }
+  },
+  "4910985839736976611": {
+   "a": {
+    "s790": 3836.0,
+    "departed": 0.9842986956790505,
+    "collisions": 0,
+    "sections": [
+     {
+      "ramp": "on-ramp 745524613",
+      "exit": "C-D split 18208090",
+      "gore_x_m": 5316.64,
+      "next_entrance_x_m": 5929.85,
+      "n_past_gore": 132,
+      "fronts": [
+       {
+        "lane": 0,
+        "veh_id": "v17611",
+        "kind": "entrant",
+        "short_of_gore_m": 9.45
+       },
+       {
+        "lane": 1,
+        "veh_id": "v16574",
+        "kind": "through",
+        "short_of_gore_m": 0.31
+       },
+       {
+        "lane": 2,
+        "veh_id": "v11589",
+        "kind": "through",
+        "short_of_gore_m": 4.4
+       },
+       {
+        "lane": 3,
+        "veh_id": "v11861",
+        "kind": "through",
+        "short_of_gore_m": 7.51
+       }
+      ],
+      "locked": false,
+      "n_entrant_took_exit": 16,
+      "entrance_departed": 1017
+     },
+     {
+      "ramp": "on-ramp 769818012",
+      "exit": "off-ramp 18207598",
+      "gore_x_m": 10731.640000000001,
+      "next_entrance_x_m": Infinity,
+      "n_past_gore": 34,
+      "fronts": [
+       {
+        "lane": 0,
+        "veh_id": "v19158",
+        "kind": "exiter",
+        "short_of_gore_m": 5.61
+       },
+       {
+        "lane": 1,
+        "veh_id": "v31787",
+        "kind": "entrant",
+        "short_of_gore_m": 53.35
+       },
+       {
+        "lane": 2,
+        "veh_id": "v11270",
+        "kind": "through",
+        "short_of_gore_m": 11.0
+       },
+       {
+        "lane": 3,
+        "veh_id": "v15134",
+        "kind": "through",
+        "short_of_gore_m": 2.25
+       }
+      ],
+      "locked": false,
+      "n_entrant_took_exit": 0,
+      "entrance_departed": 4592
+     }
+    ],
+    "battery_locks": 0,
+    "battery_locked": false,
+    "collisions_by_section": {},
+    "collisions_logged": [],
+    "weaves": {
+     "on-ramp 745524613": {
+      "n_missed_exit": 25,
+      "n_entrant_took_exit": 16,
+      "n_handback_skips": null,
+      "n_close_leader_withheld": null,
+      "n_opposing_deferred": null,
+      "n_opposing_vetoed": null
+     },
+     "on-ramp 769818012": {
+      "n_missed_exit": 50,
+      "n_entrant_took_exit": 0,
+      "n_handback_skips": null,
+      "n_close_leader_withheld": null,
+      "n_opposing_deferred": null,
+      "n_opposing_vetoed": null
+     }
+    }
+   },
+   "b": {
+    "s790": 3878.0000000000005,
+    "departed": 0.983433269456636,
+    "collisions": 0,
+    "sections": [
+     {
+      "ramp": "on-ramp 745524613",
+      "exit": "C-D split 18208090",
+      "gore_x_m": 5316.64,
+      "next_entrance_x_m": 5929.85,
+      "n_past_gore": 176,
+      "fronts": [
+       {
+        "lane": 0,
+        "veh_id": "v17619",
+        "kind": "entrant",
+        "short_of_gore_m": 78.38
+       },
+       {
+        "lane": 1,
+        "veh_id": "v11927",
+        "kind": "through",
+        "short_of_gore_m": 7.14
+       },
+       {
+        "lane": 2,
+        "veh_id": "v11924",
+        "kind": "through",
+        "short_of_gore_m": 4.85
+       },
+       {
+        "lane": 3,
+        "veh_id": "v11984",
+        "kind": "through",
+        "short_of_gore_m": 13.06
+       }
+      ],
+      "locked": false,
+      "n_entrant_took_exit": 16,
+      "entrance_departed": 1017
+     },
+     {
+      "ramp": "on-ramp 769818012",
+      "exit": "off-ramp 18207598",
+      "gore_x_m": 10731.640000000001,
+      "next_entrance_x_m": Infinity,
+      "n_past_gore": 40,
+      "fronts": [
+       {
+        "lane": 0,
+        "veh_id": "v31756",
+        "kind": "exiter",
+        "short_of_gore_m": 21.5
+       },
+       {
+        "lane": 1,
+        "veh_id": "v31757",
+        "kind": "entrant",
+        "short_of_gore_m": 50.31
+       },
+       {
+        "lane": 2,
+        "veh_id": "v31755",
+        "kind": "entrant",
+        "short_of_gore_m": 7.33
+       },
+       {
+        "lane": 3,
+        "veh_id": "v13573",
+        "kind": "through",
+        "short_of_gore_m": 55.52
+       }
+      ],
+      "locked": false,
+      "n_entrant_took_exit": 0,
+      "entrance_departed": 4564
+     }
+    ],
+    "battery_locks": 0,
+    "battery_locked": false,
+    "collisions_by_section": {},
+    "collisions_logged": [],
+    "weaves": {
+     "on-ramp 745524613": {
+      "n_missed_exit": 32,
+      "n_entrant_took_exit": 16,
+      "n_handback_skips": 173,
+      "n_close_leader_withheld": 9,
+      "n_opposing_deferred": 328,
+      "n_opposing_vetoed": 324
+     },
+     "on-ramp 769818012": {
+      "n_missed_exit": 53,
+      "n_entrant_took_exit": 0,
+      "n_handback_skips": 159,
+      "n_close_leader_withheld": 16,
+      "n_opposing_deferred": 824,
+      "n_opposing_vetoed": 797
+     }
+    }
+   }
+  },
+  "5690692725577505498": {
+   "a": {
+    "s790": 3917.0,
+    "departed": 0.9831860048216604,
+    "collisions": 1,
+    "sections": [
+     {
+      "ramp": "on-ramp 745524613",
+      "exit": "C-D split 18208090",
+      "gore_x_m": 5316.64,
+      "next_entrance_x_m": 5929.85,
+      "n_past_gore": 41,
+      "fronts": [
+       {
+        "lane": 1,
+        "veh_id": "v17624",
+        "kind": "entrant",
+        "short_of_gore_m": 106.21
+       },
+       {
+        "lane": 2,
+        "veh_id": "v16603",
+        "kind": "through",
+        "short_of_gore_m": 84.55
+       },
+       {
+        "lane": 3,
+        "veh_id": "v11999",
+        "kind": "through",
+        "short_of_gore_m": 11.11
+       }
+      ],
+      "locked": false,
+      "n_entrant_took_exit": 16,
+      "entrance_departed": 1017
+     },
+     {
+      "ramp": "on-ramp 769818012",
+      "exit": "off-ramp 18207598",
+      "gore_x_m": 10731.640000000001,
+      "next_entrance_x_m": Infinity,
+      "n_past_gore": 32,
+      "fronts": [
+       {
+        "lane": 0,
+        "veh_id": "v11495",
+        "kind": "exiter",
+        "short_of_gore_m": 8.76
+       },
+       {
+        "lane": 1,
+        "veh_id": "v15212",
+        "kind": "through",
+        "short_of_gore_m": 22.57
+       },
+       {
+        "lane": 2,
+        "veh_id": "v27234",
+        "kind": "through",
+        "short_of_gore_m": 38.93
+       },
+       {
+        "lane": 3,
+        "veh_id": "v13636",
+        "kind": "through",
+        "short_of_gore_m": 20.19
+       }
+      ],
+      "locked": false,
+      "n_entrant_took_exit": 0,
+      "entrance_departed": 4556
+     }
+    ],
+    "battery_locks": 0,
+    "battery_locked": false,
+    "collisions_by_section": {
+     "T.H.52": 1
+    },
+    "collisions_logged": [
+     {
+      "t": 6328.0,
+      "collider": "v25948",
+      "victim": "v29195",
+      "type": "collision",
+      "lane": "51388891_1",
+      "pos_m": 26.523811273994074
+     }
+    ],
+    "weaves": {
+     "on-ramp 745524613": {
+      "n_missed_exit": 20,
+      "n_entrant_took_exit": 16,
+      "n_handback_skips": null,
+      "n_close_leader_withheld": null,
+      "n_opposing_deferred": null,
+      "n_opposing_vetoed": null
+     },
+     "on-ramp 769818012": {
+      "n_missed_exit": 38,
+      "n_entrant_took_exit": 0,
+      "n_handback_skips": null,
+      "n_close_leader_withheld": null,
+      "n_opposing_deferred": null,
+      "n_opposing_vetoed": null
+     }
+    }
+   },
+   "b": {
+    "s790": 3904.0000000000005,
+    "departed": 0.9834950856153799,
+    "collisions": 0,
+    "sections": [
+     {
+      "ramp": "on-ramp 745524613",
+      "exit": "C-D split 18208090",
+      "gore_x_m": 5316.64,
+      "next_entrance_x_m": 5929.85,
+      "n_past_gore": 131,
+      "fronts": [
+       {
+        "lane": 2,
+        "veh_id": "v17624",
+        "kind": "entrant",
+        "short_of_gore_m": 107.24
+       },
+       {
+        "lane": 3,
+        "veh_id": "v12001",
+        "kind": "through",
+        "short_of_gore_m": 69.24
+       }
+      ],
+      "locked": false,
+      "n_entrant_took_exit": 11,
+      "entrance_departed": 1017
+     },
+     {
+      "ramp": "on-ramp 769818012",
+      "exit": "off-ramp 18207598",
+      "gore_x_m": 10731.640000000001,
+      "next_entrance_x_m": Infinity,
+      "n_past_gore": 41,
+      "fronts": [
+       {
+        "lane": 0,
+        "veh_id": "v11329",
+        "kind": "exiter",
+        "short_of_gore_m": 49.05
+       },
+       {
+        "lane": 1,
+        "veh_id": "v31754",
+        "kind": "entrant",
+        "short_of_gore_m": 30.42
+       },
+       {
+        "lane": 2,
+        "veh_id": "v27233",
+        "kind": "through",
+        "short_of_gore_m": 9.21
+       },
+       {
+        "lane": 3,
+        "veh_id": "v11589",
+        "kind": "through",
+        "short_of_gore_m": 11.14
+       }
+      ],
+      "locked": false,
+      "n_entrant_took_exit": 0,
+      "entrance_departed": 4566
+     }
+    ],
+    "battery_locks": 0,
+    "battery_locked": false,
+    "collisions_by_section": {},
+    "collisions_logged": [],
+    "weaves": {
+     "on-ramp 745524613": {
+      "n_missed_exit": 26,
+      "n_entrant_took_exit": 11,
+      "n_handback_skips": 223,
+      "n_close_leader_withheld": 22,
+      "n_opposing_deferred": 403,
+      "n_opposing_vetoed": 399
+     },
+     "on-ramp 769818012": {
+      "n_missed_exit": 44,
+      "n_entrant_took_exit": 0,
+      "n_handback_skips": 122,
+      "n_close_leader_withheld": 4,
+      "n_opposing_deferred": 825,
+      "n_opposing_vetoed": 787
+     }
+    }
+   }
+  },
+  "6134032994440706937": {
+   "a": {
+    "s790": 3945.9999999999995,
+    "departed": 0.984638684552142,
+    "collisions": 0,
+    "sections": [
+     {
+      "ramp": "on-ramp 745524613",
+      "exit": "C-D split 18208090",
+      "gore_x_m": 5316.64,
+      "next_entrance_x_m": 5929.85,
+      "n_past_gore": 81,
+      "fronts": [
+       {
+        "lane": 0,
+        "veh_id": "v15271",
+        "kind": "exiter",
+        "short_of_gore_m": 16.1
+       },
+       {
+        "lane": 1,
+        "veh_id": "v17610",
+        "kind": "entrant",
+        "short_of_gore_m": 6.47
+       },
+       {
+        "lane": 2,
+        "veh_id": "v15288",
+        "kind": "through",
+        "short_of_gore_m": 3.18
+       },
+       {
+        "lane": 3,
+        "veh_id": "v11892",
+        "kind": "through",
+        "short_of_gore_m": 12.2
+       }
+      ],
+      "locked": false,
+      "n_entrant_took_exit": 14,
+      "entrance_departed": 1017
+     },
+     {
+      "ramp": "on-ramp 769818012",
+      "exit": "off-ramp 18207598",
+      "gore_x_m": 10731.640000000001,
+      "next_entrance_x_m": Infinity,
+      "n_past_gore": 38,
+      "fronts": [
+       {
+        "lane": 0,
+        "veh_id": "v19148",
+        "kind": "exiter",
+        "short_of_gore_m": 7.24
+       },
+       {
+        "lane": 1,
+        "veh_id": "v31794",
+        "kind": "entrant",
+        "short_of_gore_m": 57.04
+       },
+       {
+        "lane": 2,
+        "veh_id": "v25077",
+        "kind": "through",
+        "short_of_gore_m": 37.25
+       },
+       {
+        "lane": 3,
+        "veh_id": "v11091",
+        "kind": "through",
+        "short_of_gore_m": 4.78
+       }
+      ],
+      "locked": false,
+      "n_entrant_took_exit": 0,
+      "entrance_departed": 4603
+     }
+    ],
+    "battery_locks": 0,
+    "battery_locked": false,
+    "collisions_by_section": {},
+    "collisions_logged": [],
+    "weaves": {
+     "on-ramp 745524613": {
+      "n_missed_exit": 33,
+      "n_entrant_took_exit": 14,
+      "n_handback_skips": null,
+      "n_close_leader_withheld": null,
+      "n_opposing_deferred": null,
+      "n_opposing_vetoed": null
+     },
+     "on-ramp 769818012": {
+      "n_missed_exit": 51,
+      "n_entrant_took_exit": 0,
+      "n_handback_skips": null,
+      "n_close_leader_withheld": null,
+      "n_opposing_deferred": null,
+      "n_opposing_vetoed": null
+     }
+    }
+   },
+   "b": {
+    "s790": 3825.0,
+    "departed": 0.9839277987265871,
+    "collisions": 0,
+    "sections": [
+     {
+      "ramp": "on-ramp 745524613",
+      "exit": "C-D split 18208090",
+      "gore_x_m": 5316.64,
+      "next_entrance_x_m": 5929.85,
+      "n_past_gore": 168,
+      "fronts": [
+       {
+        "lane": 0,
+        "veh_id": "v11455",
+        "kind": "exiter",
+        "short_of_gore_m": 0.02
+       },
+       {
+        "lane": 1,
+        "veh_id": "v16561",
+        "kind": "through",
+        "short_of_gore_m": 6.09
+       },
+       {
+        "lane": 2,
+        "veh_id": "v11715",
+        "kind": "through",
+        "short_of_gore_m": 10.8
+       },
+       {
+        "lane": 3,
+        "veh_id": "v13539",
+        "kind": "through",
+        "short_of_gore_m": 5.7
+       }
+      ],
+      "locked": false,
+      "n_entrant_took_exit": 18,
+      "entrance_departed": 1017
+     },
+     {
+      "ramp": "on-ramp 769818012",
+      "exit": "off-ramp 18207598",
+      "gore_x_m": 10731.640000000001,
+      "next_entrance_x_m": Infinity,
+      "n_past_gore": 35,
+      "fronts": [
+       {
+        "lane": 0,
+        "veh_id": "v31768",
+        "kind": "exiter",
+        "short_of_gore_m": 9.86
+       },
+       {
+        "lane": 1,
+        "veh_id": "v19181",
+        "kind": "exiter",
+        "short_of_gore_m": 14.33
+       },
+       {
+        "lane": 2,
+        "veh_id": "v25010",
+        "kind": "through",
+        "short_of_gore_m": 27.61
+       },
+       {
+        "lane": 3,
+        "veh_id": "v11240",
+        "kind": "through",
+        "short_of_gore_m": 14.9
+       }
+      ],
+      "locked": false,
+      "n_entrant_took_exit": 0,
+      "entrance_departed": 4580
+     }
+    ],
+    "battery_locks": 0,
+    "battery_locked": false,
+    "collisions_by_section": {},
+    "collisions_logged": [],
+    "weaves": {
+     "on-ramp 745524613": {
+      "n_missed_exit": 29,
+      "n_entrant_took_exit": 18,
+      "n_handback_skips": 179,
+      "n_close_leader_withheld": 1,
+      "n_opposing_deferred": 376,
+      "n_opposing_vetoed": 375
+     },
+     "on-ramp 769818012": {
+      "n_missed_exit": 51,
+      "n_entrant_took_exit": 0,
+      "n_handback_skips": 123,
+      "n_close_leader_withheld": 6,
+      "n_opposing_deferred": 859,
+      "n_opposing_vetoed": 822
+     }
+    }
+   }
+  },
+  "6143473282319009404": {
+   "a": {
+    "s790": 3929.9999999999995,
+    "departed": 0.9833714532978921,
+    "collisions": 0,
+    "sections": [
+     {
+      "ramp": "on-ramp 745524613",
+      "exit": "C-D split 18208090",
+      "gore_x_m": 5316.64,
+      "next_entrance_x_m": 5929.85,
+      "n_past_gore": 23,
+      "fronts": [
+       {
+        "lane": 1,
+        "veh_id": "v11999",
+        "kind": "through",
+        "short_of_gore_m": 7.61
+       },
+       {
+        "lane": 2,
+        "veh_id": "v16602",
+        "kind": "through",
+        "short_of_gore_m": 109.69
+       },
+       {
+        "lane": 3,
+        "veh_id": "v13708",
+        "kind": "through",
+        "short_of_gore_m": 73.18
+       }
+      ],
+      "locked": false,
+      "n_entrant_took_exit": 10,
+      "entrance_departed": 1017
+     },
+     {
+      "ramp": "on-ramp 769818012",
+      "exit": "off-ramp 18207598",
+      "gore_x_m": 10731.640000000001,
+      "next_entrance_x_m": Infinity,
+      "n_past_gore": 41,
+      "fronts": [
+       {
+        "lane": 0,
+        "veh_id": "v25099",
+        "kind": "exiter",
+        "short_of_gore_m": 68.44
+       },
+       {
+        "lane": 1,
+        "veh_id": "v31752",
+        "kind": "entrant",
+        "short_of_gore_m": 19.67
+       },
+       {
+        "lane": 2,
+        "veh_id": "v17507",
+        "kind": "through",
+        "short_of_gore_m": 39.85
+       },
+       {
+        "lane": 3,
+        "veh_id": "v16464",
+        "kind": "through",
+        "short_of_gore_m": 2.34
+       }
+      ],
+      "locked": false,
+      "n_entrant_took_exit": 0,
+      "entrance_departed": 4562
+     }
+    ],
+    "battery_locks": 0,
+    "battery_locked": false,
+    "collisions_by_section": {},
+    "collisions_logged": [],
+    "weaves": {
+     "on-ramp 745524613": {
+      "n_missed_exit": 21,
+      "n_entrant_took_exit": 10,
+      "n_handback_skips": null,
+      "n_close_leader_withheld": null,
+      "n_opposing_deferred": null,
+      "n_opposing_vetoed": null
+     },
+     "on-ramp 769818012": {
+      "n_missed_exit": 54,
+      "n_entrant_took_exit": 0,
+      "n_handback_skips": null,
+      "n_close_leader_withheld": null,
+      "n_opposing_deferred": null,
+      "n_opposing_vetoed": null
+     }
+    }
+   },
+   "b": {
+    "s790": 3929.9999999999995,
+    "departed": 0.9850404895839773,
+    "collisions": 0,
+    "sections": [
+     {
+      "ramp": "on-ramp 745524613",
+      "exit": "C-D split 18208090",
+      "gore_x_m": 5316.64,
+      "next_entrance_x_m": 5929.85,
+      "n_past_gore": 147,
+      "fronts": [
+       {
+        "lane": 0,
+        "veh_id": "v17623",
+        "kind": "entrant",
+        "short_of_gore_m": 4.45
+       },
+       {
+        "lane": 1,
+        "veh_id": "v12002",
+        "kind": "through",
+        "short_of_gore_m": 40.51
+       },
+       {
+        "lane": 2,
+        "veh_id": "v13707",
+        "kind": "through",
+        "short_of_gore_m": 9.1
+       },
+       {
+        "lane": 3,
+        "veh_id": "v16603",
+        "kind": "through",
+        "short_of_gore_m": 56.1
+       }
+      ],
+      "locked": false,
+      "n_entrant_took_exit": 14,
+      "entrance_departed": 1017
+     },
+     {
+      "ramp": "on-ramp 769818012",
+      "exit": "off-ramp 18207598",
+      "gore_x_m": 10731.640000000001,
+      "next_entrance_x_m": Infinity,
+      "n_past_gore": 41,
+      "fronts": [
+       {
+        "lane": 0,
+        "veh_id": "v31804",
+        "kind": "exiter",
+        "short_of_gore_m": 5.61
+       },
+       {
+        "lane": 1,
+        "veh_id": "v24892",
+        "kind": "through",
+        "short_of_gore_m": 2.91
+       },
+       {
+        "lane": 2,
+        "veh_id": "v25121",
+        "kind": "through",
+        "short_of_gore_m": 38.32
+       },
+       {
+        "lane": 3,
+        "veh_id": "v15145",
+        "kind": "through",
+        "short_of_gore_m": 11.94
+       }
+      ],
+      "locked": false,
+      "n_entrant_took_exit": 0,
+      "entrance_departed": 4616
+     }
+    ],
+    "battery_locks": 0,
+    "battery_locked": false,
+    "collisions_by_section": {},
+    "collisions_logged": [],
+    "weaves": {
+     "on-ramp 745524613": {
+      "n_missed_exit": 25,
+      "n_entrant_took_exit": 14,
+      "n_handback_skips": 138,
+      "n_close_leader_withheld": 4,
+      "n_opposing_deferred": 346,
+      "n_opposing_vetoed": 343
+     },
+     "on-ramp 769818012": {
+      "n_missed_exit": 52,
+      "n_entrant_took_exit": 0,
+      "n_handback_skips": 114,
+      "n_close_leader_withheld": 2,
+      "n_opposing_deferred": 804,
+      "n_opposing_vetoed": 770
+     }
+    }
+   }
+  },
+  "6538422657834023852": {
+   "a": {
+    "s790": 3868.9999999999995,
+    "departed": 0.9819805897261544,
+    "collisions": 0,
+    "sections": [
+     {
+      "ramp": "on-ramp 745524613",
+      "exit": "C-D split 18208090",
+      "gore_x_m": 5316.64,
+      "next_entrance_x_m": 5929.85,
+      "n_past_gore": 93,
+      "fronts": [
+       {
+        "lane": 0,
+        "veh_id": "v16582",
+        "kind": "exiter",
+        "short_of_gore_m": 119.18
+       },
+       {
+        "lane": 1,
+        "veh_id": "v17623",
+        "kind": "entrant",
+        "short_of_gore_m": 12.33
+       },
+       {
+        "lane": 2,
+        "veh_id": "v15244",
+        "kind": "through",
+        "short_of_gore_m": 0.66
+       },
+       {
+        "lane": 3,
+        "veh_id": "v11875",
+        "kind": "through",
+        "short_of_gore_m": 0.76
+       }
+      ],
+      "locked": false,
+      "n_entrant_took_exit": 17,
+      "entrance_departed": 1017
+     },
+     {
+      "ramp": "on-ramp 769818012",
+      "exit": "off-ramp 18207598",
+      "gore_x_m": 10731.640000000001,
+      "next_entrance_x_m": Infinity,
+      "n_past_gore": 52,
+      "fronts": [
+       {
+        "lane": 0,
+        "veh_id": "v16474",
+        "kind": "exiter",
+        "short_of_gore_m": 2.93
+       },
+       {
+        "lane": 1,
+        "veh_id": "v31706",
+        "kind": "entrant",
+        "short_of_gore_m": 63.81
+       },
+       {
+        "lane": 2,
+        "veh_id": "v11179",
+        "kind": "through",
+        "short_of_gore_m": 38.21
+       },
+       {
+        "lane": 3,
+        "veh_id": "v25134",
+        "kind": "through",
+        "short_of_gore_m": 12.34
+       }
+      ],
+      "locked": false,
+      "n_entrant_took_exit": 0,
+      "entrance_departed": 4517
+     }
+    ],
+    "battery_locks": 0,
+    "battery_locked": false,
+    "collisions_by_section": {},
+    "collisions_logged": [],
+    "weaves": {
+     "on-ramp 745524613": {
+      "n_missed_exit": 27,
+      "n_entrant_took_exit": 17,
+      "n_handback_skips": null,
+      "n_close_leader_withheld": null,
+      "n_opposing_deferred": null,
+      "n_opposing_vetoed": null
+     },
+     "on-ramp 769818012": {
+      "n_missed_exit": 49,
+      "n_entrant_took_exit": 0,
+      "n_handback_skips": null,
+      "n_close_leader_withheld": null,
+      "n_opposing_deferred": null,
+      "n_opposing_vetoed": null
+     }
+    }
+   },
+   "b": {
+    "s790": 3842.9999999999995,
+    "departed": 0.9817024170118069,
+    "collisions": 0,
+    "sections": [
+     {
+      "ramp": "on-ramp 745524613",
+      "exit": "C-D split 18208090",
+      "gore_x_m": 5316.64,
+      "next_entrance_x_m": 5929.85,
+      "n_past_gore": 132,
+      "fronts": [
+       {
+        "lane": 0,
+        "veh_id": "v17621",
+        "kind": "entrant",
+        "short_of_gore_m": 0.09
+       },
+       {
+        "lane": 1,
+        "veh_id": "v16580",
+        "kind": "through",
+        "short_of_gore_m": 7.18
+       },
+       {
+        "lane": 2,
+        "veh_id": "v16583",
+        "kind": "through",
+        "short_of_gore_m": 12.16
+       },
+       {
+        "lane": 3,
+        "veh_id": "v11933",
+        "kind": "through",
+        "short_of_gore_m": 5.53
+       }
+      ],
+      "locked": false,
+      "n_entrant_took_exit": 21,
+      "entrance_departed": 1017
+     },
+     {
+      "ramp": "on-ramp 769818012",
+      "exit": "off-ramp 18207598",
+      "gore_x_m": 10731.640000000001,
+      "next_entrance_x_m": Infinity,
+      "n_past_gore": 38,
+      "fronts": [
+       {
+        "lane": 0,
+        "veh_id": "v24869",
+        "kind": "exiter",
+        "short_of_gore_m": 7.16
+       },
+       {
+        "lane": 1,
+        "veh_id": "v31691",
+        "kind": "entrant",
+        "short_of_gore_m": 18.92
+       },
+       {
+        "lane": 2,
+        "veh_id": "v11314",
+        "kind": "through",
+        "short_of_gore_m": 32.94
+       },
+       {
+        "lane": 3,
+        "veh_id": "v11204",
+        "kind": "through",
+        "short_of_gore_m": 20.89
+       }
+      ],
+      "locked": false,
+      "n_entrant_took_exit": 0,
+      "entrance_departed": 4508
+     }
+    ],
+    "battery_locks": 0,
+    "battery_locked": false,
+    "collisions_by_section": {},
+    "collisions_logged": [],
+    "weaves": {
+     "on-ramp 745524613": {
+      "n_missed_exit": 32,
+      "n_entrant_took_exit": 21,
+      "n_handback_skips": 173,
+      "n_close_leader_withheld": 10,
+      "n_opposing_deferred": 321,
+      "n_opposing_vetoed": 321
+     },
+     "on-ramp 769818012": {
+      "n_missed_exit": 45,
+      "n_entrant_took_exit": 0,
+      "n_handback_skips": 190,
+      "n_close_leader_withheld": 13,
+      "n_opposing_deferred": 846,
+      "n_opposing_vetoed": 795
+     }
+    }
+   }
+  },
+  "6904272788004776631": {
+   "a": {
+    "s790": 3863.9999999999995,
+    "departed": 0.9838350744884713,
+    "collisions": 0,
+    "sections": [
+     {
+      "ramp": "on-ramp 745524613",
+      "exit": "C-D split 18208090",
+      "gore_x_m": 5316.64,
+      "next_entrance_x_m": 5929.85,
+      "n_past_gore": 165,
+      "fronts": [
+       {
+        "lane": 0,
+        "veh_id": "v11960",
+        "kind": "exiter",
+        "short_of_gore_m": 16.34
+       },
+       {
+        "lane": 1,
+        "veh_id": "v11956",
+        "kind": "through",
+        "short_of_gore_m": 2.28
+       },
+       {
+        "lane": 2,
+        "veh_id": "v16592",
+        "kind": "through",
+        "short_of_gore_m": 2.91
+       },
+       {
+        "lane": 3,
+        "veh_id": "v16600",
+        "kind": "through",
+        "short_of_gore_m": 7.55
+       }
+      ],
+      "locked": false,
+      "n_entrant_took_exit": 15,
+      "entrance_departed": 1017
+     },
+     {
+      "ramp": "on-ramp 769818012",
+      "exit": "off-ramp 18207598",
+      "gore_x_m": 10731.640000000001,
+      "next_entrance_x_m": Infinity,
+      "n_past_gore": 37,
+      "fronts": [
+       {
+        "lane": 0,
+        "veh_id": "v31766",
+        "kind": "exiter",
+        "short_of_gore_m": 28.17
+       },
+       {
+        "lane": 1,
+        "veh_id": "v31767",
+        "kind": "entrant",
+        "short_of_gore_m": 78.81
+       },
+       {
+        "lane": 2,
+        "veh_id": "v17463",
+        "kind": "through",
+        "short_of_gore_m": 11.69
+       },
+       {
+        "lane": 3,
+        "veh_id": "v25069",
+        "kind": "through",
+        "short_of_gore_m": 41.94
+       }
+      ],
+      "locked": false,
+      "n_entrant_took_exit": 1,
+      "entrance_departed": 4577
+     }
+    ],
+    "battery_locks": 0,
+    "battery_locked": false,
+    "collisions_by_section": {},
+    "collisions_logged": [],
+    "weaves": {
+     "on-ramp 745524613": {
+      "n_missed_exit": 25,
+      "n_entrant_took_exit": 15,
+      "n_handback_skips": null,
+      "n_close_leader_withheld": null,
+      "n_opposing_deferred": null,
+      "n_opposing_vetoed": null
+     },
+     "on-ramp 769818012": {
+      "n_missed_exit": 52,
+      "n_entrant_took_exit": 1,
+      "n_handback_skips": null,
+      "n_close_leader_withheld": null,
+      "n_opposing_deferred": null,
+      "n_opposing_vetoed": null
+     }
+    }
+   },
+   "b": {
+    "s790": 3861.0,
+    "departed": 0.9836496260122396,
+    "collisions": 0,
+    "sections": [
+     {
+      "ramp": "on-ramp 745524613",
+      "exit": "C-D split 18208090",
+      "gore_x_m": 5316.64,
+      "next_entrance_x_m": 5929.85,
+      "n_past_gore": 132,
+      "fronts": [
+       {
+        "lane": 0,
+        "veh_id": "v17621",
+        "kind": "entrant",
+        "short_of_gore_m": 0.08
+       },
+       {
+        "lane": 1,
+        "veh_id": "v17620",
+        "kind": "entrant",
+        "short_of_gore_m": 5.36
+       },
+       {
+        "lane": 2,
+        "veh_id": "v13702",
+        "kind": "through",
+        "short_of_gore_m": 3.79
+       },
+       {
+        "lane": 3,
+        "veh_id": "v11967",
+        "kind": "through",
+        "short_of_gore_m": 28.87
+       }
+      ],
+      "locked": false,
+      "n_entrant_took_exit": 7,
+      "entrance_departed": 1017
+     },
+     {
+      "ramp": "on-ramp 769818012",
+      "exit": "off-ramp 18207598",
+      "gore_x_m": 10731.640000000001,
+      "next_entrance_x_m": Infinity,
+      "n_past_gore": 38,
+      "fronts": [
+       {
+        "lane": 0,
+        "veh_id": "v25056",
+        "kind": "exiter",
+        "short_of_gore_m": 4.15
+       },
+       {
+        "lane": 1,
+        "veh_id": "v31759",
+        "kind": "entrant",
+        "short_of_gore_m": 43.26
+       },
+       {
+        "lane": 2,
+        "veh_id": "v16527",
+        "kind": "through",
+        "short_of_gore_m": 14.84
+       },
+       {
+        "lane": 3,
+        "veh_id": "v15245",
+        "kind": "through",
+        "short_of_gore_m": 22.62
+       }
+      ],
+      "locked": false,
+      "n_entrant_took_exit": 0,
+      "entrance_departed": 4571
+     }
+    ],
+    "battery_locks": 0,
+    "battery_locked": false,
+    "collisions_by_section": {},
+    "collisions_logged": [],
+    "weaves": {
+     "on-ramp 745524613": {
+      "n_missed_exit": 28,
+      "n_entrant_took_exit": 7,
+      "n_handback_skips": 140,
+      "n_close_leader_withheld": 11,
+      "n_opposing_deferred": 330,
+      "n_opposing_vetoed": 326
+     },
+     "on-ramp 769818012": {
+      "n_missed_exit": 51,
+      "n_entrant_took_exit": 0,
+      "n_handback_skips": 146,
+      "n_close_leader_withheld": 1,
+      "n_opposing_deferred": 819,
+      "n_opposing_vetoed": 778
+     }
+    }
+   }
+  },
+  "6914975401685141156": {
+   "a": {
+    "s790": 3842.0000000000005,
+    "departed": 0.9834641775360079,
+    "collisions": 0,
+    "sections": [
+     {
+      "ramp": "on-ramp 745524613",
+      "exit": "C-D split 18208090",
+      "gore_x_m": 5316.64,
+      "next_entrance_x_m": 5929.85,
+      "n_past_gore": 128,
+      "fronts": [
+       {
+        "lane": 0,
+        "veh_id": "v17612",
+        "kind": "entrant",
+        "short_of_gore_m": 0.09
+       },
+       {
+        "lane": 1,
+        "veh_id": "v11549",
+        "kind": "through",
+        "short_of_gore_m": 8.32
+       },
+       {
+        "lane": 2,
+        "veh_id": "v15221",
+        "kind": "through",
+        "short_of_gore_m": 5.15
+       },
+       {
+        "lane": 3,
+        "veh_id": "v13698",
+        "kind": "through",
+        "short_of_gore_m": 6.66
+       }
+      ],
+      "locked": false,
+      "n_entrant_took_exit": 16,
+      "entrance_departed": 1017
+     },
+     {
+      "ramp": "on-ramp 769818012",
+      "exit": "off-ramp 18207598",
+      "gore_x_m": 10731.640000000001,
+      "next_entrance_x_m": Infinity,
+      "n_past_gore": 36,
+      "fronts": [
+       {
+        "lane": 0,
+        "veh_id": "v11022",
+        "kind": "exiter",
+        "short_of_gore_m": 19.82
+       },
+       {
+        "lane": 1,
+        "veh_id": "v31756",
+        "kind": "entrant",
+        "short_of_gore_m": 30.29
+       },
+       {
+        "lane": 2,
+        "veh_id": "v25075",
+        "kind": "through",
+        "short_of_gore_m": 18.77
+       },
+       {
+        "lane": 3,
+        "veh_id": "v10775",
+        "kind": "through",
+        "short_of_gore_m": 22.46
+       }
+      ],
+      "locked": false,
+      "n_entrant_took_exit": 0,
+      "entrance_departed": 4565
+     }
+    ],
+    "battery_locks": 0,
+    "battery_locked": false,
+    "collisions_by_section": {},
+    "collisions_logged": [],
+    "weaves": {
+     "on-ramp 745524613": {
+      "n_missed_exit": 17,
+      "n_entrant_took_exit": 16,
+      "n_handback_skips": null,
+      "n_close_leader_withheld": null,
+      "n_opposing_deferred": null,
+      "n_opposing_vetoed": null
+     },
+     "on-ramp 769818012": {
+      "n_missed_exit": 59,
+      "n_entrant_took_exit": 0,
+      "n_handback_skips": null,
+      "n_close_leader_withheld": null,
+      "n_opposing_deferred": null,
+      "n_opposing_vetoed": null
+     }
+    }
+   },
+   "b": {
+    "s790": 3853.9999999999995,
+    "departed": 0.983402361377264,
+    "collisions": 0,
+    "sections": [
+     {
+      "ramp": "on-ramp 745524613",
+      "exit": "C-D split 18208090",
+      "gore_x_m": 5316.64,
+      "next_entrance_x_m": 5929.85,
+      "n_past_gore": 104,
+      "fronts": [
+       {
+        "lane": 2,
+        "veh_id": "v12008",
+        "kind": "through",
+        "short_of_gore_m": 107.69
+       },
+       {
+        "lane": 3,
+        "veh_id": "v12006",
+        "kind": "through",
+        "short_of_gore_m": 51.24
+       }
+      ],
+      "locked": false,
+      "n_entrant_took_exit": 7,
+      "entrance_departed": 1017
+     },
+     {
+      "ramp": "on-ramp 769818012",
+      "exit": "off-ramp 18207598",
+      "gore_x_m": 10731.640000000001,
+      "next_entrance_x_m": Infinity,
+      "n_past_gore": 31,
+      "fronts": [
+       {
+        "lane": 0,
+        "veh_id": "v25078",
+        "kind": "exiter",
+        "short_of_gore_m": 15.91
+       },
+       {
+        "lane": 1,
+        "veh_id": "v11253",
+        "kind": "exiter",
+        "short_of_gore_m": 13.52
+       },
+       {
+        "lane": 2,
+        "veh_id": "v31748",
+        "kind": "entrant",
+        "short_of_gore_m": 27.45
+       },
+       {
+        "lane": 3,
+        "veh_id": "v11596",
+        "kind": "through",
+        "short_of_gore_m": 15.53
+       }
+      ],
+      "locked": false,
+      "n_entrant_took_exit": 0,
+      "entrance_departed": 4563
+     }
+    ],
+    "battery_locks": 0,
+    "battery_locked": false,
+    "collisions_by_section": {},
+    "collisions_logged": [],
+    "weaves": {
+     "on-ramp 745524613": {
+      "n_missed_exit": 36,
+      "n_entrant_took_exit": 7,
+      "n_handback_skips": 154,
+      "n_close_leader_withheld": 16,
+      "n_opposing_deferred": 288,
+      "n_opposing_vetoed": 285
+     },
+     "on-ramp 769818012": {
+      "n_missed_exit": 50,
+      "n_entrant_took_exit": 0,
+      "n_handback_skips": 145,
+      "n_close_leader_withheld": 5,
+      "n_opposing_deferred": 856,
+      "n_opposing_vetoed": 821
+     }
+    }
+   }
+  },
+  "6953598295321596746": {
+   "a": {
+    "s790": 3830.0,
+    "departed": 0.9818569574086666,
+    "collisions": 0,
+    "sections": [
+     {
+      "ramp": "on-ramp 745524613",
+      "exit": "C-D split 18208090",
+      "gore_x_m": 5316.64,
+      "next_entrance_x_m": 5929.85,
+      "n_past_gore": 163,
+      "fronts": [
+       {
+        "lane": 0,
+        "veh_id": "v17621",
+        "kind": "entrant",
+        "short_of_gore_m": 65.03
+       },
+       {
+        "lane": 1,
+        "veh_id": "v11745",
+        "kind": "through",
+        "short_of_gore_m": 1.32
+       },
+       {
+        "lane": 2,
+        "veh_id": "v11867",
+        "kind": "through",
+        "short_of_gore_m": 4.59
+       },
+       {
+        "lane": 3,
+        "veh_id": "v13675",
+        "kind": "through",
+        "short_of_gore_m": 1.73
+       }
+      ],
+      "locked": false,
+      "n_entrant_took_exit": 10,
+      "entrance_departed": 1017
+     },
+     {
+      "ramp": "on-ramp 769818012",
+      "exit": "off-ramp 18207598",
+      "gore_x_m": 10731.640000000001,
+      "next_entrance_x_m": Infinity,
+      "n_past_gore": 36,
+      "fronts": [
+       {
+        "lane": 0,
+        "veh_id": "v25027",
+        "kind": "exiter",
+        "short_of_gore_m": 5.66
+       },
+       {
+        "lane": 1,
+        "veh_id": "v10635",
+        "kind": "through",
+        "short_of_gore_m": 4.68
+       },
+       {
+        "lane": 2,
+        "veh_id": "v31695",
+        "kind": "entrant",
+        "short_of_gore_m": 3.9
+       },
+       {
+        "lane": 3,
+        "veh_id": "v10679",
+        "kind": "through",
+        "short_of_gore_m": 41.99
+       }
+      ],
+      "locked": false,
+      "n_entrant_took_exit": 0,
+      "entrance_departed": 4513
+     }
+    ],
+    "battery_locks": 0,
+    "battery_locked": false,
+    "collisions_by_section": {},
+    "collisions_logged": [],
+    "weaves": {
+     "on-ramp 745524613": {
+      "n_missed_exit": 19,
+      "n_entrant_took_exit": 10,
+      "n_handback_skips": null,
+      "n_close_leader_withheld": null,
+      "n_opposing_deferred": null,
+      "n_opposing_vetoed": null
+     },
+     "on-ramp 769818012": {
+      "n_missed_exit": 57,
+      "n_entrant_took_exit": 0,
+      "n_handback_skips": null,
+      "n_close_leader_withheld": null,
+      "n_opposing_deferred": null,
+      "n_opposing_vetoed": null
+     }
+    }
+   },
+   "b": {
+    "s790": 3866.0,
+    "departed": 0.984020522964703,
+    "collisions": 0,
+    "sections": [
+     {
+      "ramp": "on-ramp 745524613",
+      "exit": "C-D split 18208090",
+      "gore_x_m": 5316.64,
+      "next_entrance_x_m": 5929.85,
+      "n_past_gore": 187,
+      "fronts": [
+       {
+        "lane": 0,
+        "veh_id": "v17615",
+        "kind": "entrant",
+        "short_of_gore_m": 28.42
+       },
+       {
+        "lane": 1,
+        "veh_id": "v16582",
+        "kind": "through",
+        "short_of_gore_m": 10.24
+       },
+       {
+        "lane": 2,
+        "veh_id": "v15276",
+        "kind": "through",
+        "short_of_gore_m": 7.97
+       },
+       {
+        "lane": 3,
+        "veh_id": "v11920",
+        "kind": "through",
+        "short_of_gore_m": 12.19
+       }
+      ],
+      "locked": false,
+      "n_entrant_took_exit": 14,
+      "entrance_departed": 1017
+     },
+     {
+      "ramp": "on-ramp 769818012",
+      "exit": "off-ramp 18207598",
+      "gore_x_m": 10731.640000000001,
+      "next_entrance_x_m": Infinity,
+      "n_past_gore": 41,
+      "fronts": [
+       {
+        "lane": 0,
+        "veh_id": "v31768",
+        "kind": "entrant",
+        "short_of_gore_m": 34.96
+       },
+       {
+        "lane": 1,
+        "veh_id": "v25008",
+        "kind": "through",
+        "short_of_gore_m": 27.25
+       },
+       {
+        "lane": 2,
+        "veh_id": "v10515",
+        "kind": "through",
+        "short_of_gore_m": 11.49
+       },
+       {
+        "lane": 3,
+        "veh_id": "v27228",
+        "kind": "through",
+        "short_of_gore_m": 15.69
+       }
+      ],
+      "locked": false,
+      "n_entrant_took_exit": 0,
+      "entrance_departed": 4583
+     }
+    ],
+    "battery_locks": 0,
+    "battery_locked": false,
+    "collisions_by_section": {},
+    "collisions_logged": [],
+    "weaves": {
+     "on-ramp 745524613": {
+      "n_missed_exit": 33,
+      "n_entrant_took_exit": 14,
+      "n_handback_skips": 219,
+      "n_close_leader_withheld": 56,
+      "n_opposing_deferred": 389,
+      "n_opposing_vetoed": 386
+     },
+     "on-ramp 769818012": {
+      "n_missed_exit": 49,
+      "n_entrant_took_exit": 0,
+      "n_handback_skips": 148,
+      "n_close_leader_withheld": 2,
+      "n_opposing_deferred": 889,
+      "n_opposing_vetoed": 845
+     }
+    }
+   }
+  },
+  "7382187975121682178": {
+   "a": {
+    "s790": 3924.0000000000005,
+    "departed": 0.9839587068059591,
+    "collisions": 0,
+    "sections": [
+     {
+      "ramp": "on-ramp 745524613",
+      "exit": "C-D split 18208090",
+      "gore_x_m": 5316.64,
+      "next_entrance_x_m": 5929.85,
+      "n_past_gore": 68,
+      "fronts": [
+       {
+        "lane": 2,
+        "veh_id": "v12005",
+        "kind": "through",
+        "short_of_gore_m": 36.05
+       },
+       {
+        "lane": 3,
+        "veh_id": "v15307",
+        "kind": "through",
+        "short_of_gore_m": 56.51
+       }
+      ],
+      "locked": false,
+      "n_entrant_took_exit": 7,
+      "entrance_departed": 1017
+     },
+     {
+      "ramp": "on-ramp 769818012",
+      "exit": "off-ramp 18207598",
+      "gore_x_m": 10731.640000000001,
+      "next_entrance_x_m": Infinity,
+      "n_past_gore": 35,
+      "fronts": [
+       {
+        "lane": 0,
+        "veh_id": "v16442",
+        "kind": "exiter",
+        "short_of_gore_m": 2.54
+       },
+       {
+        "lane": 1,
+        "veh_id": "v11386",
+        "kind": "through",
+        "short_of_gore_m": 66.96
+       },
+       {
+        "lane": 2,
+        "veh_id": "v31776",
+        "kind": "entrant",
+        "short_of_gore_m": 5.13
+       },
+       {
+        "lane": 3,
+        "veh_id": "v25058",
+        "kind": "through",
+        "short_of_gore_m": 7.95
+       }
+      ],
+      "locked": false,
+      "n_entrant_took_exit": 0,
+      "entrance_departed": 4581
+     }
+    ],
+    "battery_locks": 0,
+    "battery_locked": false,
+    "collisions_by_section": {},
+    "collisions_logged": [],
+    "weaves": {
+     "on-ramp 745524613": {
+      "n_missed_exit": 33,
+      "n_entrant_took_exit": 7,
+      "n_handback_skips": null,
+      "n_close_leader_withheld": null,
+      "n_opposing_deferred": null,
+      "n_opposing_vetoed": null
+     },
+     "on-ramp 769818012": {
+      "n_missed_exit": 37,
+      "n_entrant_took_exit": 0,
+      "n_handback_skips": null,
+      "n_close_leader_withheld": null,
+      "n_opposing_deferred": null,
+      "n_opposing_vetoed": null
+     }
+    }
+   },
+   "b": {
+    "s790": 3914.0000000000005,
+    "departed": 0.9850713976633492,
+    "collisions": 0,
+    "sections": [
+     {
+      "ramp": "on-ramp 745524613",
+      "exit": "C-D split 18208090",
+      "gore_x_m": 5316.64,
+      "next_entrance_x_m": 5929.85,
+      "n_past_gore": 88,
+      "fronts": [
+       {
+        "lane": 0,
+        "veh_id": "v11921",
+        "kind": "exiter",
+        "short_of_gore_m": 8.03
+       },
+       {
+        "lane": 1,
+        "veh_id": "v17615",
+        "kind": "entrant",
+        "short_of_gore_m": 9.73
+       },
+       {
+        "lane": 2,
+        "veh_id": "v13698",
+        "kind": "through",
+        "short_of_gore_m": 8.09
+       },
+       {
+        "lane": 3,
+        "veh_id": "v11996",
+        "kind": "through",
+        "short_of_gore_m": 13.44
+       }
+      ],
+      "locked": false,
+      "n_entrant_took_exit": 12,
+      "entrance_departed": 1017
+     },
+     {
+      "ramp": "on-ramp 769818012",
+      "exit": "off-ramp 18207598",
+      "gore_x_m": 10731.640000000001,
+      "next_entrance_x_m": Infinity,
+      "n_past_gore": 38,
+      "fronts": [
+       {
+        "lane": 0,
+        "veh_id": "v13527",
+        "kind": "exiter",
+        "short_of_gore_m": 0.38
+       },
+       {
+        "lane": 1,
+        "veh_id": "v31804",
+        "kind": "entrant",
+        "short_of_gore_m": 5.93
+       },
+       {
+        "lane": 2,
+        "veh_id": "v25007",
+        "kind": "through",
+        "short_of_gore_m": 20.62
+       },
+       {
+        "lane": 3,
+        "veh_id": "v25075",
+        "kind": "through",
+        "short_of_gore_m": 50.15
+       }
+      ],
+      "locked": false,
+      "n_entrant_took_exit": 0,
+      "entrance_departed": 4617
+     }
+    ],
+    "battery_locks": 0,
+    "battery_locked": false,
+    "collisions_by_section": {},
+    "collisions_logged": [],
+    "weaves": {
+     "on-ramp 745524613": {
+      "n_missed_exit": 37,
+      "n_entrant_took_exit": 12,
+      "n_handback_skips": 189,
+      "n_close_leader_withheld": 36,
+      "n_opposing_deferred": 368,
+      "n_opposing_vetoed": 362
+     },
+     "on-ramp 769818012": {
+      "n_missed_exit": 53,
+      "n_entrant_took_exit": 0,
+      "n_handback_skips": 161,
+      "n_close_leader_withheld": 5,
+      "n_opposing_deferred": 804,
+      "n_opposing_vetoed": 765
+     }
+    }
+   }
+  },
+  "8026499204807041784": {
+   "a": {
+    "s790": 3865.0,
+    "departed": 0.9841750633615627,
+    "collisions": 0,
+    "sections": [
+     {
+      "ramp": "on-ramp 745524613",
+      "exit": "C-D split 18208090",
+      "gore_x_m": 5316.64,
+      "next_entrance_x_m": 5929.85,
+      "n_past_gore": 134,
+      "fronts": [
+       {
+        "lane": 0,
+        "veh_id": "v16558",
+        "kind": "exiter",
+        "short_of_gore_m": 1.29
+       },
+       {
+        "lane": 1,
+        "veh_id": "v13636",
+        "kind": "through",
+        "short_of_gore_m": 7.1
+       },
+       {
+        "lane": 2,
+        "veh_id": "v11794",
+        "kind": "through",
+        "short_of_gore_m": 26.74
+       },
+       {
+        "lane": 3,
+        "veh_id": "v11810",
+        "kind": "through",
+        "short_of_gore_m": 6.48
+       }
+      ],
+      "locked": false,
+      "n_entrant_took_exit": 15,
+      "entrance_departed": 1017
+     },
+     {
+      "ramp": "on-ramp 769818012",
+      "exit": "off-ramp 18207598",
+      "gore_x_m": 10731.640000000001,
+      "next_entrance_x_m": Infinity,
+      "n_past_gore": 49,
+      "fronts": [
+       {
+        "lane": 0,
+        "veh_id": "v31784",
+        "kind": "exiter",
+        "short_of_gore_m": 168.92
+       },
+       {
+        "lane": 1,
+        "veh_id": "v31778",
+        "kind": "entrant",
+        "short_of_gore_m": 8.02
+       },
+       {
+        "lane": 2,
+        "veh_id": "v11039",
+        "kind": "through",
+        "short_of_gore_m": 16.98
+       },
+       {
+        "lane": 3,
+        "veh_id": "v11402",
+        "kind": "through",
+        "short_of_gore_m": 13.32
+       }
+      ],
+      "locked": false,
+      "n_entrant_took_exit": 0,
+      "entrance_departed": 4588
+     }
+    ],
+    "battery_locks": 0,
+    "battery_locked": false,
+    "collisions_by_section": {},
+    "collisions_logged": [],
+    "weaves": {
+     "on-ramp 745524613": {
+      "n_missed_exit": 37,
+      "n_entrant_took_exit": 15,
+      "n_handback_skips": null,
+      "n_close_leader_withheld": null,
+      "n_opposing_deferred": null,
+      "n_opposing_vetoed": null
+     },
+     "on-ramp 769818012": {
+      "n_missed_exit": 41,
+      "n_entrant_took_exit": 0,
+      "n_handback_skips": null,
+      "n_close_leader_withheld": null,
+      "n_opposing_deferred": null,
+      "n_opposing_vetoed": null
+     }
+    }
+   },
+   "b": {
+    "s790": 3800.0,
+    "departed": 0.9844841441552822,
+    "collisions": 0,
+    "sections": [
+     {
+      "ramp": "on-ramp 745524613",
+      "exit": "C-D split 18208090",
+      "gore_x_m": 5316.64,
+      "next_entrance_x_m": 5929.85,
+      "n_past_gore": 167,
+      "fronts": [
+       {
+        "lane": 0,
+        "veh_id": "v17613",
+        "kind": "entrant",
+        "short_of_gore_m": 0.1
+       },
+       {
+        "lane": 1,
+        "veh_id": "v11661",
+        "kind": "through",
+        "short_of_gore_m": 5.52
+       },
+       {
+        "lane": 2,
+        "veh_id": "v13620",
+        "kind": "through",
+        "short_of_gore_m": 5.12
+       },
+       {
+        "lane": 3,
+        "veh_id": "v15257",
+        "kind": "through",
+        "short_of_gore_m": 1.94
+       }
+      ],
+      "locked": false,
+      "n_entrant_took_exit": 16,
+      "entrance_departed": 1017
+     },
+     {
+      "ramp": "on-ramp 769818012",
+      "exit": "off-ramp 18207598",
+      "gore_x_m": 10731.640000000001,
+      "next_entrance_x_m": Infinity,
+      "n_past_gore": 43,
+      "fronts": [
+       {
+        "lane": 0,
+        "veh_id": "v31784",
+        "kind": "exiter",
+        "short_of_gore_m": 25.05
+       },
+       {
+        "lane": 1,
+        "veh_id": "v17488",
+        "kind": "through",
+        "short_of_gore_m": 6.17
+       },
+       {
+        "lane": 2,
+        "veh_id": "v25051",
+        "kind": "through",
+        "short_of_gore_m": 50.24
+       },
+       {
+        "lane": 3,
+        "veh_id": "v13361",
+        "kind": "through",
+        "short_of_gore_m": 39.1
+       }
+      ],
+      "locked": false,
+      "n_entrant_took_exit": 0,
+      "entrance_departed": 4598
+     }
+    ],
+    "battery_locks": 0,
+    "battery_locked": false,
+    "collisions_by_section": {},
+    "collisions_logged": [],
+    "weaves": {
+     "on-ramp 745524613": {
+      "n_missed_exit": 29,
+      "n_entrant_took_exit": 16,
+      "n_handback_skips": 167,
+      "n_close_leader_withheld": 3,
+      "n_opposing_deferred": 339,
+      "n_opposing_vetoed": 334
+     },
+     "on-ramp 769818012": {
+      "n_missed_exit": 41,
+      "n_entrant_took_exit": 0,
+      "n_handback_skips": 109,
+      "n_close_leader_withheld": 3,
+      "n_opposing_deferred": 873,
+      "n_opposing_vetoed": 843
+     }
+    }
+   }
+  },
+  "8557154790156791364": {
+   "a": {
+    "s790": 3880.0,
+    "departed": 0.9835878098534957,
+    "collisions": 0,
+    "sections": [
+     {
+      "ramp": "on-ramp 745524613",
+      "exit": "C-D split 18208090",
+      "gore_x_m": 5316.64,
+      "next_entrance_x_m": 5929.85,
+      "n_past_gore": 108,
+      "fronts": [
+       {
+        "lane": 0,
+        "veh_id": "v16603",
+        "kind": "exiter",
+        "short_of_gore_m": 75.01
+       },
+       {
+        "lane": 1,
+        "veh_id": "v13707",
+        "kind": "through",
+        "short_of_gore_m": 7.19
+       },
+       {
+        "lane": 2,
+        "veh_id": "v15307",
+        "kind": "through",
+        "short_of_gore_m": 35.96
+       },
+       {
+        "lane": 3,
+        "veh_id": "v12005",
+        "kind": "through",
+        "short_of_gore_m": 7.39
+       }
+      ],
+      "locked": false,
+      "n_entrant_took_exit": 9,
+      "entrance_departed": 1017
+     },
+     {
+      "ramp": "on-ramp 769818012",
+      "exit": "off-ramp 18207598",
+      "gore_x_m": 10731.640000000001,
+      "next_entrance_x_m": Infinity,
+      "n_past_gore": 35,
+      "fronts": [
+       {
+        "lane": 0,
+        "veh_id": "v13632",
+        "kind": "exiter",
+        "short_of_gore_m": 59.34
+       },
+       {
+        "lane": 1,
+        "veh_id": "v31760",
+        "kind": "entrant",
+        "short_of_gore_m": 18.57
+       },
+       {
+        "lane": 2,
+        "veh_id": "v27231",
+        "kind": "through",
+        "short_of_gore_m": 34.07
+       },
+       {
+        "lane": 3,
+        "veh_id": "v11438",
+        "kind": "through",
+        "short_of_gore_m": 25.19
+       }
+      ],
+      "locked": false,
+      "n_entrant_took_exit": 0,
+      "entrance_departed": 4569
+     }
+    ],
+    "battery_locks": 0,
+    "battery_locked": false,
+    "collisions_by_section": {},
+    "collisions_logged": [],
+    "weaves": {
+     "on-ramp 745524613": {
+      "n_missed_exit": 35,
+      "n_entrant_took_exit": 9,
+      "n_handback_skips": null,
+      "n_close_leader_withheld": null,
+      "n_opposing_deferred": null,
+      "n_opposing_vetoed": null
+     },
+     "on-ramp 769818012": {
+      "n_missed_exit": 54,
+      "n_entrant_took_exit": 0,
+      "n_handback_skips": null,
+      "n_close_leader_withheld": null,
+      "n_opposing_deferred": null,
+      "n_opposing_vetoed": null
+     }
+    }
+   },
+   "b": {
+    "s790": 3866.0,
+    "departed": 0.9815478766149471,
+    "collisions": 0,
+    "sections": [
+     {
+      "ramp": "on-ramp 745524613",
+      "exit": "C-D split 18208090",
+      "gore_x_m": 5316.64,
+      "next_entrance_x_m": 5929.85,
+      "n_past_gore": 45,
+      "fronts": [
+       {
+        "lane": 1,
+        "veh_id": "v16600",
+        "kind": "through",
+        "short_of_gore_m": 58.96
+       },
+       {
+        "lane": 2,
+        "veh_id": "v15307",
+        "kind": "through",
+        "short_of_gore_m": 41.37
+       },
+       {
+        "lane": 3,
+        "veh_id": "v12005",
+        "kind": "through",
+        "short_of_gore_m": 27.46
+       }
+      ],
+      "locked": false,
+      "n_entrant_took_exit": 9,
+      "entrance_departed": 1017
+     },
+     {
+      "ramp": "on-ramp 769818012",
+      "exit": "off-ramp 18207598",
+      "gore_x_m": 10731.640000000001,
+      "next_entrance_x_m": Infinity,
+      "n_past_gore": 48,
+      "fronts": [
+       {
+        "lane": 0,
+        "veh_id": "v25097",
+        "kind": "exiter",
+        "short_of_gore_m": 5.56
+       },
+       {
+        "lane": 1,
+        "veh_id": "v31691",
+        "kind": "entrant",
+        "short_of_gore_m": 17.15
+       },
+       {
+        "lane": 2,
+        "veh_id": "v25077",
+        "kind": "exiter",
+        "short_of_gore_m": 26.76
+       },
+       {
+        "lane": 3,
+        "veh_id": "v19156",
+        "kind": "through",
+        "short_of_gore_m": 46.99
+       }
+      ],
+      "locked": false,
+      "n_entrant_took_exit": 0,
+      "entrance_departed": 4503
+     }
+    ],
+    "battery_locks": 0,
+    "battery_locked": false,
+    "collisions_by_section": {},
+    "collisions_logged": [],
+    "weaves": {
+     "on-ramp 745524613": {
+      "n_missed_exit": 31,
+      "n_entrant_took_exit": 9,
+      "n_handback_skips": 148,
+      "n_close_leader_withheld": 20,
+      "n_opposing_deferred": 331,
+      "n_opposing_vetoed": 327
+     },
+     "on-ramp 769818012": {
+      "n_missed_exit": 42,
+      "n_entrant_took_exit": 0,
+      "n_handback_skips": 133,
+      "n_close_leader_withheld": 0,
+      "n_opposing_deferred": 865,
+      "n_opposing_vetoed": 821
+     }
+    }
+   }
+  }
+ },
+ "battery_criteria_a": [
+  {
+   "name": "link_flows_geh",
+   "value": 0.44285714285714284,
+   "threshold": "GEH < 5 for > 85% of link-hour comparisons",
+   "passed": false,
+   "evaluated": true,
+   "detail": "fraction of comparisons with GEH < 5"
+  },
+  {
+   "name": "wave_speed",
+   "value": 5.72575775175821,
+   "threshold": "backward wave speed in [14, 22] km/h (emergent, unseeded)",
+   "passed": false,
+   "evaluated": true,
+   "detail": "detector: stack: slant-stack peak of the two-way demeaned field on 15 s x 75 m bins over front speeds [-40, -2] km/h in 0.25 km/h steps, peak/median contrast >= 3, edge peaks rejected"
+  },
+  {
+   "name": "ring_emergence",
+   "value": null,
+   "threshold": "Sugiyama ring emergence benchmark reproduced",
+   "passed": false,
+   "evaluated": false,
+   "detail": "not evaluated: input not supplied"
+  },
+  {
+   "name": "ring_dampening",
+   "value": null,
+   "threshold": "Stern single-AV dampening benchmark reproduced",
+   "passed": false,
+   "evaluated": false,
+   "detail": "not evaluated: input not supplied"
+  },
+  {
+   "name": "n_seeds",
+   "value": 20.0,
+   "threshold": "n_seeds >= 20",
+   "passed": true,
+   "evaluated": true,
+   "detail": ""
+  },
+  {
+   "name": "sensitivity_grid",
+   "value": null,
+   "threshold": "penetration {1%, 2%, 5%, 10%, 15%, 20%} x compliance {25%, 50%, 80%, 100%} grid published with CIs",
+   "passed": false,
+   "evaluated": false,
+   "detail": "not evaluated: input not supplied"
+  },
+  {
+   "name": "no_collisions",
+   "value": 1.0,
+   "threshold": "zero SUMO collisions in every run, each run recording the counter",
+   "passed": false,
+   "evaluated": true,
+   "detail": "1 collision(s) in 1 of 20 run(s) that record the counter; FlowState internal standard (CLAUDE.md \u00a73.3; owner decision 2026-10-04), not an FHWA or DOT criterion"
+  },
+  {
+   "name": "no_locks",
+   "value": 0.0,
+   "threshold": "no run locked (no queue standing without discharge for 10 min or more), every run recorded",
+   "passed": true,
+   "evaluated": true,
+   "detail": "no lock in 20 run(s); FlowState internal standard (CLAUDE.md \u00a70.1; docs/I94_COLLAPSE_DIAGNOSIS.md \u00a77, 2026-10-07), not an FHWA or DOT criterion"
+  }
+ ],
+ "battery_criteria_b": [
+  {
+   "name": "link_flows_geh",
+   "value": 0.4607142857142857,
+   "threshold": "GEH < 5 for > 85% of link-hour comparisons",
+   "passed": false,
+   "evaluated": true,
+   "detail": "fraction of comparisons with GEH < 5"
+  },
+  {
+   "name": "wave_speed",
+   "value": 5.669352038106529,
+   "threshold": "backward wave speed in [14, 22] km/h (emergent, unseeded)",
+   "passed": false,
+   "evaluated": true,
+   "detail": "detector: stack: slant-stack peak of the two-way demeaned field on 15 s x 75 m bins over front speeds [-40, -2] km/h in 0.25 km/h steps, peak/median contrast >= 3, edge peaks rejected"
+  },
+  {
+   "name": "ring_emergence",
+   "value": null,
+   "threshold": "Sugiyama ring emergence benchmark reproduced",
+   "passed": false,
+   "evaluated": false,
+   "detail": "not evaluated: input not supplied"
+  },
+  {
+   "name": "ring_dampening",
+   "value": null,
+   "threshold": "Stern single-AV dampening benchmark reproduced",
+   "passed": false,
+   "evaluated": false,
+   "detail": "not evaluated: input not supplied"
+  },
+  {
+   "name": "n_seeds",
+   "value": 20.0,
+   "threshold": "n_seeds >= 20",
+   "passed": true,
+   "evaluated": true,
+   "detail": ""
+  },
+  {
+   "name": "sensitivity_grid",
+   "value": null,
+   "threshold": "penetration {1%, 2%, 5%, 10%, 15%, 20%} x compliance {25%, 50%, 80%, 100%} grid published with CIs",
+   "passed": false,
+   "evaluated": false,
+   "detail": "not evaluated: input not supplied"
+  },
+  {
+   "name": "no_collisions",
+   "value": 0.0,
+   "threshold": "zero SUMO collisions in every run, each run recording the counter",
+   "passed": true,
+   "evaluated": true,
+   "detail": "no collision in 20 run(s); FlowState internal standard (CLAUDE.md \u00a73.3; owner decision 2026-10-04), not an FHWA or DOT criterion"
+  },
+  {
+   "name": "no_locks",
+   "value": 0.0,
+   "threshold": "no run locked (no queue standing without discharge for 10 min or more), every run recorded",
+   "passed": true,
+   "evaluated": true,
+   "detail": "no lock in 20 run(s); FlowState internal standard (CLAUDE.md \u00a70.1; docs/I94_COLLAPSE_DIAGNOSIS.md \u00a77, 2026-10-07), not an FHWA or DOT criterion"
+  }
+ ],
+ "context_collisions_per_seed": {
+  "6914975401685141156": 0,
+  "134183728835869882": 1,
+  "2378473973028931053": 0,
+  "3747978530954135749": 0,
+  "677105600768189526": 0,
+  "661281422688282993": 0,
+  "3011106312394044631": 0,
+  "6953598295321596746": 0,
+  "165503670820534583": 0,
+  "6134032994440706937": 1,
+  "8557154790156791364": 0,
+  "6538422657834023852": 0,
+  "6904272788004776631": 0,
+  "6143473282319009404": 0,
+  "3944094060050347669": 0,
+  "4910985839736976611": 0,
+  "7382187975121682178": 0,
+  "5690692725577505498": 0,
+  "887972120279483394": 0,
+  "8026499204807041784": 0
+ }
+}
