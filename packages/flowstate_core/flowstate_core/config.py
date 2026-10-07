@@ -330,8 +330,37 @@ derivations and measurements; reproduce results made with them with release
 #: pre-registered opt-in value is 60 s. Needs ``entrant_giveup_m`` > 0 (refused
 #: otherwise); unset or ``0`` leaves W1's immediate give-up. Not a fitted
 #: value; not set by any committed scenario.
-WEAVE_OPTIONAL_KEYS: Final[frozenset[str]] = frozenset(
-    {"entrant_giveup_m", "entrant_giveup_dwell_s"}
+#:
+#: The three switches of amendment W2, the weave collision guards
+#: (2026-10-07, docs/I94_CAL_COLLISIONS.md §13, opt-in; :data:`WEAVE_W2_SWITCHES`;
+#: ``1`` on, ``0`` or unset off, any other value refused):
+#:
+#: ``weave_handback``: before each one-step weave speed target (the changer's
+#: easing, the chosen follower's cooperation, the ramp anticipation) the target
+#: is withheld for the step when the vehicle's own model must brake harder than
+#: a commanded vehicle can (``microsim.runner._handback_needed``, the AV path's
+#: ``AVSpec.emergency_handback`` test): under SUMO 1.27.1's default speed mode a
+#: TraCI speed target caps braking at ``decel`` (WP-95). Counted in
+#: ``n_handback_skips``.
+#:
+#: ``weave_close_leader``: the weave's own-acceleration estimate
+#: (``microsim.runner._weave_command``) reads a leader closer than the
+#: vehicle's ``minGap`` as a leader at that bumper gap, not as a free road (the
+#: AV path's ``AVSpec.observe_close_leader``, WP-96). Counted in
+#: ``n_close_leader_withheld``.
+#:
+#: ``weave_resolve_opposing``: the section's change requests of a step are
+#: resolved with ``microsim.merge_model.resolve_opposing`` before they execute
+#: (two entries into one lane from both sides in one step: the loser waits a
+#: step; WP-92, as the measured merge model always does). Counted in
+#: ``n_opposing_deferred`` and ``n_opposing_vetoed``.
+#:
+#: Not fitted values; not set by any committed scenario.
+WEAVE_W2_SWITCHES: Final[frozenset[str]] = frozenset(
+    {"weave_handback", "weave_close_leader", "weave_resolve_opposing"}
+)
+WEAVE_OPTIONAL_KEYS: Final[frozenset[str]] = (
+    frozenset({"entrant_giveup_m", "entrant_giveup_dwell_s"}) | WEAVE_W2_SWITCHES
 )
 WEAVE_KEYS = frozenset(WEAVE_DEFAULTS) | WEAVE_OPTIONAL_KEYS
 
@@ -473,6 +502,12 @@ class WeaveSpec(BaseModel):
                 "weave_params entrant_giveup_dwell_s needs entrant_giveup_m > 0 "
                 "(the dwell delays the entering give-up, amendment W1b)"
             )
+        for key in sorted(WEAVE_W2_SWITCHES & set(self.weave_params)):
+            if self.weave_params[key] not in (0.0, 1.0):
+                raise ValueError(
+                    f"weave_params {key} is a switch: 1 on, 0 or unset off "
+                    "(amendment W2, docs/I94_CAL_COLLISIONS.md §13)"
+                )
         return self
 
 

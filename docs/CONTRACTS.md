@@ -3693,6 +3693,43 @@ No config field added.
   `skipped_same_config`) and `--seeds` (these seeds for every selected fixture
   instead of the grid's). Without them the grid runs as before.
 
+## Weave collision guards, amendment W2 (opt-in, off) — 2026-10-07
+
+- **Config.** `WeaveSpec.weave_params` accepts three switches,
+  `weave_handback`, `weave_close_leader` and `weave_resolve_opposing`
+  (`flowstate_core.config.WEAVE_W2_SWITCHES`, members of
+  `WEAVE_OPTIONAL_KEYS`: no default). `1` is on; `0` or unset is off; any
+  other value is refused. Hash-neutral unless set, and not in
+  `WEAVE_DEFAULTS`, so `tests/golden/config_defaults.json` is unchanged. No
+  committed scenario sets them (docs/I94_CAL_COLLISIONS.md §13).
+- **Behaviour** (`microsim.runner._weave_step`). Each switch is off unless set,
+  and nothing of it runs while off.
+  - `weave_handback`: a one-step weave speed target (`vehicle.slowDown(id, v,
+    0.0)`: the changer's easing, the chosen follower's cooperation, the ramp
+    anticipation) is withheld for any step in which
+    `_handback_needed` holds, with the vehicle's `_command_decel` under the
+    fleet's car-following model.
+  - `weave_close_leader`: `_weave_command` reads a leader closer than the
+    vehicle's `minGap` as a leader at bumper gap `max(reported gap + minGap,
+    0)` instead of a free road.
+  - `weave_resolve_opposing`: the section's change requests of a step are
+    executed after the per-vehicle loop, once resolved by
+    `merge_model.resolve_opposing`. A withheld request waits a step under mode
+    512; an undriven vehicle's vetoed model change has its model bits cleared
+    for one step and restored at the start of the next.
+- **`meta.json["weave_sections"][i]`** gains, after `n_missed_exit` (and
+  after `n_entrant_took_exit` when W1 is on), each **only while its switch is
+  on**:
+  - `n_handback_skips`: vehicle-steps on which a target was withheld;
+  - `n_close_leader_withheld`: target requests the free-road reading would
+    have recorded;
+  - `n_opposing_deferred` and `n_opposing_vetoed`: withheld requests plus
+    vetoes, and the vetoes alone.
+
+  A withheld target is not counted in `n_cooperations` or `n_changer_eased`.
+- **Script.** `scripts/merge_model_selfcheck.py grid` zone rows carry the
+  counters when present.
+
 ## Demand balance rules (`calibration.onboarding`) — 2026-10-07
 
 - **`calibrate_scenario`** gains three keyword arguments, all off by default (a

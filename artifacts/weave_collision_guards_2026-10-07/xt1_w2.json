@@ -1,0 +1,1010 @@
+{
+ "set": "xt1",
+ "weave_set": {
+  "weave_handback": 1.0,
+  "weave_close_leader": 1.0,
+  "weave_resolve_opposing": 1.0
+ },
+ "rows": [
+  {
+   "set": "xt1",
+   "fixture": "th52_corridor",
+   "model": "weave",
+   "config_hash": "6a2c3f3000af",
+   "seed": 3,
+   "departed": 1531,
+   "planned": 1603,
+   "on_ramps": [
+    [
+     "th52",
+     346,
+     407
+    ]
+   ],
+   "collisions": 0,
+   "hard_brake_vehicle_steps": 0,
+   "zones": [
+    {
+     "model": "weave",
+     "ramp": "th52",
+     "n_entered": 530,
+     "n_changed_in": 206,
+     "n_changed_out": 318,
+     "n_forced": 36,
+     "n_missed": 4,
+     "n_missed_exit": 4,
+     "n_handback_skips": 23,
+     "n_close_leader_withheld": 1,
+     "n_opposing_vetoed": 84,
+     "n_reached_section_exiting": 373,
+     "n_unfinished": 2,
+     "n_pair_releases": 19,
+     "n_opposing_deferred": 92
+    }
+   ],
+   "lowest_zone_minute_ms": 9.213536650158924,
+   "lock": false,
+   "wall_s": 3.21,
+   "exit_end_flow_vph": 4043.3,
+   "exits_given_up": [
+    4,
+    373
+   ],
+   "entrance_departed": [
+    346,
+    407
+   ],
+   "run_dir": "/private/tmp/claude-501/-Users-anshpathak-Desktop-apps-flowstate/b1e30512-d596-4228-ba4a-2c84632c93b4/scratchpad/w2/xt1_w2/th52_corridor_weave/6a2c3f3000af/3"
+  },
+  {
+   "set": "xt1",
+   "fixture": "th52_corridor",
+   "model": "weave",
+   "config_hash": "178cecdd9a37",
+   "seed": 4,
+   "departed": 1527,
+   "planned": 1603,
+   "on_ramps": [
+    [
+     "th52",
+     340,
+     407
+    ]
+   ],
+   "collisions": 0,
+   "hard_brake_vehicle_steps": 0,
+   "zones": [
+    {
+     "model": "weave",
+     "ramp": "th52",
+     "n_entered": 576,
+     "n_changed_in": 209,
+     "n_changed_out": 356,
+     "n_forced": 65,
+     "n_missed": 2,
+     "n_missed_exit": 2,
+     "n_handback_skips": 10,
+     "n_close_leader_withheld": 2,
+     "n_opposing_vetoed": 92,
+     "n_reached_section_exiting": 417,
+     "n_unfinished": 9,
+     "n_pair_releases": 30,
+     "n_opposing_deferred": 106
+    }
+   ],
+   "lowest_zone_minute_ms": 8.64694213396522,
+   "lock": false,
+   "wall_s": 2.75,
+   "exit_end_flow_vph": 4016.7,
+   "exits_given_up": [
+    2,
+    417
+   ],
+   "entrance_departed": [
+    340,
+    407
+   ],
+   "run_dir": "/private/tmp/claude-501/-Users-anshpathak-Desktop-apps-flowstate/b1e30512-d596-4228-ba4a-2c84632c93b4/scratchpad/w2/xt1_w2/th52_corridor_weave/178cecdd9a37/4"
+  },
+  {
+   "set": "xt1",
+   "fixture": "th52_corridor",
+   "model": "weave",
+   "config_hash": "d4df154b2180",
+   "seed": 5,
+   "departed": 1477,
+   "planned": 1603,
+   "on_ramps": [
+    [
+     "th52",
+     314,
+     407
+    ]
+   ],
+   "collisions": 0,
+   "hard_brake_vehicle_steps": 0,
+   "zones": [
+    {
+     "model": "weave",
+     "ramp": "th52",
+     "n_entered": 578,
+     "n_changed_in": 198,
+     "n_changed_out": 372,
+     "n_forced": 59,
+     "n_missed": 3,
+     "n_missed_exit": 3,
+     "n_handback_skips": 29,
+     "n_close_leader_withheld": 1,
+     "n_opposing_vetoed": 117,
+     "n_reached_section_exiting": 410,
+     "n_unfinished": 5,
+     "n_pair_releases": 90,
+     "n_opposing_deferred": 130
+    }
+   ],
+   "lowest_zone_minute_ms": 6.4988899894872185,
+   "lock": false,
+   "wall_s": 3.08,
+   "exit_end_flow_vph": 3796.7,
+   "exits_given_up": [
+    3,
+    410
+   ],
+   "entrance_departed": [
+    314,
+    407
+   ],
+   "run_dir": "/private/tmp/claude-501/-Users-anshpathak-Desktop-apps-flowstate/b1e30512-d596-4228-ba4a-2c84632c93b4/scratchpad/w2/xt1_w2/th52_corridor_weave/d4df154b2180/5"
+  },
+  {
+   "set": "xt1",
+   "fixture": "th52_corridor",
+   "model": "weave",
+   "config_hash": "628b535046cd",
+   "seed": 6,
+   "departed": 1488,
+   "planned": 1603,
+   "on_ramps": [
+    [
+     "th52",
+     325,
+     407
+    ]
+   ],
+   "collisions": 0,
+   "hard_brake_vehicle_steps": 0,
+   "zones": [
+    {
+     "model": "weave",
+     "ramp": "th52",
+     "n_entered": 533,
+     "n_changed_in": 187,
+     "n_changed_out": 336,
+     "n_forced": 53,
+     "n_missed": 7,
+     "n_missed_exit": 7,
+     "n_handback_skips": 18,
+     "n_close_leader_withheld": 0,
+     "n_opposing_vetoed": 93,
+     "n_reached_section_exiting": 403,
+     "n_unfinished": 3,
+     "n_pair_releases": 96,
+     "n_opposing_deferred": 105
+    }
+   ],
+   "lowest_zone_minute_ms": 6.177381666471724,
+   "lock": false,
+   "wall_s": 2.94,
+   "exit_end_flow_vph": 3826.7,
+   "exits_given_up": [
+    7,
+    403
+   ],
+   "entrance_departed": [
+    325,
+    407
+   ],
+   "run_dir": "/private/tmp/claude-501/-Users-anshpathak-Desktop-apps-flowstate/b1e30512-d596-4228-ba4a-2c84632c93b4/scratchpad/w2/xt1_w2/th52_corridor_weave/628b535046cd/6"
+  },
+  {
+   "set": "xt1",
+   "fixture": "th52_corridor",
+   "model": "weave",
+   "config_hash": "d6b7dd13967e",
+   "seed": 7,
+   "departed": 1493,
+   "planned": 1603,
+   "on_ramps": [
+    [
+     "th52",
+     324,
+     407
+    ]
+   ],
+   "collisions": 0,
+   "hard_brake_vehicle_steps": 0,
+   "zones": [
+    {
+     "model": "weave",
+     "ramp": "th52",
+     "n_entered": 558,
+     "n_changed_in": 208,
+     "n_changed_out": 339,
+     "n_forced": 58,
+     "n_missed": 6,
+     "n_missed_exit": 6,
+     "n_handback_skips": 19,
+     "n_close_leader_withheld": 0,
+     "n_opposing_vetoed": 105,
+     "n_reached_section_exiting": 383,
+     "n_unfinished": 5,
+     "n_pair_releases": 44,
+     "n_opposing_deferred": 115
+    }
+   ],
+   "lowest_zone_minute_ms": 9.221317206801602,
+   "lock": false,
+   "wall_s": 3.29,
+   "exit_end_flow_vph": 3886.7,
+   "exits_given_up": [
+    6,
+    383
+   ],
+   "entrance_departed": [
+    324,
+    407
+   ],
+   "run_dir": "/private/tmp/claude-501/-Users-anshpathak-Desktop-apps-flowstate/b1e30512-d596-4228-ba4a-2c84632c93b4/scratchpad/w2/xt1_w2/th52_corridor_weave/d6b7dd13967e/7"
+  },
+  {
+   "set": "xt1",
+   "fixture": "th52_corridor",
+   "model": "weave",
+   "config_hash": "664130402481",
+   "seed": 8,
+   "departed": 1523,
+   "planned": 1603,
+   "on_ramps": [
+    [
+     "th52",
+     342,
+     407
+    ]
+   ],
+   "collisions": 0,
+   "hard_brake_vehicle_steps": 0,
+   "zones": [
+    {
+     "model": "weave",
+     "ramp": "th52",
+     "n_entered": 575,
+     "n_changed_in": 217,
+     "n_changed_out": 344,
+     "n_forced": 76,
+     "n_missed": 8,
+     "n_missed_exit": 8,
+     "n_handback_skips": 43,
+     "n_close_leader_withheld": 0,
+     "n_opposing_vetoed": 179,
+     "n_reached_section_exiting": 405,
+     "n_unfinished": 6,
+     "n_pair_releases": 47,
+     "n_opposing_deferred": 187
+    }
+   ],
+   "lowest_zone_minute_ms": 7.442321852393169,
+   "lock": false,
+   "wall_s": 3.61,
+   "exit_end_flow_vph": 4086.7,
+   "exits_given_up": [
+    8,
+    405
+   ],
+   "entrance_departed": [
+    342,
+    407
+   ],
+   "run_dir": "/private/tmp/claude-501/-Users-anshpathak-Desktop-apps-flowstate/b1e30512-d596-4228-ba4a-2c84632c93b4/scratchpad/w2/xt1_w2/th52_corridor_weave/664130402481/8"
+  },
+  {
+   "set": "xt1",
+   "fixture": "th52_corridor",
+   "model": "weave",
+   "config_hash": "ba205601e6e8",
+   "seed": 9,
+   "departed": 1487,
+   "planned": 1603,
+   "on_ramps": [
+    [
+     "th52",
+     336,
+     407
+    ]
+   ],
+   "collisions": 0,
+   "hard_brake_vehicle_steps": 0,
+   "zones": [
+    {
+     "model": "weave",
+     "ramp": "th52",
+     "n_entered": 566,
+     "n_changed_in": 197,
+     "n_changed_out": 354,
+     "n_forced": 84,
+     "n_missed": 6,
+     "n_missed_exit": 6,
+     "n_handback_skips": 30,
+     "n_close_leader_withheld": 0,
+     "n_opposing_vetoed": 138,
+     "n_reached_section_exiting": 419,
+     "n_unfinished": 9,
+     "n_pair_releases": 76,
+     "n_opposing_deferred": 145
+    }
+   ],
+   "lowest_zone_minute_ms": 6.249250796554873,
+   "lock": false,
+   "wall_s": 3.71,
+   "exit_end_flow_vph": 3856.7,
+   "exits_given_up": [
+    6,
+    419
+   ],
+   "entrance_departed": [
+    336,
+    407
+   ],
+   "run_dir": "/private/tmp/claude-501/-Users-anshpathak-Desktop-apps-flowstate/b1e30512-d596-4228-ba4a-2c84632c93b4/scratchpad/w2/xt1_w2/th52_corridor_weave/ba205601e6e8/9"
+  },
+  {
+   "set": "xt1",
+   "fixture": "th52_corridor",
+   "model": "weave",
+   "config_hash": "3418a80e15eb",
+   "seed": 10,
+   "departed": 1494,
+   "planned": 1603,
+   "on_ramps": [
+    [
+     "th52",
+     329,
+     407
+    ]
+   ],
+   "collisions": 0,
+   "hard_brake_vehicle_steps": 0,
+   "zones": [
+    {
+     "model": "weave",
+     "ramp": "th52",
+     "n_entered": 573,
+     "n_changed_in": 196,
+     "n_changed_out": 362,
+     "n_forced": 66,
+     "n_missed": 5,
+     "n_missed_exit": 5,
+     "n_handback_skips": 9,
+     "n_close_leader_withheld": 0,
+     "n_opposing_vetoed": 116,
+     "n_reached_section_exiting": 413,
+     "n_unfinished": 10,
+     "n_pair_releases": 47,
+     "n_opposing_deferred": 124
+    }
+   ],
+   "lowest_zone_minute_ms": 9.069663571497573,
+   "lock": false,
+   "wall_s": 3.52,
+   "exit_end_flow_vph": 3893.3,
+   "exits_given_up": [
+    5,
+    413
+   ],
+   "entrance_departed": [
+    329,
+    407
+   ],
+   "run_dir": "/private/tmp/claude-501/-Users-anshpathak-Desktop-apps-flowstate/b1e30512-d596-4228-ba4a-2c84632c93b4/scratchpad/w2/xt1_w2/th52_corridor_weave/3418a80e15eb/10"
+  },
+  {
+   "set": "xt1",
+   "fixture": "th52_corridor",
+   "model": "weave",
+   "config_hash": "4b90944cfaf4",
+   "seed": 11,
+   "departed": 1507,
+   "planned": 1603,
+   "on_ramps": [
+    [
+     "th52",
+     319,
+     407
+    ]
+   ],
+   "collisions": 0,
+   "hard_brake_vehicle_steps": 0,
+   "zones": [
+    {
+     "model": "weave",
+     "ramp": "th52",
+     "n_entered": 568,
+     "n_changed_in": 197,
+     "n_changed_out": 354,
+     "n_forced": 81,
+     "n_missed": 13,
+     "n_missed_exit": 13,
+     "n_handback_skips": 26,
+     "n_close_leader_withheld": 0,
+     "n_opposing_vetoed": 122,
+     "n_reached_section_exiting": 414,
+     "n_unfinished": 4,
+     "n_pair_releases": 56,
+     "n_opposing_deferred": 131
+    }
+   ],
+   "lowest_zone_minute_ms": 6.432715297434472,
+   "lock": false,
+   "wall_s": 3.59,
+   "exit_end_flow_vph": 3950.0,
+   "exits_given_up": [
+    13,
+    414
+   ],
+   "entrance_departed": [
+    319,
+    407
+   ],
+   "run_dir": "/private/tmp/claude-501/-Users-anshpathak-Desktop-apps-flowstate/b1e30512-d596-4228-ba4a-2c84632c93b4/scratchpad/w2/xt1_w2/th52_corridor_weave/4b90944cfaf4/11"
+  },
+  {
+   "set": "xt1",
+   "fixture": "th52_corridor",
+   "model": "weave",
+   "config_hash": "3c9ff8a95922",
+   "seed": 12,
+   "departed": 1523,
+   "planned": 1603,
+   "on_ramps": [
+    [
+     "th52",
+     338,
+     407
+    ]
+   ],
+   "collisions": 0,
+   "hard_brake_vehicle_steps": 0,
+   "zones": [
+    {
+     "model": "weave",
+     "ramp": "th52",
+     "n_entered": 533,
+     "n_changed_in": 209,
+     "n_changed_out": 319,
+     "n_forced": 64,
+     "n_missed": 3,
+     "n_missed_exit": 3,
+     "n_handback_skips": 27,
+     "n_close_leader_withheld": 0,
+     "n_opposing_vetoed": 100,
+     "n_reached_section_exiting": 371,
+     "n_unfinished": 2,
+     "n_pair_releases": 50,
+     "n_opposing_deferred": 109
+    }
+   ],
+   "lowest_zone_minute_ms": 6.035504520852296,
+   "lock": false,
+   "wall_s": 3.45,
+   "exit_end_flow_vph": 4016.7,
+   "exits_given_up": [
+    3,
+    371
+   ],
+   "entrance_departed": [
+    338,
+    407
+   ],
+   "run_dir": "/private/tmp/claude-501/-Users-anshpathak-Desktop-apps-flowstate/b1e30512-d596-4228-ba4a-2c84632c93b4/scratchpad/w2/xt1_w2/th52_corridor_weave/3c9ff8a95922/12"
+  },
+  {
+   "set": "xt1",
+   "fixture": "th52_corridor",
+   "model": "weave",
+   "config_hash": "2b4149e55a77",
+   "seed": 13,
+   "departed": 1510,
+   "planned": 1603,
+   "on_ramps": [
+    [
+     "th52",
+     317,
+     407
+    ]
+   ],
+   "collisions": 0,
+   "hard_brake_vehicle_steps": 0,
+   "zones": [
+    {
+     "model": "weave",
+     "ramp": "th52",
+     "n_entered": 580,
+     "n_changed_in": 201,
+     "n_changed_out": 364,
+     "n_forced": 59,
+     "n_missed": 8,
+     "n_missed_exit": 8,
+     "n_handback_skips": 19,
+     "n_close_leader_withheld": 1,
+     "n_opposing_vetoed": 108,
+     "n_reached_section_exiting": 410,
+     "n_unfinished": 7,
+     "n_pair_releases": 39,
+     "n_opposing_deferred": 117
+    }
+   ],
+   "lowest_zone_minute_ms": 10.054836746133233,
+   "lock": false,
+   "wall_s": 3.52,
+   "exit_end_flow_vph": 3946.7,
+   "exits_given_up": [
+    8,
+    410
+   ],
+   "entrance_departed": [
+    317,
+    407
+   ],
+   "run_dir": "/private/tmp/claude-501/-Users-anshpathak-Desktop-apps-flowstate/b1e30512-d596-4228-ba4a-2c84632c93b4/scratchpad/w2/xt1_w2/th52_corridor_weave/2b4149e55a77/13"
+  },
+  {
+   "set": "xt1",
+   "fixture": "th52_corridor",
+   "model": "weave",
+   "config_hash": "cd100cf8cc4b",
+   "seed": 14,
+   "departed": 1504,
+   "planned": 1603,
+   "on_ramps": [
+    [
+     "th52",
+     331,
+     407
+    ]
+   ],
+   "collisions": 0,
+   "hard_brake_vehicle_steps": 0,
+   "zones": [
+    {
+     "model": "weave",
+     "ramp": "th52",
+     "n_entered": 547,
+     "n_changed_in": 196,
+     "n_changed_out": 344,
+     "n_forced": 65,
+     "n_missed": 4,
+     "n_missed_exit": 4,
+     "n_handback_skips": 10,
+     "n_close_leader_withheld": 1,
+     "n_opposing_vetoed": 84,
+     "n_reached_section_exiting": 394,
+     "n_unfinished": 3,
+     "n_pair_releases": 36,
+     "n_opposing_deferred": 89
+    }
+   ],
+   "lowest_zone_minute_ms": 7.5069426378449835,
+   "lock": false,
+   "wall_s": 3.59,
+   "exit_end_flow_vph": 3900.0,
+   "exits_given_up": [
+    4,
+    394
+   ],
+   "entrance_departed": [
+    331,
+    407
+   ],
+   "run_dir": "/private/tmp/claude-501/-Users-anshpathak-Desktop-apps-flowstate/b1e30512-d596-4228-ba4a-2c84632c93b4/scratchpad/w2/xt1_w2/th52_corridor_weave/cd100cf8cc4b/14"
+  },
+  {
+   "set": "xt1",
+   "fixture": "th52_corridor",
+   "model": "weave",
+   "config_hash": "393cee281d27",
+   "seed": 15,
+   "departed": 1534,
+   "planned": 1603,
+   "on_ramps": [
+    [
+     "th52",
+     338,
+     407
+    ]
+   ],
+   "collisions": 0,
+   "hard_brake_vehicle_steps": 0,
+   "zones": [
+    {
+     "model": "weave",
+     "ramp": "th52",
+     "n_entered": 584,
+     "n_changed_in": 213,
+     "n_changed_out": 357,
+     "n_forced": 75,
+     "n_missed": 3,
+     "n_missed_exit": 3,
+     "n_handback_skips": 16,
+     "n_close_leader_withheld": 0,
+     "n_opposing_vetoed": 104,
+     "n_reached_section_exiting": 412,
+     "n_unfinished": 11,
+     "n_pair_releases": 10,
+     "n_opposing_deferred": 112
+    }
+   ],
+   "lowest_zone_minute_ms": 9.539616000617412,
+   "lock": false,
+   "wall_s": 3.41,
+   "exit_end_flow_vph": 4116.7,
+   "exits_given_up": [
+    3,
+    412
+   ],
+   "entrance_departed": [
+    338,
+    407
+   ],
+   "run_dir": "/private/tmp/claude-501/-Users-anshpathak-Desktop-apps-flowstate/b1e30512-d596-4228-ba4a-2c84632c93b4/scratchpad/w2/xt1_w2/th52_corridor_weave/393cee281d27/15"
+  },
+  {
+   "set": "xt1",
+   "fixture": "th52_corridor",
+   "model": "weave",
+   "config_hash": "0b197fed0312",
+   "seed": 16,
+   "departed": 1556,
+   "planned": 1603,
+   "on_ramps": [
+    [
+     "th52",
+     362,
+     407
+    ]
+   ],
+   "collisions": 0,
+   "hard_brake_vehicle_steps": 0,
+   "zones": [
+    {
+     "model": "weave",
+     "ramp": "th52",
+     "n_entered": 558,
+     "n_changed_in": 219,
+     "n_changed_out": 328,
+     "n_forced": 56,
+     "n_missed": 5,
+     "n_missed_exit": 5,
+     "n_handback_skips": 11,
+     "n_close_leader_withheld": 0,
+     "n_opposing_vetoed": 104,
+     "n_reached_section_exiting": 387,
+     "n_unfinished": 6,
+     "n_pair_releases": 15,
+     "n_opposing_deferred": 113
+    }
+   ],
+   "lowest_zone_minute_ms": 8.178900428320993,
+   "lock": false,
+   "wall_s": 3.49,
+   "exit_end_flow_vph": 4153.3,
+   "exits_given_up": [
+    5,
+    387
+   ],
+   "entrance_departed": [
+    362,
+    407
+   ],
+   "run_dir": "/private/tmp/claude-501/-Users-anshpathak-Desktop-apps-flowstate/b1e30512-d596-4228-ba4a-2c84632c93b4/scratchpad/w2/xt1_w2/th52_corridor_weave/0b197fed0312/16"
+  },
+  {
+   "set": "xt1",
+   "fixture": "th52_corridor",
+   "model": "weave",
+   "config_hash": "d7664b7596f9",
+   "seed": 17,
+   "departed": 1516,
+   "planned": 1603,
+   "on_ramps": [
+    [
+     "th52",
+     351,
+     407
+    ]
+   ],
+   "collisions": 0,
+   "hard_brake_vehicle_steps": 1,
+   "zones": [
+    {
+     "model": "weave",
+     "ramp": "th52",
+     "n_entered": 545,
+     "n_changed_in": 209,
+     "n_changed_out": 331,
+     "n_forced": 81,
+     "n_missed": 3,
+     "n_missed_exit": 3,
+     "n_handback_skips": 13,
+     "n_close_leader_withheld": 10,
+     "n_opposing_vetoed": 116,
+     "n_reached_section_exiting": 394,
+     "n_unfinished": 2,
+     "n_pair_releases": 37,
+     "n_opposing_deferred": 118
+    }
+   ],
+   "lowest_zone_minute_ms": 6.513748302330794,
+   "lock": false,
+   "wall_s": 3.7,
+   "exit_end_flow_vph": 4020.0,
+   "exits_given_up": [
+    3,
+    394
+   ],
+   "entrance_departed": [
+    351,
+    407
+   ],
+   "run_dir": "/private/tmp/claude-501/-Users-anshpathak-Desktop-apps-flowstate/b1e30512-d596-4228-ba4a-2c84632c93b4/scratchpad/w2/xt1_w2/th52_corridor_weave/d7664b7596f9/17"
+  },
+  {
+   "set": "xt1",
+   "fixture": "th52_corridor",
+   "model": "weave",
+   "config_hash": "c6ac85194811",
+   "seed": 18,
+   "departed": 1509,
+   "planned": 1603,
+   "on_ramps": [
+    [
+     "th52",
+     324,
+     407
+    ]
+   ],
+   "collisions": 0,
+   "hard_brake_vehicle_steps": 0,
+   "zones": [
+    {
+     "model": "weave",
+     "ramp": "th52",
+     "n_entered": 551,
+     "n_changed_in": 188,
+     "n_changed_out": 346,
+     "n_forced": 63,
+     "n_missed": 5,
+     "n_missed_exit": 5,
+     "n_handback_skips": 22,
+     "n_close_leader_withheld": 0,
+     "n_opposing_vetoed": 92,
+     "n_reached_section_exiting": 397,
+     "n_unfinished": 12,
+     "n_pair_releases": 109,
+     "n_opposing_deferred": 105
+    }
+   ],
+   "lowest_zone_minute_ms": 5.365568895230291,
+   "lock": false,
+   "wall_s": 4.65,
+   "exit_end_flow_vph": 3820.0,
+   "exits_given_up": [
+    5,
+    397
+   ],
+   "entrance_departed": [
+    324,
+    407
+   ],
+   "run_dir": "/private/tmp/claude-501/-Users-anshpathak-Desktop-apps-flowstate/b1e30512-d596-4228-ba4a-2c84632c93b4/scratchpad/w2/xt1_w2/th52_corridor_weave/c6ac85194811/18"
+  },
+  {
+   "set": "xt1",
+   "fixture": "th52_corridor",
+   "model": "weave",
+   "config_hash": "d5af1e564ed7",
+   "seed": 19,
+   "departed": 1533,
+   "planned": 1603,
+   "on_ramps": [
+    [
+     "th52",
+     337,
+     407
+    ]
+   ],
+   "collisions": 0,
+   "hard_brake_vehicle_steps": 0,
+   "zones": [
+    {
+     "model": "weave",
+     "ramp": "th52",
+     "n_entered": 590,
+     "n_changed_in": 217,
+     "n_changed_out": 363,
+     "n_forced": 71,
+     "n_missed": 7,
+     "n_missed_exit": 7,
+     "n_handback_skips": 30,
+     "n_close_leader_withheld": 0,
+     "n_opposing_vetoed": 128,
+     "n_reached_section_exiting": 409,
+     "n_unfinished": 3,
+     "n_pair_releases": 30,
+     "n_opposing_deferred": 141
+    }
+   ],
+   "lowest_zone_minute_ms": 9.696863677139696,
+   "lock": false,
+   "wall_s": 3.79,
+   "exit_end_flow_vph": 4066.7,
+   "exits_given_up": [
+    7,
+    409
+   ],
+   "entrance_departed": [
+    337,
+    407
+   ],
+   "run_dir": "/private/tmp/claude-501/-Users-anshpathak-Desktop-apps-flowstate/b1e30512-d596-4228-ba4a-2c84632c93b4/scratchpad/w2/xt1_w2/th52_corridor_weave/d5af1e564ed7/19"
+  },
+  {
+   "set": "xt1",
+   "fixture": "th52_corridor",
+   "model": "weave",
+   "config_hash": "049e4e82d3a5",
+   "seed": 20,
+   "departed": 1520,
+   "planned": 1603,
+   "on_ramps": [
+    [
+     "th52",
+     352,
+     407
+    ]
+   ],
+   "collisions": 0,
+   "hard_brake_vehicle_steps": 0,
+   "zones": [
+    {
+     "model": "weave",
+     "ramp": "th52",
+     "n_entered": 578,
+     "n_changed_in": 220,
+     "n_changed_out": 336,
+     "n_forced": 70,
+     "n_missed": 10,
+     "n_missed_exit": 10,
+     "n_handback_skips": 19,
+     "n_close_leader_withheld": 1,
+     "n_opposing_vetoed": 103,
+     "n_reached_section_exiting": 389,
+     "n_unfinished": 12,
+     "n_pair_releases": 48,
+     "n_opposing_deferred": 109
+    }
+   ],
+   "lowest_zone_minute_ms": 7.9364717286274935,
+   "lock": false,
+   "wall_s": 3.7,
+   "exit_end_flow_vph": 4026.7,
+   "exits_given_up": [
+    10,
+    389
+   ],
+   "entrance_departed": [
+    352,
+    407
+   ],
+   "run_dir": "/private/tmp/claude-501/-Users-anshpathak-Desktop-apps-flowstate/b1e30512-d596-4228-ba4a-2c84632c93b4/scratchpad/w2/xt1_w2/th52_corridor_weave/049e4e82d3a5/20"
+  },
+  {
+   "set": "xt1",
+   "fixture": "th52_corridor",
+   "model": "weave",
+   "config_hash": "699b61cdec7c",
+   "seed": 21,
+   "departed": 1506,
+   "planned": 1603,
+   "on_ramps": [
+    [
+     "th52",
+     321,
+     407
+    ]
+   ],
+   "collisions": 0,
+   "hard_brake_vehicle_steps": 0,
+   "zones": [
+    {
+     "model": "weave",
+     "ramp": "th52",
+     "n_entered": 585,
+     "n_changed_in": 204,
+     "n_changed_out": 373,
+     "n_forced": 95,
+     "n_missed": 5,
+     "n_missed_exit": 5,
+     "n_handback_skips": 39,
+     "n_close_leader_withheld": 0,
+     "n_opposing_vetoed": 199,
+     "n_reached_section_exiting": 412,
+     "n_unfinished": 3,
+     "n_pair_releases": 62,
+     "n_opposing_deferred": 214
+    }
+   ],
+   "lowest_zone_minute_ms": 6.782456652674964,
+   "lock": false,
+   "wall_s": 4.08,
+   "exit_end_flow_vph": 3980.0,
+   "exits_given_up": [
+    5,
+    412
+   ],
+   "entrance_departed": [
+    321,
+    407
+   ],
+   "run_dir": "/private/tmp/claude-501/-Users-anshpathak-Desktop-apps-flowstate/b1e30512-d596-4228-ba4a-2c84632c93b4/scratchpad/w2/xt1_w2/th52_corridor_weave/699b61cdec7c/21"
+  },
+  {
+   "set": "xt1",
+   "fixture": "th52_corridor",
+   "model": "weave",
+   "config_hash": "26605be0a0a6",
+   "seed": 22,
+   "departed": 1492,
+   "planned": 1603,
+   "on_ramps": [
+    [
+     "th52",
+     319,
+     407
+    ]
+   ],
+   "collisions": 0,
+   "hard_brake_vehicle_steps": 0,
+   "zones": [
+    {
+     "model": "weave",
+     "ramp": "th52",
+     "n_entered": 531,
+     "n_changed_in": 180,
+     "n_changed_out": 341,
+     "n_forced": 80,
+     "n_missed": 6,
+     "n_missed_exit": 6,
+     "n_handback_skips": 20,
+     "n_close_leader_withheld": 0,
+     "n_opposing_vetoed": 116,
+     "n_reached_section_exiting": 410,
+     "n_unfinished": 4,
+     "n_pair_releases": 85,
+     "n_opposing_deferred": 125
+    }
+   ],
+   "lowest_zone_minute_ms": 6.274709304911728,
+   "lock": false,
+   "wall_s": 4.31,
+   "exit_end_flow_vph": 3896.7,
+   "exits_given_up": [
+    6,
+    410
+   ],
+   "entrance_departed": [
+    319,
+    407
+   ],
+   "run_dir": "/private/tmp/claude-501/-Users-anshpathak-Desktop-apps-flowstate/b1e30512-d596-4228-ba4a-2c84632c93b4/scratchpad/w2/xt1_w2/th52_corridor_weave/26605be0a0a6/22"
+  }
+ ]
+}

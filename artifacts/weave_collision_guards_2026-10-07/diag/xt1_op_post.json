@@ -1,0 +1,802 @@
+[
+ {
+  "dir": "/private/tmp/claude-501/-Users-anshpathak-Desktop-apps-flowstate/b1e30512-d596-4228-ba4a-2c84632c93b4/scratchpad/w2/xt1_op/th52_corridor_weave/01fa6381da2f/7",
+  "fixture": "th52_corridor",
+  "seed": 7,
+  "config_hash": "01fa6381da2f",
+  "n_collisions": 0,
+  "departed": 1508,
+  "hard_brake": 0,
+  "parquet_sha": {
+   "edges.parquet": "fd0f420c743ccbb0de1807f6b97bfadb1e991eebcb5f127db32fe6872f4afa20",
+   "journeys.parquet": "4cee915927de6d5eb89f1736bb1ba86475e34778a6f6b2c86fe0ad1c552f1296",
+   "trajectories.parquet": "d869ef61735ad03005f000df60ffed149326937d2cf7c99c11c85cd99e1808aa",
+   "vehicles.parquet": "671a17e1684b366ee29665babd26df47deb2f8dae8eb12ea92eaae75b89316c0"
+  },
+  "meta_digest": "98c859143af5da356ed077e80a25b5c5ec1f339ccb9c65eca0089d6a99d2c0e0",
+  "sections": [
+   {
+    "ramp": "th52",
+    "exit": "th52 exit",
+    "edges": [
+     "102"
+    ],
+    "x0": 829.0699999999999,
+    "gore": 1134.09,
+    "n_entered": 562,
+    "n_missed_exit": 9,
+    "n_unfinished": 2,
+    "n_entrant_took_exit": null,
+    "n_cooperations": 19694,
+    "n_changer_eased": 4205,
+    "n_handback_skips": null,
+    "n_close_leader_withheld": null,
+    "n_opposing_deferred": 126,
+    "n_opposing_vetoed": 115,
+    "locks": [],
+    "longest_front_stand_s": 13.5
+   }
+  ],
+  "collisions": []
+ },
+ {
+  "dir": "/private/tmp/claude-501/-Users-anshpathak-Desktop-apps-flowstate/b1e30512-d596-4228-ba4a-2c84632c93b4/scratchpad/w2/xt1_op/th52_corridor_weave/134ad7929fa6/18",
+  "fixture": "th52_corridor",
+  "seed": 18,
+  "config_hash": "134ad7929fa6",
+  "n_collisions": 0,
+  "departed": 1533,
+  "hard_brake": 0,
+  "parquet_sha": {
+   "edges.parquet": "31c0bf8992a76c375d77bcaa0c73870775a58347c557c026a67601e594725939",
+   "journeys.parquet": "bc8d283b46a4d79e71b6a72aa970eb3ec7c843e65075a276e282f28bcf406b03",
+   "trajectories.parquet": "59875a8bfc41af9cbe0b0dc328934521000c24da414e9a5c338228bbd6f98167",
+   "vehicles.parquet": "cbad374dad515c3baeabaa06837cb52c93e4393aca31a5d892dcdecab9913f45"
+  },
+  "meta_digest": "ab5a6bcac2223b21f7f4aabf13b4dd535b3adc7a86159a36234fee16eae21e73",
+  "sections": [
+   {
+    "ramp": "th52",
+    "exit": "th52 exit",
+    "edges": [
+     "102"
+    ],
+    "x0": 829.0699999999999,
+    "gore": 1134.09,
+    "n_entered": 567,
+    "n_missed_exit": 6,
+    "n_unfinished": 11,
+    "n_entrant_took_exit": null,
+    "n_cooperations": 19390,
+    "n_changer_eased": 3887,
+    "n_handback_skips": null,
+    "n_close_leader_withheld": null,
+    "n_opposing_deferred": 104,
+    "n_opposing_vetoed": 98,
+    "locks": [],
+    "longest_front_stand_s": 0.5
+   }
+  ],
+  "collisions": []
+ },
+ {
+  "dir": "/private/tmp/claude-501/-Users-anshpathak-Desktop-apps-flowstate/b1e30512-d596-4228-ba4a-2c84632c93b4/scratchpad/w2/xt1_op/th52_corridor_weave/1e144138a2d9/3",
+  "fixture": "th52_corridor",
+  "seed": 3,
+  "config_hash": "1e144138a2d9",
+  "n_collisions": 0,
+  "departed": 1534,
+  "hard_brake": 0,
+  "parquet_sha": {
+   "edges.parquet": "2f06334380c29f0f2b21c0e53c733c60a329c1c6ad4f8ef032d70e19242b9f83",
+   "journeys.parquet": "5d517cea386e886c684907e92560c478353c8e561a1e0c5d67345ddcedf1a38b",
+   "trajectories.parquet": "ba2beb225aec26003f22fde4ae46fedc676f980c858873fae2a541cd8aeff5e7",
+   "vehicles.parquet": "92a63c08bc07a6f9e848ab3a8891a7cfac06feb7d5c14ddc81b8e31bc9697f2d"
+  },
+  "meta_digest": "5a2e245d06c0b380b3acb5a60dc626559b3a50f2006828739fe40366f5031dd5",
+  "sections": [
+   {
+    "ramp": "th52",
+    "exit": "th52 exit",
+    "edges": [
+     "102"
+    ],
+    "x0": 829.0699999999999,
+    "gore": 1134.09,
+    "n_entered": 544,
+    "n_missed_exit": 7,
+    "n_unfinished": 5,
+    "n_entrant_took_exit": null,
+    "n_cooperations": 17844,
+    "n_changer_eased": 3161,
+    "n_handback_skips": null,
+    "n_close_leader_withheld": null,
+    "n_opposing_deferred": 113,
+    "n_opposing_vetoed": 104,
+    "locks": [],
+    "longest_front_stand_s": 6.0
+   }
+  ],
+  "collisions": []
+ },
+ {
+  "dir": "/private/tmp/claude-501/-Users-anshpathak-Desktop-apps-flowstate/b1e30512-d596-4228-ba4a-2c84632c93b4/scratchpad/w2/xt1_op/th52_corridor_weave/23c6a58019fb/19",
+  "fixture": "th52_corridor",
+  "seed": 19,
+  "config_hash": "23c6a58019fb",
+  "n_collisions": 0,
+  "departed": 1543,
+  "hard_brake": 0,
+  "parquet_sha": {
+   "edges.parquet": "7d25d5a20781b1ab8b6298253d12a87b2d05ea8e0818806f50a3de0ed26b0453",
+   "journeys.parquet": "2ce1ed4b31eb1c31dacc90350f1cee89715b809585e7adefbbff463cffec762f",
+   "trajectories.parquet": "9e34a8c2afb6d36fb2aef598a20f545c7c810efa41682f781226fa58f06095cd",
+   "vehicles.parquet": "b5a2f5ff86ef77a4bde1c33ca7e67a116d543e1598f570bcf07972e0d309c888"
+  },
+  "meta_digest": "2ff873ef96f3c5c61a1ab16f0cb82bf591088e533fddec6f14b59629795dcda4",
+  "sections": [
+   {
+    "ramp": "th52",
+    "exit": "th52 exit",
+    "edges": [
+     "102"
+    ],
+    "x0": 829.0699999999999,
+    "gore": 1134.09,
+    "n_entered": 593,
+    "n_missed_exit": 7,
+    "n_unfinished": 8,
+    "n_entrant_took_exit": null,
+    "n_cooperations": 19067,
+    "n_changer_eased": 4262,
+    "n_handback_skips": null,
+    "n_close_leader_withheld": null,
+    "n_opposing_deferred": 126,
+    "n_opposing_vetoed": 115,
+    "locks": [],
+    "longest_front_stand_s": 22.0
+   }
+  ],
+  "collisions": []
+ },
+ {
+  "dir": "/private/tmp/claude-501/-Users-anshpathak-Desktop-apps-flowstate/b1e30512-d596-4228-ba4a-2c84632c93b4/scratchpad/w2/xt1_op/th52_corridor_weave/27649f7972d4/4",
+  "fixture": "th52_corridor",
+  "seed": 4,
+  "config_hash": "27649f7972d4",
+  "n_collisions": 0,
+  "departed": 1502,
+  "hard_brake": 0,
+  "parquet_sha": {
+   "edges.parquet": "03df45a24ba06f58ac51eb0079d5c184f56278479a849ecfbabdabc4fa0df5d5",
+   "journeys.parquet": "1c1ad0a27fcf0a6297b48de822ceefb171061810225fdb7ad60a3d6257cbc3ea",
+   "trajectories.parquet": "6b21163f47b192b9ca7546cc5fa4aba47c9f1c92c430eaebda881783231b785b",
+   "vehicles.parquet": "2ff758ca01bd0b641cf1e44a53ebd11fdd2f59dbc72ffc9e48a87105036da149"
+  },
+  "meta_digest": "a46f5d95fde2b13bb593ff35280ea325b0dcd200362f79a65a32fa6adc736e83",
+  "sections": [
+   {
+    "ramp": "th52",
+    "exit": "th52 exit",
+    "edges": [
+     "102"
+    ],
+    "x0": 829.0699999999999,
+    "gore": 1134.09,
+    "n_entered": 546,
+    "n_missed_exit": 6,
+    "n_unfinished": 3,
+    "n_entrant_took_exit": null,
+    "n_cooperations": 19032,
+    "n_changer_eased": 3785,
+    "n_handback_skips": null,
+    "n_close_leader_withheld": null,
+    "n_opposing_deferred": 102,
+    "n_opposing_vetoed": 96,
+    "locks": [],
+    "longest_front_stand_s": 9.0
+   }
+  ],
+  "collisions": []
+ },
+ {
+  "dir": "/private/tmp/claude-501/-Users-anshpathak-Desktop-apps-flowstate/b1e30512-d596-4228-ba4a-2c84632c93b4/scratchpad/w2/xt1_op/th52_corridor_weave/2c7da44bc0e3/8",
+  "fixture": "th52_corridor",
+  "seed": 8,
+  "config_hash": "2c7da44bc0e3",
+  "n_collisions": 0,
+  "departed": 1514,
+  "hard_brake": 0,
+  "parquet_sha": {
+   "edges.parquet": "6dcd79e0e6f27ebf5f107978ae59e404e210b80fb5b70e48c010ebcec9f3be0a",
+   "journeys.parquet": "54c6cdde4bb44234d487739a989300d6c28fc058721584c14be93a6a4d308caa",
+   "trajectories.parquet": "004a57f590b881e422e78e0d8d1fdc0ffa0bbfc4ea79e2c8e20530cd8af40579",
+   "vehicles.parquet": "a27e834ddca59813d9617b6e55ab7c79a1a18ecb800f4952296a1d43fdd432b0"
+  },
+  "meta_digest": "511ca3616b2af2369a19f34b112e414ec16f457c25f23868e6cc4f375cdbe0b6",
+  "sections": [
+   {
+    "ramp": "th52",
+    "exit": "th52 exit",
+    "edges": [
+     "102"
+    ],
+    "x0": 829.0699999999999,
+    "gore": 1134.09,
+    "n_entered": 576,
+    "n_missed_exit": 7,
+    "n_unfinished": 8,
+    "n_entrant_took_exit": null,
+    "n_cooperations": 19023,
+    "n_changer_eased": 3928,
+    "n_handback_skips": null,
+    "n_close_leader_withheld": null,
+    "n_opposing_deferred": 151,
+    "n_opposing_vetoed": 142,
+    "locks": [],
+    "longest_front_stand_s": 23.5
+   }
+  ],
+  "collisions": []
+ },
+ {
+  "dir": "/private/tmp/claude-501/-Users-anshpathak-Desktop-apps-flowstate/b1e30512-d596-4228-ba4a-2c84632c93b4/scratchpad/w2/xt1_op/th52_corridor_weave/35695e25dd13/9",
+  "fixture": "th52_corridor",
+  "seed": 9,
+  "config_hash": "35695e25dd13",
+  "n_collisions": 0,
+  "departed": 1507,
+  "hard_brake": 0,
+  "parquet_sha": {
+   "edges.parquet": "e5fed03bda7f8bbd18d67b434fd7da8c215ef009043a6f38d737ed1ba44568aa",
+   "journeys.parquet": "abbb59c4a9cb6d087f6dc44c3fc4b085c8555358c072fa86395a417fb59decf9",
+   "trajectories.parquet": "79402f1b0ffe4f6a8f6f51ae53286f2994adeeb46b2eac6f5735aad1dd449da2",
+   "vehicles.parquet": "bfef5c6b4fc6d758ffb83c3be5a6eda27e6fead51da9c803a40a4b94586aa625"
+  },
+  "meta_digest": "e7a2c4add97ddecff31007e30e5a7fede27a3557e3ed453a83aa762c20c7f9cd",
+  "sections": [
+   {
+    "ramp": "th52",
+    "exit": "th52 exit",
+    "edges": [
+     "102"
+    ],
+    "x0": 829.0699999999999,
+    "gore": 1134.09,
+    "n_entered": 572,
+    "n_missed_exit": 7,
+    "n_unfinished": 11,
+    "n_entrant_took_exit": null,
+    "n_cooperations": 19611,
+    "n_changer_eased": 4798,
+    "n_handback_skips": null,
+    "n_close_leader_withheld": null,
+    "n_opposing_deferred": 120,
+    "n_opposing_vetoed": 102,
+    "locks": [],
+    "longest_front_stand_s": 6.0
+   }
+  ],
+  "collisions": []
+ },
+ {
+  "dir": "/private/tmp/claude-501/-Users-anshpathak-Desktop-apps-flowstate/b1e30512-d596-4228-ba4a-2c84632c93b4/scratchpad/w2/xt1_op/th52_corridor_weave/4172ef97a410/20",
+  "fixture": "th52_corridor",
+  "seed": 20,
+  "config_hash": "4172ef97a410",
+  "n_collisions": 0,
+  "departed": 1527,
+  "hard_brake": 0,
+  "parquet_sha": {
+   "edges.parquet": "8618aac9afa54da2fed4fcda9c91ef92ed2156e812dc72f64797a35e2bcc7352",
+   "journeys.parquet": "dbd5cffe880fd0a85056abb6cce36b62d8d1b5f890bd33c400cb3ee61a931394",
+   "trajectories.parquet": "26282792510019baf1a200f50fccf9a7bee0d456e9c39375d156e761b4acaaf9",
+   "vehicles.parquet": "92a4c372cfe3832585c412df9de33560ede28e4a7b5eded6fbe7882198591041"
+  },
+  "meta_digest": "fb6984230fec4c50d99f593ffdfe7ca0388dad7a6d3278ee4d1b39b53753dd60",
+  "sections": [
+   {
+    "ramp": "th52",
+    "exit": "th52 exit",
+    "edges": [
+     "102"
+    ],
+    "x0": 829.0699999999999,
+    "gore": 1134.09,
+    "n_entered": 565,
+    "n_missed_exit": 4,
+    "n_unfinished": 11,
+    "n_entrant_took_exit": null,
+    "n_cooperations": 18226,
+    "n_changer_eased": 4244,
+    "n_handback_skips": null,
+    "n_close_leader_withheld": null,
+    "n_opposing_deferred": 138,
+    "n_opposing_vetoed": 127,
+    "locks": [],
+    "longest_front_stand_s": 1.5
+   }
+  ],
+  "collisions": []
+ },
+ {
+  "dir": "/private/tmp/claude-501/-Users-anshpathak-Desktop-apps-flowstate/b1e30512-d596-4228-ba4a-2c84632c93b4/scratchpad/w2/xt1_op/th52_corridor_weave/52b0c54f7196/17",
+  "fixture": "th52_corridor",
+  "seed": 17,
+  "config_hash": "52b0c54f7196",
+  "n_collisions": 0,
+  "departed": 1539,
+  "hard_brake": 0,
+  "parquet_sha": {
+   "edges.parquet": "d98a05109fa1e556724421ce31da6894d308c6f233b0d9809b23cb509ad0906c",
+   "journeys.parquet": "c6779826c2849c6b4518990824fcf090b7cf0f6fb5458707146af35bd006a371",
+   "trajectories.parquet": "801432dddcce183bbfc955a27cd1ec05cae9d95b6d17f55f018192966289c477",
+   "vehicles.parquet": "7a6570880416bf7cc2c5af1ca37370eb0a4b184205733268d765696457e2d1ce"
+  },
+  "meta_digest": "011adc441bb79925f9ac0720a4d591c30f6f7e6bf4e91f1d17a27404a6343513",
+  "sections": [
+   {
+    "ramp": "th52",
+    "exit": "th52 exit",
+    "edges": [
+     "102"
+    ],
+    "x0": 829.0699999999999,
+    "gore": 1134.09,
+    "n_entered": 569,
+    "n_missed_exit": 4,
+    "n_unfinished": 5,
+    "n_entrant_took_exit": null,
+    "n_cooperations": 17828,
+    "n_changer_eased": 3638,
+    "n_handback_skips": null,
+    "n_close_leader_withheld": null,
+    "n_opposing_deferred": 107,
+    "n_opposing_vetoed": 93,
+    "locks": [],
+    "longest_front_stand_s": 1.5
+   }
+  ],
+  "collisions": []
+ },
+ {
+  "dir": "/private/tmp/claude-501/-Users-anshpathak-Desktop-apps-flowstate/b1e30512-d596-4228-ba4a-2c84632c93b4/scratchpad/w2/xt1_op/th52_corridor_weave/5342eb03f4cd/22",
+  "fixture": "th52_corridor",
+  "seed": 22,
+  "config_hash": "5342eb03f4cd",
+  "n_collisions": 0,
+  "departed": 1489,
+  "hard_brake": 0,
+  "parquet_sha": {
+   "edges.parquet": "89f2f455abc8c68d4532871d5c84056a1f1a3a61f4d2c851d3a739c3cca594f8",
+   "journeys.parquet": "914331b4d51a4d91172650f2adf72f57a0982c79f81195a8f7f41a8429b78c9f",
+   "trajectories.parquet": "9214e4f68e9fe6234fe485993a2d1fe1ec87d40ff406ed7ebe1342b0cd5e0831",
+   "vehicles.parquet": "6495390315d3f132ef04678bf04dae14064d9f0fd35ebab627a2fc1b9119c1c0"
+  },
+  "meta_digest": "b2422161ac59bc396c8571537941a6abc7c0770c9d11faf582ec4acd1a13df34",
+  "sections": [
+   {
+    "ramp": "th52",
+    "exit": "th52 exit",
+    "edges": [
+     "102"
+    ],
+    "x0": 829.0699999999999,
+    "gore": 1134.09,
+    "n_entered": 558,
+    "n_missed_exit": 5,
+    "n_unfinished": 9,
+    "n_entrant_took_exit": null,
+    "n_cooperations": 20213,
+    "n_changer_eased": 4478,
+    "n_handback_skips": null,
+    "n_close_leader_withheld": null,
+    "n_opposing_deferred": 119,
+    "n_opposing_vetoed": 113,
+    "locks": [],
+    "longest_front_stand_s": 18.5
+   }
+  ],
+  "collisions": []
+ },
+ {
+  "dir": "/private/tmp/claude-501/-Users-anshpathak-Desktop-apps-flowstate/b1e30512-d596-4228-ba4a-2c84632c93b4/scratchpad/w2/xt1_op/th52_corridor_weave/69a280b8a092/12",
+  "fixture": "th52_corridor",
+  "seed": 12,
+  "config_hash": "69a280b8a092",
+  "n_collisions": 0,
+  "departed": 1512,
+  "hard_brake": 0,
+  "parquet_sha": {
+   "edges.parquet": "43f69209a6ad4600bd5dafce2f6f09e554de858ec41108cd2ebceedb3d53a72b",
+   "journeys.parquet": "d6ae0b1b05444e623479b027b276e707a1eeaf324cf2dba4ec8945c27444f0ac",
+   "trajectories.parquet": "92e5a112e1c7288ad6eb98748e2441c70149d4d757e9337c1e047f601c6f2ead",
+   "vehicles.parquet": "0268605a89a118d7c512f889c94112f127acef8fef66612c2bcdf03cd5aacc5c"
+  },
+  "meta_digest": "877c5b8c23312f8a9528dab3ebfe5dfa9614fc6a1fcf19ff553f369f2e4ae0b6",
+  "sections": [
+   {
+    "ramp": "th52",
+    "exit": "th52 exit",
+    "edges": [
+     "102"
+    ],
+    "x0": 829.0699999999999,
+    "gore": 1134.09,
+    "n_entered": 558,
+    "n_missed_exit": 1,
+    "n_unfinished": 9,
+    "n_entrant_took_exit": null,
+    "n_cooperations": 18763,
+    "n_changer_eased": 2935,
+    "n_handback_skips": null,
+    "n_close_leader_withheld": null,
+    "n_opposing_deferred": 107,
+    "n_opposing_vetoed": 100,
+    "locks": [],
+    "longest_front_stand_s": 0.0
+   }
+  ],
+  "collisions": []
+ },
+ {
+  "dir": "/private/tmp/claude-501/-Users-anshpathak-Desktop-apps-flowstate/b1e30512-d596-4228-ba4a-2c84632c93b4/scratchpad/w2/xt1_op/th52_corridor_weave/8660ee2e6de9/13",
+  "fixture": "th52_corridor",
+  "seed": 13,
+  "config_hash": "8660ee2e6de9",
+  "n_collisions": 0,
+  "departed": 1523,
+  "hard_brake": 0,
+  "parquet_sha": {
+   "edges.parquet": "1901024713b53392ec389bb913a060ab1da1742e207e7023f9e45dad4b3cc63e",
+   "journeys.parquet": "30e8d1e6665f760da4916249bd5c6f935955f58c0103c54c161557cbab9ed45b",
+   "trajectories.parquet": "fe5dd8cdf7eeb4d8dc7c434ea32466c2623f33dc416b97567110c4d54ec0ca0b",
+   "vehicles.parquet": "a3ed85f09c5d46f7797bab321323bb404c52b7e9c4441732c4c8980cc3b7b57b"
+  },
+  "meta_digest": "f8c466a10d89d7210ffaf4bebc7a0039a4fb5f9aa1e13855de8de41dce0c46f4",
+  "sections": [
+   {
+    "ramp": "th52",
+    "exit": "th52 exit",
+    "edges": [
+     "102"
+    ],
+    "x0": 829.0699999999999,
+    "gore": 1134.09,
+    "n_entered": 580,
+    "n_missed_exit": 3,
+    "n_unfinished": 7,
+    "n_entrant_took_exit": null,
+    "n_cooperations": 19329,
+    "n_changer_eased": 3930,
+    "n_handback_skips": null,
+    "n_close_leader_withheld": null,
+    "n_opposing_deferred": 135,
+    "n_opposing_vetoed": 121,
+    "locks": [],
+    "longest_front_stand_s": 2.0
+   }
+  ],
+  "collisions": []
+ },
+ {
+  "dir": "/private/tmp/claude-501/-Users-anshpathak-Desktop-apps-flowstate/b1e30512-d596-4228-ba4a-2c84632c93b4/scratchpad/w2/xt1_op/th52_corridor_weave/87087be114ff/21",
+  "fixture": "th52_corridor",
+  "seed": 21,
+  "config_hash": "87087be114ff",
+  "n_collisions": 0,
+  "departed": 1490,
+  "hard_brake": 0,
+  "parquet_sha": {
+   "edges.parquet": "63e0e0d21349cabdfa9ca4d1d91330be67fe76658b11450da0fce0bce82f2346",
+   "journeys.parquet": "1e14d820d08e28567601580d761e514797028ae489d856a5e095e723ed6bceb4",
+   "trajectories.parquet": "eb1761857a9338ab57c0e6b9ee35bd103bb4f78f160ab13f84b71102f34e4b0f",
+   "vehicles.parquet": "bd20041d10c69c507fb58f7584d329c9b49860f7fa5c2bdb390479266d4eb38d"
+  },
+  "meta_digest": "4e99b38c0eeec104fdf9456b0053a4eefda4c77b1e5a49a9245e6965d50386cf",
+  "sections": [
+   {
+    "ramp": "th52",
+    "exit": "th52 exit",
+    "edges": [
+     "102"
+    ],
+    "x0": 829.0699999999999,
+    "gore": 1134.09,
+    "n_entered": 565,
+    "n_missed_exit": 6,
+    "n_unfinished": 9,
+    "n_entrant_took_exit": null,
+    "n_cooperations": 20767,
+    "n_changer_eased": 4620,
+    "n_handback_skips": null,
+    "n_close_leader_withheld": null,
+    "n_opposing_deferred": 157,
+    "n_opposing_vetoed": 146,
+    "locks": [],
+    "longest_front_stand_s": 4.5
+   }
+  ],
+  "collisions": []
+ },
+ {
+  "dir": "/private/tmp/claude-501/-Users-anshpathak-Desktop-apps-flowstate/b1e30512-d596-4228-ba4a-2c84632c93b4/scratchpad/w2/xt1_op/th52_corridor_weave/a46eb84cbdec/15",
+  "fixture": "th52_corridor",
+  "seed": 15,
+  "config_hash": "a46eb84cbdec",
+  "n_collisions": 0,
+  "departed": 1522,
+  "hard_brake": 0,
+  "parquet_sha": {
+   "edges.parquet": "d74c0d529957672709c27780e43ff462965d081c1639b197914b6fa77a8ca11d",
+   "journeys.parquet": "618eab679fbc6a225048a10b06db0ec0e2e49a5742a4cb5f7b69208acbe36482",
+   "trajectories.parquet": "6bc397fb1fea6fb28b45590d38b8320accb34bb667cc3dad564798eb70d049e3",
+   "vehicles.parquet": "1a0cc3a70913809f57fa6208efbfe9cdc24f574de0d7181852c728bd721ab864"
+  },
+  "meta_digest": "02896b481f53d5596885dbf7626f93750249ab0beb0234071c67c24afac9f506",
+  "sections": [
+   {
+    "ramp": "th52",
+    "exit": "th52 exit",
+    "edges": [
+     "102"
+    ],
+    "x0": 829.0699999999999,
+    "gore": 1134.09,
+    "n_entered": 595,
+    "n_missed_exit": 4,
+    "n_unfinished": 9,
+    "n_entrant_took_exit": null,
+    "n_cooperations": 19388,
+    "n_changer_eased": 4102,
+    "n_handback_skips": null,
+    "n_close_leader_withheld": null,
+    "n_opposing_deferred": 128,
+    "n_opposing_vetoed": 114,
+    "locks": [],
+    "longest_front_stand_s": 2.5
+   }
+  ],
+  "collisions": []
+ },
+ {
+  "dir": "/private/tmp/claude-501/-Users-anshpathak-Desktop-apps-flowstate/b1e30512-d596-4228-ba4a-2c84632c93b4/scratchpad/w2/xt1_op/th52_corridor_weave/b06f2b9f64e6/14",
+  "fixture": "th52_corridor",
+  "seed": 14,
+  "config_hash": "b06f2b9f64e6",
+  "n_collisions": 0,
+  "departed": 1512,
+  "hard_brake": 0,
+  "parquet_sha": {
+   "edges.parquet": "b72c5d70398c7ee9130f89a6c75fa53aede3f5d69b718c81aa1abbbfd5c71e96",
+   "journeys.parquet": "89046ef166d3ea67dfc589f1d7c2c05dc3099e60eb22850b71aa6edebd56ee91",
+   "trajectories.parquet": "5457712e7fd1b23ccb3d027f1d2660e72ac8538ef6cec040e41fc4450dfa5f99",
+   "vehicles.parquet": "1fd2b8b3b1cc05878352821ef68241dc204bf69522ee50389aa1be354fca6efd"
+  },
+  "meta_digest": "ff49e8a24eb0024603ac50ffbb7f2648ac999492439759ea74dae06572f369eb",
+  "sections": [
+   {
+    "ramp": "th52",
+    "exit": "th52 exit",
+    "edges": [
+     "102"
+    ],
+    "x0": 829.0699999999999,
+    "gore": 1134.09,
+    "n_entered": 555,
+    "n_missed_exit": 6,
+    "n_unfinished": 9,
+    "n_entrant_took_exit": null,
+    "n_cooperations": 17890,
+    "n_changer_eased": 3823,
+    "n_handback_skips": null,
+    "n_close_leader_withheld": null,
+    "n_opposing_deferred": 117,
+    "n_opposing_vetoed": 105,
+    "locks": [],
+    "longest_front_stand_s": 5.5
+   }
+  ],
+  "collisions": []
+ },
+ {
+  "dir": "/private/tmp/claude-501/-Users-anshpathak-Desktop-apps-flowstate/b1e30512-d596-4228-ba4a-2c84632c93b4/scratchpad/w2/xt1_op/th52_corridor_weave/b21ecf5db897/6",
+  "fixture": "th52_corridor",
+  "seed": 6,
+  "config_hash": "b21ecf5db897",
+  "n_collisions": 0,
+  "departed": 1481,
+  "hard_brake": 0,
+  "parquet_sha": {
+   "edges.parquet": "bc73234c0ec3f6eac025cf36e0abfba3666c3276b3707228a0b81aea22385a82",
+   "journeys.parquet": "897d4250e6679e47ba8ae158ddf5ed83031d6f87316fffe5eb11e4c2361d4420",
+   "trajectories.parquet": "bc44470a5ba4d87d32be45d1e821194560ab0d284dea7309fc3c7b28a09604fd",
+   "vehicles.parquet": "a87e04198e42cd01338ec72a9971e09fdb458dc6b8b858257d7334b38b5c29bc"
+  },
+  "meta_digest": "3717ed7b3c75e97eb77aaa8491344643753bf0c96caae005460953c955e9d74a",
+  "sections": [
+   {
+    "ramp": "th52",
+    "exit": "th52 exit",
+    "edges": [
+     "102"
+    ],
+    "x0": 829.0699999999999,
+    "gore": 1134.09,
+    "n_entered": 530,
+    "n_missed_exit": 8,
+    "n_unfinished": 4,
+    "n_entrant_took_exit": null,
+    "n_cooperations": 21191,
+    "n_changer_eased": 4985,
+    "n_handback_skips": null,
+    "n_close_leader_withheld": null,
+    "n_opposing_deferred": 141,
+    "n_opposing_vetoed": 130,
+    "locks": [],
+    "longest_front_stand_s": 15.5
+   }
+  ],
+  "collisions": []
+ },
+ {
+  "dir": "/private/tmp/claude-501/-Users-anshpathak-Desktop-apps-flowstate/b1e30512-d596-4228-ba4a-2c84632c93b4/scratchpad/w2/xt1_op/th52_corridor_weave/d8010bb7de91/5",
+  "fixture": "th52_corridor",
+  "seed": 5,
+  "config_hash": "d8010bb7de91",
+  "n_collisions": 0,
+  "departed": 1463,
+  "hard_brake": 0,
+  "parquet_sha": {
+   "edges.parquet": "2bd2b1a355bc6ca913a6d7aec7277c4378fa023795c3fca5d4a42452925d577a",
+   "journeys.parquet": "76e6db9df9a7c514fce133aeb24871836601f718df4fd37dc8da682e62ab867e",
+   "trajectories.parquet": "e462b75dcc33aaf96cbb4e3a669438f35be3e65b0b029508cafb002ec69024bf",
+   "vehicles.parquet": "2115d0a92e80e702db757ee3b3d6f261a9e90128a8438145a922fe8a39f40584"
+  },
+  "meta_digest": "282b73e6e8d5d2d84d83c54794a5ea4d709bd54c22ce048414d6fc3dbd582e61",
+  "sections": [
+   {
+    "ramp": "th52",
+    "exit": "th52 exit",
+    "edges": [
+     "102"
+    ],
+    "x0": 829.0699999999999,
+    "gore": 1134.09,
+    "n_entered": 564,
+    "n_missed_exit": 5,
+    "n_unfinished": 8,
+    "n_entrant_took_exit": null,
+    "n_cooperations": 19995,
+    "n_changer_eased": 4676,
+    "n_handback_skips": null,
+    "n_close_leader_withheld": null,
+    "n_opposing_deferred": 155,
+    "n_opposing_vetoed": 141,
+    "locks": [],
+    "longest_front_stand_s": 39.0
+   }
+  ],
+  "collisions": []
+ },
+ {
+  "dir": "/private/tmp/claude-501/-Users-anshpathak-Desktop-apps-flowstate/b1e30512-d596-4228-ba4a-2c84632c93b4/scratchpad/w2/xt1_op/th52_corridor_weave/de8cdb667271/11",
+  "fixture": "th52_corridor",
+  "seed": 11,
+  "config_hash": "de8cdb667271",
+  "n_collisions": 0,
+  "departed": 1514,
+  "hard_brake": 0,
+  "parquet_sha": {
+   "edges.parquet": "be4a93ee61bccd0646a689830a95ddbabf8b3d2d453e5bb9b9088ff3f3cf8d98",
+   "journeys.parquet": "60a160dbe91cbeb3d1aa307bc2673f588ee54d75beff3c0933f5cc8c75347caf",
+   "trajectories.parquet": "17b5d112d3c29bdd8681aa1898df45e574f20ad871abb4b419f3cb93ff4962a3",
+   "vehicles.parquet": "568e84b1f3a8c1f47376e3bdbb7814aa26b59b9fe5e6dad8de7176e7f84ef3f2"
+  },
+  "meta_digest": "542684b296c5c45d893a4a8f4f66e18100dd0c0c6b0410b1c9bbd058cab6e41a",
+  "sections": [
+   {
+    "ramp": "th52",
+    "exit": "th52 exit",
+    "edges": [
+     "102"
+    ],
+    "x0": 829.0699999999999,
+    "gore": 1134.09,
+    "n_entered": 575,
+    "n_missed_exit": 7,
+    "n_unfinished": 6,
+    "n_entrant_took_exit": null,
+    "n_cooperations": 20406,
+    "n_changer_eased": 4256,
+    "n_handback_skips": null,
+    "n_close_leader_withheld": null,
+    "n_opposing_deferred": 160,
+    "n_opposing_vetoed": 146,
+    "locks": [],
+    "longest_front_stand_s": 8.0
+   }
+  ],
+  "collisions": []
+ },
+ {
+  "dir": "/private/tmp/claude-501/-Users-anshpathak-Desktop-apps-flowstate/b1e30512-d596-4228-ba4a-2c84632c93b4/scratchpad/w2/xt1_op/th52_corridor_weave/ea18e70252e1/10",
+  "fixture": "th52_corridor",
+  "seed": 10,
+  "config_hash": "ea18e70252e1",
+  "n_collisions": 0,
+  "departed": 1485,
+  "hard_brake": 0,
+  "parquet_sha": {
+   "edges.parquet": "7d7eb3e85dba41d899c5f43b9c5a6d53ed9247a38a96c8378b4c44cb71e5bb7f",
+   "journeys.parquet": "10ec8f49290769c372e1ce702554f7b4cee79557928a762e8d639f49ecadea62",
+   "trajectories.parquet": "fe58d0a94e730b677f77ab7f390e394e96bc1133ad33c99ab0f5877ec3fbf63d",
+   "vehicles.parquet": "a4eaef9acde0252454c8977c7144dabed4e293bea690804e74ded6a1760e0936"
+  },
+  "meta_digest": "07d75b6233c109e49e555bc7d462fa13510f9aad4af855ae80e344f2ffd88824",
+  "sections": [
+   {
+    "ramp": "th52",
+    "exit": "th52 exit",
+    "edges": [
+     "102"
+    ],
+    "x0": 829.0699999999999,
+    "gore": 1134.09,
+    "n_entered": 578,
+    "n_missed_exit": 6,
+    "n_unfinished": 9,
+    "n_entrant_took_exit": null,
+    "n_cooperations": 19008,
+    "n_changer_eased": 3419,
+    "n_handback_skips": null,
+    "n_close_leader_withheld": null,
+    "n_opposing_deferred": 108,
+    "n_opposing_vetoed": 95,
+    "locks": [],
+    "longest_front_stand_s": 4.0
+   }
+  ],
+  "collisions": []
+ },
+ {
+  "dir": "/private/tmp/claude-501/-Users-anshpathak-Desktop-apps-flowstate/b1e30512-d596-4228-ba4a-2c84632c93b4/scratchpad/w2/xt1_op/th52_corridor_weave/f3e48a94c003/16",
+  "fixture": "th52_corridor",
+  "seed": 16,
+  "config_hash": "f3e48a94c003",
+  "n_collisions": 0,
+  "departed": 1542,
+  "hard_brake": 0,
+  "parquet_sha": {
+   "edges.parquet": "5523f902298b14ead7999e2e49379785bf6213deffa3121f7596f7ae35f0f542",
+   "journeys.parquet": "f7e49f01d7590bf9bb955e20b217b0e1db07dc05aa2e6de483a8a7df5aa5b549",
+   "trajectories.parquet": "5702ffa00d90a8855a10efc856c7e335d42779568fe28c815a5282694496e918",
+   "vehicles.parquet": "f1c32298ee29d20a3cb744da832363de55ba856e684ade568468f29ea8c5575b"
+  },
+  "meta_digest": "bbbf00605ad18734859379fc438f50f56ce76162086ac06ad3e963718de3cdd3",
+  "sections": [
+   {
+    "ramp": "th52",
+    "exit": "th52 exit",
+    "edges": [
+     "102"
+    ],
+    "x0": 829.0699999999999,
+    "gore": 1134.09,
+    "n_entered": 574,
+    "n_missed_exit": 6,
+    "n_unfinished": 8,
+    "n_entrant_took_exit": null,
+    "n_cooperations": 17974,
+    "n_changer_eased": 3719,
+    "n_handback_skips": null,
+    "n_close_leader_withheld": null,
+    "n_opposing_deferred": 118,
+    "n_opposing_vetoed": 111,
+    "locks": [],
+    "longest_front_stand_s": 31.5
+   }
+  ],
+  "collisions": []
+ }
+]

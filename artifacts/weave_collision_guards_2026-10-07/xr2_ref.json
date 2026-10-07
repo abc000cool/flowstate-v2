@@ -1,0 +1,746 @@
+{
+ "set": "xr2",
+ "weave_set": {},
+ "rows": [
+  {
+   "set": "xr2",
+   "fixture": "ruth_exit",
+   "model": "weave",
+   "config_hash": "cf05005a1868",
+   "seed": 3,
+   "departed": 1426,
+   "planned": 2028,
+   "on_ramps": [
+    [
+     "ruth",
+     133,
+     146
+    ]
+   ],
+   "collisions": 0,
+   "hard_brake_vehicle_steps": 0,
+   "zones": [
+    {
+     "model": "weave",
+     "ramp": "ruth",
+     "n_entered": 220,
+     "n_changed_in": 45,
+     "n_changed_out": 151,
+     "n_forced": 79,
+     "n_missed": 10,
+     "n_missed_exit": 10,
+     "n_reached_section_exiting": 322,
+     "n_unfinished": 14,
+     "n_pair_releases": 344
+    }
+   ],
+   "lowest_zone_minute_ms": 0.3622028029083677,
+   "lock": true,
+   "wall_s": 13.99,
+   "run_dir": "/private/tmp/claude-501/-Users-anshpathak-Desktop-apps-flowstate/b1e30512-d596-4228-ba4a-2c84632c93b4/scratchpad/w2/xr2_ref/ruth_exit_weave/cf05005a1868/3"
+  },
+  {
+   "set": "xr2",
+   "fixture": "ruth_exit",
+   "model": "weave",
+   "config_hash": "4e6c1164e05a",
+   "seed": 4,
+   "departed": 1472,
+   "planned": 2028,
+   "on_ramps": [
+    [
+     "ruth",
+     146,
+     146
+    ]
+   ],
+   "collisions": 0,
+   "hard_brake_vehicle_steps": 0,
+   "zones": [
+    {
+     "model": "weave",
+     "ramp": "ruth",
+     "n_entered": 287,
+     "n_changed_in": 63,
+     "n_changed_out": 202,
+     "n_forced": 91,
+     "n_missed": 9,
+     "n_missed_exit": 9,
+     "n_reached_section_exiting": 378,
+     "n_unfinished": 13,
+     "n_pair_releases": 424
+    }
+   ],
+   "lowest_zone_minute_ms": 0.5787690861237554,
+   "lock": false,
+   "wall_s": 12.71,
+   "run_dir": "/private/tmp/claude-501/-Users-anshpathak-Desktop-apps-flowstate/b1e30512-d596-4228-ba4a-2c84632c93b4/scratchpad/w2/xr2_ref/ruth_exit_weave/4e6c1164e05a/4"
+  },
+  {
+   "set": "xr2",
+   "fixture": "ruth_exit",
+   "model": "weave",
+   "config_hash": "b08c1bcf5aa8",
+   "seed": 5,
+   "departed": 1429,
+   "planned": 2028,
+   "on_ramps": [
+    [
+     "ruth",
+     146,
+     146
+    ]
+   ],
+   "collisions": 0,
+   "hard_brake_vehicle_steps": 0,
+   "zones": [
+    {
+     "model": "weave",
+     "ramp": "ruth",
+     "n_entered": 220,
+     "n_changed_in": 58,
+     "n_changed_out": 139,
+     "n_forced": 66,
+     "n_missed": 8,
+     "n_missed_exit": 8,
+     "n_reached_section_exiting": 310,
+     "n_unfinished": 15,
+     "n_pair_releases": 706
+    }
+   ],
+   "lowest_zone_minute_ms": 0.6513303499287797,
+   "lock": false,
+   "wall_s": 13.64,
+   "run_dir": "/private/tmp/claude-501/-Users-anshpathak-Desktop-apps-flowstate/b1e30512-d596-4228-ba4a-2c84632c93b4/scratchpad/w2/xr2_ref/ruth_exit_weave/b08c1bcf5aa8/5"
+  },
+  {
+   "set": "xr2",
+   "fixture": "ruth_exit",
+   "model": "weave",
+   "config_hash": "70f7031d4a97",
+   "seed": 6,
+   "departed": 1468,
+   "planned": 2028,
+   "on_ramps": [
+    [
+     "ruth",
+     146,
+     146
+    ]
+   ],
+   "collisions": 0,
+   "hard_brake_vehicle_steps": 0,
+   "zones": [
+    {
+     "model": "weave",
+     "ramp": "ruth",
+     "n_entered": 233,
+     "n_changed_in": 58,
+     "n_changed_out": 155,
+     "n_forced": 69,
+     "n_missed": 6,
+     "n_missed_exit": 6,
+     "n_reached_section_exiting": 338,
+     "n_unfinished": 14,
+     "n_pair_releases": 494
+    }
+   ],
+   "lowest_zone_minute_ms": 0.48914554219423845,
+   "lock": true,
+   "wall_s": 13.22,
+   "run_dir": "/private/tmp/claude-501/-Users-anshpathak-Desktop-apps-flowstate/b1e30512-d596-4228-ba4a-2c84632c93b4/scratchpad/w2/xr2_ref/ruth_exit_weave/70f7031d4a97/6"
+  },
+  {
+   "set": "xr2",
+   "fixture": "ruth_exit",
+   "model": "weave",
+   "config_hash": "57ee81f3b220",
+   "seed": 7,
+   "departed": 1458,
+   "planned": 2028,
+   "on_ramps": [
+    [
+     "ruth",
+     146,
+     146
+    ]
+   ],
+   "collisions": 0,
+   "hard_brake_vehicle_steps": 0,
+   "zones": [
+    {
+     "model": "weave",
+     "ramp": "ruth",
+     "n_entered": 259,
+     "n_changed_in": 65,
+     "n_changed_out": 187,
+     "n_forced": 90,
+     "n_missed": 3,
+     "n_missed_exit": 3,
+     "n_reached_section_exiting": 376,
+     "n_unfinished": 4,
+     "n_pair_releases": 666
+    }
+   ],
+   "lowest_zone_minute_ms": 0.5766476264923659,
+   "lock": false,
+   "wall_s": 13.08,
+   "run_dir": "/private/tmp/claude-501/-Users-anshpathak-Desktop-apps-flowstate/b1e30512-d596-4228-ba4a-2c84632c93b4/scratchpad/w2/xr2_ref/ruth_exit_weave/57ee81f3b220/7"
+  },
+  {
+   "set": "xr2",
+   "fixture": "ruth_exit",
+   "model": "weave",
+   "config_hash": "96ab6ca3fa27",
+   "seed": 8,
+   "departed": 1425,
+   "planned": 2028,
+   "on_ramps": [
+    [
+     "ruth",
+     142,
+     146
+    ]
+   ],
+   "collisions": 0,
+   "hard_brake_vehicle_steps": 0,
+   "zones": [
+    {
+     "model": "weave",
+     "ramp": "ruth",
+     "n_entered": 252,
+     "n_changed_in": 57,
+     "n_changed_out": 171,
+     "n_forced": 83,
+     "n_missed": 5,
+     "n_missed_exit": 5,
+     "n_reached_section_exiting": 321,
+     "n_unfinished": 19,
+     "n_pair_releases": 475
+    }
+   ],
+   "lowest_zone_minute_ms": 0.4735220415489,
+   "lock": true,
+   "wall_s": 13.91,
+   "run_dir": "/private/tmp/claude-501/-Users-anshpathak-Desktop-apps-flowstate/b1e30512-d596-4228-ba4a-2c84632c93b4/scratchpad/w2/xr2_ref/ruth_exit_weave/96ab6ca3fa27/8"
+  },
+  {
+   "set": "xr2",
+   "fixture": "ruth_exit",
+   "model": "weave",
+   "config_hash": "fef1bbf06ee0",
+   "seed": 9,
+   "departed": 1431,
+   "planned": 2028,
+   "on_ramps": [
+    [
+     "ruth",
+     146,
+     146
+    ]
+   ],
+   "collisions": 0,
+   "hard_brake_vehicle_steps": 0,
+   "zones": [
+    {
+     "model": "weave",
+     "ramp": "ruth",
+     "n_entered": 291,
+     "n_changed_in": 77,
+     "n_changed_out": 199,
+     "n_forced": 95,
+     "n_missed": 8,
+     "n_missed_exit": 8,
+     "n_reached_section_exiting": 337,
+     "n_unfinished": 7,
+     "n_pair_releases": 651
+    }
+   ],
+   "lowest_zone_minute_ms": 0.4215583708535397,
+   "lock": true,
+   "wall_s": 14.65,
+   "run_dir": "/private/tmp/claude-501/-Users-anshpathak-Desktop-apps-flowstate/b1e30512-d596-4228-ba4a-2c84632c93b4/scratchpad/w2/xr2_ref/ruth_exit_weave/fef1bbf06ee0/9"
+  },
+  {
+   "set": "xr2",
+   "fixture": "ruth_exit",
+   "model": "weave",
+   "config_hash": "cdb280469f40",
+   "seed": 10,
+   "departed": 1444,
+   "planned": 2028,
+   "on_ramps": [
+    [
+     "ruth",
+     146,
+     146
+    ]
+   ],
+   "collisions": 0,
+   "hard_brake_vehicle_steps": 0,
+   "zones": [
+    {
+     "model": "weave",
+     "ramp": "ruth",
+     "n_entered": 264,
+     "n_changed_in": 61,
+     "n_changed_out": 180,
+     "n_forced": 96,
+     "n_missed": 9,
+     "n_missed_exit": 9,
+     "n_reached_section_exiting": 355,
+     "n_unfinished": 14,
+     "n_pair_releases": 560
+    }
+   ],
+   "lowest_zone_minute_ms": 0.38325280362247455,
+   "lock": true,
+   "wall_s": 13.27,
+   "run_dir": "/private/tmp/claude-501/-Users-anshpathak-Desktop-apps-flowstate/b1e30512-d596-4228-ba4a-2c84632c93b4/scratchpad/w2/xr2_ref/ruth_exit_weave/cdb280469f40/10"
+  },
+  {
+   "set": "xr2",
+   "fixture": "ruth_exit",
+   "model": "weave",
+   "config_hash": "2206f75ca17c",
+   "seed": 11,
+   "departed": 1431,
+   "planned": 2028,
+   "on_ramps": [
+    [
+     "ruth",
+     146,
+     146
+    ]
+   ],
+   "collisions": 0,
+   "hard_brake_vehicle_steps": 0,
+   "zones": [
+    {
+     "model": "weave",
+     "ramp": "ruth",
+     "n_entered": 253,
+     "n_changed_in": 65,
+     "n_changed_out": 158,
+     "n_forced": 74,
+     "n_missed": 9,
+     "n_missed_exit": 9,
+     "n_reached_section_exiting": 318,
+     "n_unfinished": 21,
+     "n_pair_releases": 584
+    }
+   ],
+   "lowest_zone_minute_ms": 0.4955073607174297,
+   "lock": true,
+   "wall_s": 13.68,
+   "run_dir": "/private/tmp/claude-501/-Users-anshpathak-Desktop-apps-flowstate/b1e30512-d596-4228-ba4a-2c84632c93b4/scratchpad/w2/xr2_ref/ruth_exit_weave/2206f75ca17c/11"
+  },
+  {
+   "set": "xr2",
+   "fixture": "ruth_exit",
+   "model": "weave",
+   "config_hash": "3eb2d427c140",
+   "seed": 12,
+   "departed": 1423,
+   "planned": 2028,
+   "on_ramps": [
+    [
+     "ruth",
+     146,
+     146
+    ]
+   ],
+   "collisions": 0,
+   "hard_brake_vehicle_steps": 0,
+   "zones": [
+    {
+     "model": "weave",
+     "ramp": "ruth",
+     "n_entered": 299,
+     "n_changed_in": 70,
+     "n_changed_out": 209,
+     "n_forced": 104,
+     "n_missed": 13,
+     "n_missed_exit": 13,
+     "n_reached_section_exiting": 324,
+     "n_unfinished": 7,
+     "n_pair_releases": 558
+    }
+   ],
+   "lowest_zone_minute_ms": 0.25932010264416683,
+   "lock": true,
+   "wall_s": 14.71,
+   "run_dir": "/private/tmp/claude-501/-Users-anshpathak-Desktop-apps-flowstate/b1e30512-d596-4228-ba4a-2c84632c93b4/scratchpad/w2/xr2_ref/ruth_exit_weave/3eb2d427c140/12"
+  },
+  {
+   "set": "xr2",
+   "fixture": "ruth_exit",
+   "model": "weave",
+   "config_hash": "12f972758e68",
+   "seed": 13,
+   "departed": 1373,
+   "planned": 2028,
+   "on_ramps": [
+    [
+     "ruth",
+     118,
+     146
+    ]
+   ],
+   "collisions": 0,
+   "hard_brake_vehicle_steps": 0,
+   "zones": [
+    {
+     "model": "weave",
+     "ramp": "ruth",
+     "n_entered": 163,
+     "n_changed_in": 39,
+     "n_changed_out": 107,
+     "n_forced": 40,
+     "n_missed": 4,
+     "n_missed_exit": 4,
+     "n_reached_section_exiting": 266,
+     "n_unfinished": 13,
+     "n_pair_releases": 322
+    }
+   ],
+   "lowest_zone_minute_ms": 0.41506850846325055,
+   "lock": true,
+   "wall_s": 14.3,
+   "run_dir": "/private/tmp/claude-501/-Users-anshpathak-Desktop-apps-flowstate/b1e30512-d596-4228-ba4a-2c84632c93b4/scratchpad/w2/xr2_ref/ruth_exit_weave/12f972758e68/13"
+  },
+  {
+   "set": "xr2",
+   "fixture": "ruth_exit",
+   "model": "weave",
+   "config_hash": "81c94fd03d7f",
+   "seed": 14,
+   "departed": 1417,
+   "planned": 2028,
+   "on_ramps": [
+    [
+     "ruth",
+     146,
+     146
+    ]
+   ],
+   "collisions": 0,
+   "hard_brake_vehicle_steps": 0,
+   "zones": [
+    {
+     "model": "weave",
+     "ramp": "ruth",
+     "n_entered": 235,
+     "n_changed_in": 62,
+     "n_changed_out": 162,
+     "n_forced": 75,
+     "n_missed": 7,
+     "n_missed_exit": 7,
+     "n_reached_section_exiting": 302,
+     "n_unfinished": 4,
+     "n_pair_releases": 523
+    }
+   ],
+   "lowest_zone_minute_ms": 0.3446406447468366,
+   "lock": true,
+   "wall_s": 13.7,
+   "run_dir": "/private/tmp/claude-501/-Users-anshpathak-Desktop-apps-flowstate/b1e30512-d596-4228-ba4a-2c84632c93b4/scratchpad/w2/xr2_ref/ruth_exit_weave/81c94fd03d7f/14"
+  },
+  {
+   "set": "xr2",
+   "fixture": "ruth_exit",
+   "model": "weave",
+   "config_hash": "c8678bbaafca",
+   "seed": 15,
+   "departed": 1412,
+   "planned": 2028,
+   "on_ramps": [
+    [
+     "ruth",
+     134,
+     146
+    ]
+   ],
+   "collisions": 0,
+   "hard_brake_vehicle_steps": 0,
+   "zones": [
+    {
+     "model": "weave",
+     "ramp": "ruth",
+     "n_entered": 212,
+     "n_changed_in": 53,
+     "n_changed_out": 147,
+     "n_forced": 59,
+     "n_missed": 7,
+     "n_missed_exit": 7,
+     "n_reached_section_exiting": 318,
+     "n_unfinished": 5,
+     "n_pair_releases": 438
+    }
+   ],
+   "lowest_zone_minute_ms": 0.49662308381307974,
+   "lock": true,
+   "wall_s": 13.46,
+   "run_dir": "/private/tmp/claude-501/-Users-anshpathak-Desktop-apps-flowstate/b1e30512-d596-4228-ba4a-2c84632c93b4/scratchpad/w2/xr2_ref/ruth_exit_weave/c8678bbaafca/15"
+  },
+  {
+   "set": "xr2",
+   "fixture": "ruth_exit",
+   "model": "weave",
+   "config_hash": "f80d19c162f9",
+   "seed": 16,
+   "departed": 1438,
+   "planned": 2028,
+   "on_ramps": [
+    [
+     "ruth",
+     142,
+     146
+    ]
+   ],
+   "collisions": 0,
+   "hard_brake_vehicle_steps": 0,
+   "zones": [
+    {
+     "model": "weave",
+     "ramp": "ruth",
+     "n_entered": 201,
+     "n_changed_in": 40,
+     "n_changed_out": 147,
+     "n_forced": 56,
+     "n_missed": 1,
+     "n_missed_exit": 1,
+     "n_reached_section_exiting": 339,
+     "n_unfinished": 13,
+     "n_pair_releases": 454
+    }
+   ],
+   "lowest_zone_minute_ms": 0.3317202743343216,
+   "lock": true,
+   "wall_s": 13.71,
+   "run_dir": "/private/tmp/claude-501/-Users-anshpathak-Desktop-apps-flowstate/b1e30512-d596-4228-ba4a-2c84632c93b4/scratchpad/w2/xr2_ref/ruth_exit_weave/f80d19c162f9/16"
+  },
+  {
+   "set": "xr2",
+   "fixture": "ruth_exit",
+   "model": "weave",
+   "config_hash": "f75713b425e7",
+   "seed": 17,
+   "departed": 1430,
+   "planned": 2028,
+   "on_ramps": [
+    [
+     "ruth",
+     146,
+     146
+    ]
+   ],
+   "collisions": 0,
+   "hard_brake_vehicle_steps": 0,
+   "zones": [
+    {
+     "model": "weave",
+     "ramp": "ruth",
+     "n_entered": 211,
+     "n_changed_in": 42,
+     "n_changed_out": 153,
+     "n_forced": 78,
+     "n_missed": 5,
+     "n_missed_exit": 5,
+     "n_reached_section_exiting": 345,
+     "n_unfinished": 11,
+     "n_pair_releases": 449
+    }
+   ],
+   "lowest_zone_minute_ms": 0.1486299879822058,
+   "lock": true,
+   "wall_s": 14.29,
+   "run_dir": "/private/tmp/claude-501/-Users-anshpathak-Desktop-apps-flowstate/b1e30512-d596-4228-ba4a-2c84632c93b4/scratchpad/w2/xr2_ref/ruth_exit_weave/f75713b425e7/17"
+  },
+  {
+   "set": "xr2",
+   "fixture": "ruth_exit",
+   "model": "weave",
+   "config_hash": "409b5a063716",
+   "seed": 18,
+   "departed": 1422,
+   "planned": 2028,
+   "on_ramps": [
+    [
+     "ruth",
+     144,
+     146
+    ]
+   ],
+   "collisions": 0,
+   "hard_brake_vehicle_steps": 0,
+   "zones": [
+    {
+     "model": "weave",
+     "ramp": "ruth",
+     "n_entered": 201,
+     "n_changed_in": 54,
+     "n_changed_out": 135,
+     "n_forced": 61,
+     "n_missed": 6,
+     "n_missed_exit": 6,
+     "n_reached_section_exiting": 306,
+     "n_unfinished": 6,
+     "n_pair_releases": 537
+    }
+   ],
+   "lowest_zone_minute_ms": 0.33001134609305155,
+   "lock": true,
+   "wall_s": 16.38,
+   "run_dir": "/private/tmp/claude-501/-Users-anshpathak-Desktop-apps-flowstate/b1e30512-d596-4228-ba4a-2c84632c93b4/scratchpad/w2/xr2_ref/ruth_exit_weave/409b5a063716/18"
+  },
+  {
+   "set": "xr2",
+   "fixture": "ruth_exit",
+   "model": "weave",
+   "config_hash": "352f7c519799",
+   "seed": 19,
+   "departed": 1420,
+   "planned": 2028,
+   "on_ramps": [
+    [
+     "ruth",
+     146,
+     146
+    ]
+   ],
+   "collisions": 0,
+   "hard_brake_vehicle_steps": 0,
+   "zones": [
+    {
+     "model": "weave",
+     "ramp": "ruth",
+     "n_entered": 216,
+     "n_changed_in": 66,
+     "n_changed_out": 131,
+     "n_forced": 73,
+     "n_missed": 5,
+     "n_missed_exit": 5,
+     "n_reached_section_exiting": 314,
+     "n_unfinished": 14,
+     "n_pair_releases": 652
+    }
+   ],
+   "lowest_zone_minute_ms": 0.5748271314398541,
+   "lock": false,
+   "wall_s": 16.68,
+   "run_dir": "/private/tmp/claude-501/-Users-anshpathak-Desktop-apps-flowstate/b1e30512-d596-4228-ba4a-2c84632c93b4/scratchpad/w2/xr2_ref/ruth_exit_weave/352f7c519799/19"
+  },
+  {
+   "set": "xr2",
+   "fixture": "ruth_exit",
+   "model": "weave",
+   "config_hash": "4a7ca0c28243",
+   "seed": 20,
+   "departed": 1422,
+   "planned": 2028,
+   "on_ramps": [
+    [
+     "ruth",
+     146,
+     146
+    ]
+   ],
+   "collisions": 0,
+   "hard_brake_vehicle_steps": 0,
+   "zones": [
+    {
+     "model": "weave",
+     "ramp": "ruth",
+     "n_entered": 224,
+     "n_changed_in": 58,
+     "n_changed_out": 142,
+     "n_forced": 76,
+     "n_missed": 7,
+     "n_missed_exit": 7,
+     "n_reached_section_exiting": 329,
+     "n_unfinished": 17,
+     "n_pair_releases": 494
+    }
+   ],
+   "lowest_zone_minute_ms": 0.24821560770253456,
+   "lock": true,
+   "wall_s": 15.35,
+   "run_dir": "/private/tmp/claude-501/-Users-anshpathak-Desktop-apps-flowstate/b1e30512-d596-4228-ba4a-2c84632c93b4/scratchpad/w2/xr2_ref/ruth_exit_weave/4a7ca0c28243/20"
+  },
+  {
+   "set": "xr2",
+   "fixture": "ruth_exit",
+   "model": "weave",
+   "config_hash": "8c00b1521c55",
+   "seed": 21,
+   "departed": 1471,
+   "planned": 2028,
+   "on_ramps": [
+    [
+     "ruth",
+     146,
+     146
+    ]
+   ],
+   "collisions": 0,
+   "hard_brake_vehicle_steps": 0,
+   "zones": [
+    {
+     "model": "weave",
+     "ramp": "ruth",
+     "n_entered": 262,
+     "n_changed_in": 62,
+     "n_changed_out": 173,
+     "n_forced": 85,
+     "n_missed": 7,
+     "n_missed_exit": 7,
+     "n_reached_section_exiting": 352,
+     "n_unfinished": 20,
+     "n_pair_releases": 601
+    }
+   ],
+   "lowest_zone_minute_ms": 0.38759759891809364,
+   "lock": true,
+   "wall_s": 15.44,
+   "run_dir": "/private/tmp/claude-501/-Users-anshpathak-Desktop-apps-flowstate/b1e30512-d596-4228-ba4a-2c84632c93b4/scratchpad/w2/xr2_ref/ruth_exit_weave/8c00b1521c55/21"
+  },
+  {
+   "set": "xr2",
+   "fixture": "ruth_exit",
+   "model": "weave",
+   "config_hash": "15c26e0b5873",
+   "seed": 22,
+   "departed": 1447,
+   "planned": 2028,
+   "on_ramps": [
+    [
+     "ruth",
+     146,
+     146
+    ]
+   ],
+   "collisions": 0,
+   "hard_brake_vehicle_steps": 1,
+   "zones": [
+    {
+     "model": "weave",
+     "ramp": "ruth",
+     "n_entered": 277,
+     "n_changed_in": 68,
+     "n_changed_out": 190,
+     "n_forced": 82,
+     "n_missed": 13,
+     "n_missed_exit": 13,
+     "n_reached_section_exiting": 349,
+     "n_unfinished": 6,
+     "n_pair_releases": 558
+    }
+   ],
+   "lowest_zone_minute_ms": 0.5615660078630051,
+   "lock": false,
+   "wall_s": 15.12,
+   "run_dir": "/private/tmp/claude-501/-Users-anshpathak-Desktop-apps-flowstate/b1e30512-d596-4228-ba4a-2c84632c93b4/scratchpad/w2/xr2_ref/ruth_exit_weave/15c26e0b5873/22"
+  }
+ ]
+}

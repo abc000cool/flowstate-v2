@@ -1,0 +1,58 @@
+{
+ "model": "weave",
+ "weave_set": {
+  "entrant_giveup_m": 5.0,
+  "entrant_giveup_dwell_s": 60.0,
+  "weave_handback": 1.0,
+  "weave_close_leader": 1.0,
+  "weave_resolve_opposing": 1.0
+ },
+ "fleet_from": null,
+ "rows": [
+  {
+   "fixture": "th52_upstream_fleet",
+   "model": "weave",
+   "config_hash": "20013e6dd2f7",
+   "seed": 3,
+   "departed": 1589,
+   "planned": 2094,
+   "on_ramps": [
+    [
+     "upstream entrance",
+     274,
+     360
+    ],
+    [
+     "th52",
+     326,
+     470
+    ]
+   ],
+   "collisions": 0,
+   "hard_brake_vehicle_steps": 0,
+   "zones": [
+    {
+     "model": "weave",
+     "ramp": "th52",
+     "n_entered": 357,
+     "n_changed_in": 149,
+     "n_changed_out": 200,
+     "n_forced": 30,
+     "n_missed": 4,
+     "n_missed_exit": 3,
+     "n_entrant_took_exit": 1,
+     "n_handback_skips": 17,
+     "n_close_leader_withheld": 0,
+     "n_opposing_vetoed": 60,
+     "n_reached_section_exiting": 313,
+     "n_unfinished": 4,
+     "n_pair_releases": 72,
+     "n_opposing_deferred": 63
+    }
+   ],
+   "lowest_zone_minute_ms": 3.2575571643298864,
+   "lock": false,
+   "wall_s": 5.21
+  }
+ ]
+}

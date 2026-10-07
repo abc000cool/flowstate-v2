@@ -1,0 +1,59 @@
+# p10 (proposed, docs/I94_CAL_COLLISIONS.md §13.6 and §14.8; opt-in; not in the default list). Amendment W2's corridor
+#     round on the calibration-day I-94 inputs (scenarios/${MNDOT}_weave_dc_cal.yaml, name ${MNDOT}_weave_xlsfg_dc_cal,
+#     hash beaaa710e6b3; stage p8's 20 seeds, spawned from seed 42): arm A with W1b on both weaves
+#     (${MNDOT}_weave_xlsfg_dc_cal_w1b) and arm B with W1b + W2 (${MNDOT}_weave_xlsfg_dc_cal_w1b_w2), each a copy
+#     written here that differs from _dc_cal only in its name and its two weave_params lines; each run through p8_one
+#     (the 20-seed four-hour battery against the calibration-day targets, profile fhwa_tat3_2004, the baseline gate on
+#     the phase-1 day sets and the gated report); then CW1-CW5, read from each replicate's meta.json and
+#     vehicles.parquet, never trajectories (artifacts/weave_collision_guards_2026-10-07/harness/corridor_w2.py, which
+#     reuses W1b's corridor_w1b.py front-row reader) -> artifacts/weave_w2_corridor.json. p8's _dc_cal battery
+#     (2 collisions, both Ruth St rear-ends) is reported beside as context, never paired. Run trees under
+#     runs/<name>/baseline, so make_archive's runs/mndot_*/*/*/*/{meta.json,vehicles.parquet} brings every replicate's
+#     files back. Needs no data set (launch with --data-set none). Must sit after p8's block (it calls p8_one).
+#     Cost on n2-standard-16 at --procs 10: two batteries of two waves each (p8's _dc_cal batteries took 3,527 and
+#     3,708 s there, scoring included), two gates and two gated reports (about 2 min each), plus 10-15 min of boot and
+#     setup through the bucket: about 2.2-2.4 h billed at about $0.78/h, about $1.7-1.9; --cap-min 180 bounds it at
+#     about $2.35.
+#       scripts/gcp/launch_i24_pipeline.sh --vm flowstate-p10 --machine n2-standard-16 --bucket gs://<bucket>/p10 \
+#         --self-delete --via-bucket --data-set none --cap-min 180 \
+#         --pipeline-args '--stages "p10_i94_cal_w1b_w2" --procs 10'
+P10_W1B="${MNDOT}_weave_dc_cal_w1b"
+P10_W2="${MNDOT}_weave_dc_cal_w1b_w2"
+P10_KEYS_W1B="{exit_prepare: 1.0, entrant_giveup_m: 5.0, entrant_giveup_dwell_s: 60.0}"
+P10_KEYS_W2="{exit_prepare: 1.0, entrant_giveup_m: 5.0, entrant_giveup_dwell_s: 60.0, weave_handback: 1.0, weave_close_leader: 1.0, weave_resolve_opposing: 1.0}"
+p10_copy() {  # p10_copy <stem> <name suffix> <weave_params>: _dc_cal with only its name and weave_params changed
+  local out="scenarios/$1.yaml"
+  { echo "# ${MNDOT}_weave_xlsfg_$2: scenarios/${MNDOT}_weave_dc_cal.yaml (config hash beaaa710e6b3) with"; \
+    echo "#   weave_params $3 on both weaving sections (docs/I94_CAL_COLLISIONS.md section 13)."; \
+    echo "#   Written by scripts/gcp/pipeline_i24.sh stage p10_i94_cal_w1b_w2; changed, nothing else: name and the two"; \
+    echo "#   weave_params lines. The source header applies otherwise; this file's config hash is recorded in its"; \
+    echo "#   battery artifact (artifacts/validation_${MNDOT}_weave_xlsfg_$2.json, config_hash)."; \
+    sed -e '/^#/d' \
+        -e "s#^name: ${MNDOT}_weave_xlsfg_dc_cal\$#name: ${MNDOT}_weave_xlsfg_$2#" \
+        -e "s#weave_params: {exit_prepare: 1.0}#weave_params: $3#" \
+        "scenarios/${MNDOT}_weave_dc_cal.yaml"; } > "$out"
+  [ "$(grep -cF "weave_params: $3" "$out")" -eq 2 ] && grep -qx "name: ${MNDOT}_weave_xlsfg_$2" "$out" \
+    || { say "p10: $out is not the intended copy"; return 1; }
+}
+p10_steps() {
+  local rc=0
+  p10_copy "$P10_W1B" dc_cal_w1b "$P10_KEYS_W1B" || return 1
+  p10_copy "$P10_W2" dc_cal_w1b_w2 "$P10_KEYS_W2" || return 1
+  p8_one "$P10_W1B" || rc=1
+  p8_one "$P10_W2" || rc=1
+  $RUN artifacts/weave_collision_guards_2026-10-07/harness/corridor_w2.py \
+      --a "artifacts/validation_${MNDOT}_weave_xlsfg_dc_cal_w1b.json" \
+      --b "artifacts/validation_${MNDOT}_weave_xlsfg_dc_cal_w1b_w2.json" \
+      --context "artifacts/validation_${MNDOT}_weave_xlsfg_dc_cal.json" \
+      --out artifacts/weave_w2_corridor.json \
+    || { say "p10: corridor readout failed"; rc=1; }
+  return $rc
+}
+if echo " $STAGES " | grep -q " p10_i94_cal_w1b_w2 "; then
+  stage p10_i94_cal_w1b_w2 p10_steps || say "p10_i94_cal_w1b_w2 failed; continuing"
+fi
+# Optional extension for the T.H.52 mechanism (§13.6, "A note on power"): the same pair on
+# scenarios/${MNDOT}_weave_dc_cal_netfix.yaml (hash 182e3ec2f500; its weave_params lines are the same), with names
+# ..._dc_cal_netfix_w1b and ..._dc_cal_netfix_w1b_w2 and the readout to artifacts/weave_w2_corridor_netfix.json
+# (--context artifacts/validation_${MNDOT}_weave_xlsfg_dc_cal_netfix.json): two more batteries, about +2.0 h and
+# +$1.6 on the same machine (--cap-min 330 for both pairs).

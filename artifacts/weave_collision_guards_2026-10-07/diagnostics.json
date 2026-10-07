@@ -1,0 +1,608 @@
+{
+ "s1": {
+  "ref": {
+   "runs": 20,
+   "collisions": [],
+   "counters": {
+    "n_handback_skips": 0,
+    "n_close_leader_withheld": 0,
+    "n_opposing_deferred": 0,
+    "n_opposing_vetoed": 0
+   },
+   "exits_given_up": 66,
+   "hard_brake": 2,
+   "departed": 31652,
+   "locks": [],
+   "lock_flags": [],
+   "releases": 0
+  },
+  "hb": {
+   "runs": 20,
+   "collisions": [],
+   "counters": {
+    "n_handback_skips": 285,
+    "n_close_leader_withheld": 0,
+    "n_opposing_deferred": 0,
+    "n_opposing_vetoed": 0
+   },
+   "exits_given_up": 68,
+   "hard_brake": 0,
+   "departed": 31663,
+   "locks": [],
+   "lock_flags": [],
+   "releases": 0,
+   "paired_flow_vs_ref": [
+    20.5,
+    -19.59,
+    60.59
+   ],
+   "paired_given_up_vs_ref": [
+    0.1,
+    -0.81,
+    1.01
+   ]
+  },
+  "cl": {
+   "runs": 20,
+   "collisions": [],
+   "counters": {
+    "n_handback_skips": 0,
+    "n_close_leader_withheld": 8,
+    "n_opposing_deferred": 0,
+    "n_opposing_vetoed": 0
+   },
+   "exits_given_up": 63,
+   "hard_brake": 2,
+   "departed": 31651,
+   "locks": [],
+   "lock_flags": [],
+   "releases": 0,
+   "paired_flow_vs_ref": [
+    3.5,
+    -8.03,
+    15.03
+   ],
+   "paired_given_up_vs_ref": [
+    -0.15,
+    -0.46,
+    0.16
+   ]
+  },
+  "op": {
+   "runs": 20,
+   "collisions": [],
+   "counters": {
+    "n_handback_skips": 0,
+    "n_close_leader_withheld": 0,
+    "n_opposing_deferred": 1062,
+    "n_opposing_vetoed": 1036
+   },
+   "exits_given_up": 59,
+   "hard_brake": 0,
+   "departed": 31690,
+   "locks": [],
+   "lock_flags": [],
+   "releases": 0,
+   "paired_flow_vs_ref": [
+    8.67,
+    -11.71,
+    29.05
+   ],
+   "paired_given_up_vs_ref": [
+    -0.35,
+    -1.02,
+    0.32
+   ]
+  }
+ },
+ "xr1": {
+  "ref": {
+   "runs": 20,
+   "collisions": [
+    "ruth_entr:9:R"
+   ],
+   "counters": {
+    "n_handback_skips": 0,
+    "n_close_leader_withheld": 0,
+    "n_opposing_deferred": 0,
+    "n_opposing_vetoed": 0
+   },
+   "exits_given_up": 16,
+   "hard_brake": 0,
+   "departed": 35540,
+   "locks": [],
+   "lock_flags": [],
+   "releases": 0
+  },
+  "hb": {
+   "runs": 20,
+   "collisions": [],
+   "counters": {
+    "n_handback_skips": 986,
+    "n_close_leader_withheld": 0,
+    "n_opposing_deferred": 0,
+    "n_opposing_vetoed": 0
+   },
+   "exits_given_up": 11,
+   "hard_brake": 0,
+   "departed": 35589,
+   "locks": [],
+   "lock_flags": [],
+   "releases": 0
+  },
+  "cl": {
+   "runs": 20,
+   "collisions": [],
+   "counters": {
+    "n_handback_skips": 0,
+    "n_close_leader_withheld": 155,
+    "n_opposing_deferred": 0,
+    "n_opposing_vetoed": 0
+   },
+   "exits_given_up": 16,
+   "hard_brake": 0,
+   "departed": 35568,
+   "locks": [],
+   "lock_flags": [],
+   "releases": 0
+  },
+  "op": {
+   "runs": 20,
+   "collisions": [
+    "ruth_entr:9:R"
+   ],
+   "counters": {
+    "n_handback_skips": 0,
+    "n_close_leader_withheld": 0,
+    "n_opposing_deferred": 3565,
+    "n_opposing_vetoed": 3565
+   },
+   "exits_given_up": 18,
+   "hard_brake": 0,
+   "departed": 35538,
+   "locks": [],
+   "lock_flags": [],
+   "releases": 0
+  }
+ },
+ "xt1": {
+  "ref": {
+   "runs": 20,
+   "collisions": [
+    "th52_corridor:7:T",
+    "th52_corridor:13:T"
+   ],
+   "counters": {
+    "n_handback_skips": 0,
+    "n_close_leader_withheld": 0,
+    "n_opposing_deferred": 0,
+    "n_opposing_vetoed": 0
+   },
+   "exits_given_up": 128,
+   "hard_brake": 6,
+   "departed": 29957,
+   "locks": [],
+   "lock_flags": [],
+   "releases": 0
+  },
+  "hb": {
+   "runs": 20,
+   "collisions": [],
+   "counters": {
+    "n_handback_skips": 446,
+    "n_close_leader_withheld": 0,
+    "n_opposing_deferred": 0,
+    "n_opposing_vetoed": 0
+   },
+   "exits_given_up": 109,
+   "hard_brake": 2,
+   "departed": 30222,
+   "locks": [],
+   "lock_flags": [],
+   "releases": 0
+  },
+  "cl": {
+   "runs": 20,
+   "collisions": [
+    "th52_corridor:7:T",
+    "th52_corridor:13:T",
+    "th52_corridor:17:T"
+   ],
+   "counters": {
+    "n_handback_skips": 0,
+    "n_close_leader_withheld": 18,
+    "n_opposing_deferred": 0,
+    "n_opposing_vetoed": 0
+   },
+   "exits_given_up": 127,
+   "hard_brake": 8,
+   "departed": 29918,
+   "locks": [],
+   "lock_flags": [],
+   "releases": 0
+  },
+  "op": {
+   "runs": 20,
+   "collisions": [],
+   "counters": {
+    "n_handback_skips": 0,
+    "n_close_leader_withheld": 0,
+    "n_opposing_deferred": 2532,
+    "n_opposing_vetoed": 2314
+   },
+   "exits_given_up": 114,
+   "hard_brake": 0,
+   "departed": 30240,
+   "locks": [],
+   "lock_flags": [],
+   "releases": 0
+  }
+ },
+ "xt2": {
+  "ref": {
+   "runs": 20,
+   "collisions": [
+    "th52_corridor_demand:12:T"
+   ],
+   "counters": {
+    "n_handback_skips": 0,
+    "n_close_leader_withheld": 0,
+    "n_opposing_deferred": 0,
+    "n_opposing_vetoed": 0
+   },
+   "exits_given_up": 127,
+   "hard_brake": 2,
+   "departed": 32971,
+   "locks": [],
+   "lock_flags": [],
+   "releases": 0
+  },
+  "hb": {
+   "runs": 20,
+   "collisions": [],
+   "counters": {
+    "n_handback_skips": 374,
+    "n_close_leader_withheld": 0,
+    "n_opposing_deferred": 0,
+    "n_opposing_vetoed": 0
+   },
+   "exits_given_up": 142,
+   "hard_brake": 0,
+   "departed": 32805,
+   "locks": [],
+   "lock_flags": [],
+   "releases": 0
+  },
+  "cl": {
+   "runs": 20,
+   "collisions": [
+    "th52_corridor_demand:12:T"
+   ],
+   "counters": {
+    "n_handback_skips": 0,
+    "n_close_leader_withheld": 10,
+    "n_opposing_deferred": 0,
+    "n_opposing_vetoed": 0
+   },
+   "exits_given_up": 133,
+   "hard_brake": 2,
+   "departed": 33015,
+   "locks": [],
+   "lock_flags": [],
+   "releases": 0
+  },
+  "op": {
+   "runs": 20,
+   "collisions": [],
+   "counters": {
+    "n_handback_skips": 0,
+    "n_close_leader_withheld": 0,
+    "n_opposing_deferred": 2096,
+    "n_opposing_vetoed": 1948
+   },
+   "exits_given_up": 144,
+   "hard_brake": 0,
+   "departed": 32788,
+   "locks": [],
+   "lock_flags": [],
+   "releases": 0
+  }
+ },
+ "s3a": {
+  "ref": {
+   "runs": 60,
+   "collisions": [],
+   "counters": {
+    "n_handback_skips": 0,
+    "n_close_leader_withheld": 0,
+    "n_opposing_deferred": 0,
+    "n_opposing_vetoed": 0
+   },
+   "exits_given_up": 375,
+   "hard_brake": 17,
+   "departed": 69752,
+   "locks": [
+    "ruth_exit_fleet_271:15:lane0:entrant:971.5",
+    "ruth_exit_fleet_271:15:lane1:exiter:180.0",
+    "ruth_exit_fleet_271:15:lane1:exiter:555.5"
+   ],
+   "lock_flags": [
+    "ruth_exit_fleet_271:15"
+   ],
+   "releases": 0
+  },
+  "w1b": {
+   "runs": 60,
+   "collisions": [],
+   "counters": {
+    "n_handback_skips": 0,
+    "n_close_leader_withheld": 0,
+    "n_opposing_deferred": 0,
+    "n_opposing_vetoed": 0
+   },
+   "exits_given_up": 367,
+   "hard_brake": 16,
+   "departed": 70093,
+   "locks": [],
+   "lock_flags": [],
+   "releases": 5
+  },
+  "w1bw2": {
+   "runs": 60,
+   "collisions": [],
+   "counters": {
+    "n_handback_skips": 698,
+    "n_close_leader_withheld": 40,
+    "n_opposing_deferred": 244,
+    "n_opposing_vetoed": 244
+   },
+   "exits_given_up": 391,
+   "hard_brake": 9,
+   "departed": 70093,
+   "locks": [],
+   "lock_flags": [],
+   "releases": 4
+  },
+  "w1bw2_vs_w1b_departed_paired": [
+   0.0,
+   -0.07,
+   0.07
+  ]
+ },
+ "lockprobe_th52_upstream_fleet_s3": {
+  "ref": {
+   "departed": 1635,
+   "lock_flag": false,
+   "lowest_zone_minute_ms": 8.498853212468767,
+   "locks": [],
+   "n_unfinished": [
+    0
+   ],
+   "counters": {
+    "n_handback_skips": [
+     null
+    ],
+    "n_close_leader_withheld": [
+     null
+    ],
+    "n_opposing_deferred": [
+     null
+    ],
+    "n_opposing_vetoed": [
+     null
+    ]
+   },
+   "releases": [
+    null
+   ],
+   "collisions": 0,
+   "parquet_sha": {
+    "edges.parquet": "4cff20246807d3529c851a67fd2898d6e768fbf32efdc07f2fb8c9dec3c71c47",
+    "journeys.parquet": "3ba6e6b25c0a55357db0d59a64bdde0d66c399873ea2b8db7a1e74a12cec3177",
+    "trajectories.parquet": "b7d3378fc93be556f827929e0da85c7a9aadc2c33ef04e5a5b7f920f6feca01f",
+    "vehicles.parquet": "4593f4ce7aff33f8b57a443b5c1b90307032a614f7ee284ea19a4035f1444dbe"
+   }
+  },
+  "hb": {
+   "departed": 1619,
+   "lock_flag": false,
+   "lowest_zone_minute_ms": 9.089667224982248,
+   "locks": [],
+   "n_unfinished": [
+    0
+   ],
+   "counters": {
+    "n_handback_skips": [
+     10
+    ],
+    "n_close_leader_withheld": [
+     null
+    ],
+    "n_opposing_deferred": [
+     null
+    ],
+    "n_opposing_vetoed": [
+     null
+    ]
+   },
+   "releases": [
+    null
+   ],
+   "collisions": 0,
+   "parquet_sha": {
+    "edges.parquet": "9a8acea6badf08a4087f80707ef760e313b4f3a109138955481deeb125bd6eb4",
+    "journeys.parquet": "54100c06b2a291313b3eee78464dc577aa71a2a8bdc2f874f74d0dda99b2760d",
+    "trajectories.parquet": "91a3774dc3ab09507b5df203098b661863c832a94ebcbfc346cc60015b0003c6",
+    "vehicles.parquet": "cf8af0a70acb07ca641c77116e6b101738bfbec27d7e93ca93e027ee74a39c6b"
+   }
+  },
+  "cl": {
+   "departed": 1635,
+   "lock_flag": false,
+   "lowest_zone_minute_ms": 8.498853212468767,
+   "locks": [],
+   "n_unfinished": [
+    0
+   ],
+   "counters": {
+    "n_handback_skips": [
+     null
+    ],
+    "n_close_leader_withheld": [
+     0
+    ],
+    "n_opposing_deferred": [
+     null
+    ],
+    "n_opposing_vetoed": [
+     null
+    ]
+   },
+   "releases": [
+    null
+   ],
+   "collisions": 0,
+   "parquet_sha": {
+    "edges.parquet": "4cff20246807d3529c851a67fd2898d6e768fbf32efdc07f2fb8c9dec3c71c47",
+    "journeys.parquet": "3ba6e6b25c0a55357db0d59a64bdde0d66c399873ea2b8db7a1e74a12cec3177",
+    "trajectories.parquet": "b7d3378fc93be556f827929e0da85c7a9aadc2c33ef04e5a5b7f920f6feca01f",
+    "vehicles.parquet": "4593f4ce7aff33f8b57a443b5c1b90307032a614f7ee284ea19a4035f1444dbe"
+   }
+  },
+  "op": {
+   "departed": 1676,
+   "lock_flag": false,
+   "lowest_zone_minute_ms": 10.641544842133296,
+   "locks": [],
+   "n_unfinished": [
+    6
+   ],
+   "counters": {
+    "n_handback_skips": [
+     null
+    ],
+    "n_close_leader_withheld": [
+     null
+    ],
+    "n_opposing_deferred": [
+     58
+    ],
+    "n_opposing_vetoed": [
+     57
+    ]
+   },
+   "releases": [
+    null
+   ],
+   "collisions": 0,
+   "parquet_sha": {
+    "edges.parquet": "abe71fd62e017026c15f3e0fa6d5d2846f75953696602670f5770e561ba09fbb",
+    "journeys.parquet": "b56828907166723da8aaa0ff510714735d893f0e51d394d8f0defa930772d239",
+    "trajectories.parquet": "3077681ce3de000267b29acc4a8a57892e2aa7005ab5339ee2254373fdd8da98",
+    "vehicles.parquet": "3fd8427de6f834e91825ea25369e1c230be4ca77cb5f30022bffab82f82a96d2"
+   }
+  },
+  "w2": {
+   "departed": 1462,
+   "lock_flag": true,
+   "lowest_zone_minute_ms": 0.9865989858435854,
+   "locks": [
+    "lane0:entrant:727.0-1200.0",
+    "lane1:exiter:736.5-1200.0"
+   ],
+   "n_unfinished": [
+    30
+   ],
+   "counters": {
+    "n_handback_skips": [
+     16
+    ],
+    "n_close_leader_withheld": [
+     0
+    ],
+    "n_opposing_deferred": [
+     48
+    ],
+    "n_opposing_vetoed": [
+     45
+    ]
+   },
+   "releases": [
+    null
+   ],
+   "collisions": 0,
+   "parquet_sha": {
+    "edges.parquet": "4f8cd212d8e595330eaf53c226ffd0c363cc6bc6ece7913d1be1530fc3e9a82d",
+    "journeys.parquet": "f2ee7e1af2b13a8c78379e6331ce75f5be4b3e2aea851047b4e211c06d8c730d",
+    "trajectories.parquet": "52da6afb30120c6e9a85432458aec2d97b8ee654d91796708e1446179dcc9b92",
+    "vehicles.parquet": "dc04e8361885e08c3b4c48c57d3edc3bb5cd0e764b0605858d2a1cbb84ff2057"
+   }
+  },
+  "w1b": {
+   "departed": 1635,
+   "lock_flag": false,
+   "lowest_zone_minute_ms": 8.498853212468767,
+   "locks": [],
+   "n_unfinished": [
+    0
+   ],
+   "counters": {
+    "n_handback_skips": [
+     null
+    ],
+    "n_close_leader_withheld": [
+     null
+    ],
+    "n_opposing_deferred": [
+     null
+    ],
+    "n_opposing_vetoed": [
+     null
+    ]
+   },
+   "releases": [
+    0
+   ],
+   "collisions": 0,
+   "parquet_sha": {
+    "edges.parquet": "4cff20246807d3529c851a67fd2898d6e768fbf32efdc07f2fb8c9dec3c71c47",
+    "journeys.parquet": "3ba6e6b25c0a55357db0d59a64bdde0d66c399873ea2b8db7a1e74a12cec3177",
+    "trajectories.parquet": "b7d3378fc93be556f827929e0da85c7a9aadc2c33ef04e5a5b7f920f6feca01f",
+    "vehicles.parquet": "4593f4ce7aff33f8b57a443b5c1b90307032a614f7ee284ea19a4035f1444dbe"
+   }
+  },
+  "w1bw2": {
+   "departed": 1589,
+   "lock_flag": false,
+   "lowest_zone_minute_ms": 3.2575571643298864,
+   "locks": [],
+   "n_unfinished": [
+    4
+   ],
+   "counters": {
+    "n_handback_skips": [
+     17
+    ],
+    "n_close_leader_withheld": [
+     0
+    ],
+    "n_opposing_deferred": [
+     63
+    ],
+    "n_opposing_vetoed": [
+     60
+    ]
+   },
+   "releases": [
+    1
+   ],
+   "collisions": 0,
+   "parquet_sha": {
+    "edges.parquet": "23dc3c7f37be4d1a0a7d09454e85f0bfe7c54ef2150464adc016d214fea06743",
+    "journeys.parquet": "87ff40f71ac5b7d47b4bfc65fdf39ecc6a53cef4f6cb8d94af989eb644cb5287",
+    "trajectories.parquet": "4d7b5cdca20b32ba199096c2b3e67e4d6864e75e3f84189abf59cef4c6ed3c8a",
+    "vehicles.parquet": "6e64ac16715fa26ec72c5a445fedc5f0e99a4754983b86d9144749e6dd068b05"
+   }
+  }
+ }
+}

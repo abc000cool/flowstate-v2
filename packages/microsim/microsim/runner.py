@@ -2081,7 +2081,8 @@ def _weave_command(
     a_target: float,
     step_s: float,
     follower: bool = True,
-) -> None:
+    close_leader: bool = False,
+) -> bool:
     """Record a one-step speed target for a vehicle driven towards a virtual leader.
 
     ``a_target`` (the IDM acceleration towards the virtual leader) is clipped
@@ -2101,10 +2102,37 @@ def _weave_command(
     drop back, never to open a gap ahead by a speed target. ``follower`` marks a target-lane follower
     opening a gap (counted in ``n_cooperations``) as opposed to a changer
     dropping in behind its gap's leader (``n_changer_eased``).
+
+    A leader closer than the vehicle's ``minGap`` (``getLeader`` reports a
+    negative gap) is read as a free road unless ``close_leader`` (amendment
+    W2's ``weave_close_leader``, docs/I94_CAL_COLLISIONS.md §13; the AV
+    path's ``observe_close_leader``, WP-96): then it is a leader at bumper gap
+    ``max(reported gap + minGap, 0)`` (the IDM reads ``−inf`` at 0), so a
+    vehicle that must brake harder than ``b`` is given no target — under the
+    default ``speedMode`` a target caps its braking at ``decel`` (WP-95).
+
+    Returns:
+        True when the close-leader reading withheld a target that the
+        free-road reading would have recorded (counted in
+        ``n_close_leader_withheld``); always False without ``close_leader``.
     """
     a_cmd = max(a_target, -p["b"])
     lead = mod.vehicle.getLeader(vid, LEADER_LOOKAHEAD_M)
-    if lead is None or lead[0] == "" or lead[1] < 0.0:
+    withheld = False
+    if close_leader and lead is not None and lead[0] != "" and lead[1] < 0.0:
+        a_free = _idm_accel(v, v0, math.inf, 0.0, p["T"], p["a"], p["b"], p["s0"])
+        a_own = _idm_accel(
+            v,
+            v0,
+            max(float(lead[1]) + p["s0"], 0.0),
+            v - float(mod.vehicle.getSpeed(lead[0])),
+            p["T"],
+            p["a"],
+            p["b"],
+            p["s0"],
+        )
+        withheld = a_cmd < a_free and not a_cmd < a_own
+    elif lead is None or lead[0] == "" or lead[1] < 0.0:
         a_own = _idm_accel(v, v0, math.inf, 0.0, p["T"], p["a"], p["b"], p["s0"])
     else:
         a_own = _idm_accel(
@@ -2122,6 +2150,7 @@ def _weave_command(
         prev = coop.get(vid)
         if prev is None or v_new < prev[0]:
             coop[vid] = (v_new, a_cmd, follower if prev is None else prev[2] or follower)
+    return withheld
 
 
 def _weave_easing_ok(
@@ -2526,8 +2555,14 @@ def _weave_cooperate(
         priority,
     )
     step_s = float(ws["step_s"])
+    # amendment W2 (weave_close_leader, off unless set): a leader inside minGap
+    # is a leader, not a free road, in the targets' own-acceleration estimate
+    close = _weave_switch(prm, "weave_close_leader")
     if f_t is not None:
-        _weave_command(mod, coop, f_t, v_of[f_t], v0_of[f_t], p_of[f_t], a_f, step_s)
+        if _weave_command(
+            mod, coop, f_t, v_of[f_t], v0_of[f_t], p_of[f_t], a_f, step_s, close_leader=close
+        ):
+            ws["n_close_leader_withheld"] += 1
     if l_t is not None and a_c < 0.0:
         s_l = x_of[l_t] - p_of[l_t]["len"] - x_of[vid]
         # sixth derivation: on the ramp, a gap leader whose rear is behind the
@@ -2536,7 +2571,10 @@ def _weave_cooperate(
         if not beside and _weave_easing_ok(
             v_c, v_of[l_t], s_l, p_c["s0"] + accept_s * v_c, remaining_m, p_c["b"]
         ):
-            _weave_command(mod, coop, vid, v_c, v0_c, p_c, a_c, step_s, follower=False)
+            if _weave_command(
+                mod, coop, vid, v_c, v0_c, p_c, a_c, step_s, follower=False, close_leader=close
+            ):
+                ws["n_close_leader_withheld"] += 1
     return f_t
 
 
@@ -2595,6 +2633,37 @@ def _weave_short_section_rule(length_m: float, prm: dict[str, float]) -> dict[st
         "zone_m": zone,
         "force_after_s": float(prm["force_after_s"]),
     }
+
+
+def _weave_switch(prm: Mapping[str, float], key: str) -> bool:
+    """Whether a weave switch of amendment W2 is on (docs/I94_CAL_COLLISIONS.md §13).
+
+    ``weave_handback``, ``weave_close_leader``, ``weave_resolve_opposing``
+    (``flowstate_core.config.WEAVE_W2_SWITCHES``): keys with no default, ``1``
+    on, ``0`` or unset off (the schema refuses any other value).
+    """
+    return bool(prm.get(key, 0.0))
+
+
+def _weave_handback_needed(mod: Any, ws: dict[str, Any], vid: str, v: float, step_s: float) -> bool:
+    """Amendment W2's ``weave_handback``: whether a weave speed target must be withheld this step.
+
+    :func:`_handback_needed` (the AV path's ``emergency_handback`` test,
+    WP-95) with the vehicle's :func:`_command_decel` under the run's fleet
+    model (``ws["cf_model"]``; ``decel`` for EIDM), cached per vehicle in
+    ``ws["hb_decel"]``: the vehicle's own model must brake behind its real
+    leader harder than a commanded vehicle can, so a one-step target would
+    cap its braking at that bound.
+    """
+    cache: dict[str, float] = ws["hb_decel"]
+    b_cmd = cache.get(vid)
+    if b_cmd is None:
+        b_cmd = cache[vid] = _command_decel(
+            str(ws["cf_model"]),
+            float(mod.vehicle.getDecel(vid)),
+            float(mod.vehicle.getEmergencyDecel(vid)),
+        )
+    return _handback_needed(mod, vid, v, b_cmd, step_s)
 
 
 def _weave_entrant_giveup_m(prm: Mapping[str, float]) -> float | None:
@@ -2773,6 +2842,22 @@ def _weave_step(
     (docs/I94_COLLAPSE_DIAGNOSIS.md); the section test's ordinary stands, all
     self-clearing, at most 50.5 s. Unset, nothing of it runs.
 
+    **The collision guards** (2026-10-07, amendment W2 of
+    docs/I94_CAL_COLLISIONS.md §13; three switches of ``WEAVE_OPTIONAL_KEYS``,
+    unset = off, nothing of them runs). ``weave_handback``: a one-step target
+    is withheld in any step where the vehicle's own model must brake harder
+    than a commanded vehicle can (:func:`_weave_handback_needed`; a target
+    caps braking at ``decel``, WP-95), counted in ``n_handback_skips``.
+    ``weave_close_leader``: :func:`_weave_command` reads a leader inside
+    ``minGap`` as a leader (``n_close_leader_withheld``). ``weave_resolve_opposing``:
+    the step's change requests are collected and, before they execute,
+    resolved with :func:`merge_model.resolve_opposing` as the measured model
+    does — two entries into one lane from both sides in one step, the loser
+    waiting a step (a request withheld, or an undriven vehicle's model
+    change vetoed for the step and restored by :func:`_weave_opposing_restore`
+    at the start of the next), counted in ``n_opposing_deferred`` (both) and
+    ``n_opposing_vetoed``.
+
     **The exiters' early move** (2026-09-24, block 3, WP-62;
     :func:`_weave_exit_prepare_step`, ``exit_prepare``, off by default).
     The vacate rule's mirror: a vehicle bound for the paired exit in a lane
@@ -2849,6 +2934,17 @@ def _weave_step(
     # amendment W1b (its dwell; None = W1 gives up at once)
     entrant_dwell_s = _weave_entrant_giveup_dwell_s(prm) if entrant_giveup_m is not None else None
     took_exit: Collection[str] = ws.get("took_exit", ())
+    # amendment W2's switches (docs/I94_CAL_COLLISIONS.md §13; off unless set)
+    handback = _weave_switch(prm, "weave_handback")
+    resolve = _weave_switch(prm, "weave_resolve_opposing")
+    if resolve and ws["opp_veto"]:
+        # the model changes vetoed last step get their mode back before
+        # anything of this step reads a mode
+        _weave_opposing_restore(mod, ws, results)
+    # with weave_resolve_opposing, this step's change requests and their
+    # (target lane, kind), executed after the loop once resolved
+    requests: dict[str, merge_model.ChangeRequest] = {}
+    req_exec: dict[str, tuple[int, str]] = {}
     pending: dict[str, int] = {}
     # entering vehicles still on the ramp within lookahead_m of the section:
     # gap choice and cooperation only (see the docstring, anticipation)
@@ -3136,7 +3232,22 @@ def _weave_step(
             d < 0 and zone_due,
         )
         # --- execution -----------------------------------------------------
-        if accepted or (force and forced_ok):
+        if (accepted or (force and forced_ok)) and resolve:
+            # amendment W2: collected, resolved against opposing entries after
+            # the loop, then executed (or withheld for a step)
+            requests[vid] = merge_model.ChangeRequest(
+                vid=vid,
+                x=x_of[vid],
+                lane=lane,
+                target=lane + d,
+                due=force,
+                accept_s=accept,
+                v=v_ego,
+                s0=st["s0"],
+                b=b_c,
+            )
+            req_exec[vid] = (lane + d, "acc" if accepted else "force")
+        elif accepted or (force and forced_ok):
             # accepted: executed under mode 256 for one step (the follower
             # yields; SUMO still refuses an immediate collision). A forced
             # request lives one step only, so it is executed under the gaps
@@ -3150,6 +3261,8 @@ def _weave_step(
         else:
             # no request this step: never leave a one-step forced mode standing
             _weave_set_mode(mod, vid, st, LC_MODE_SCRIPTED_SAFE)
+    if requests:
+        _weave_resolve_and_execute(mod, tc, ws, results, lanes, v_of, requests, req_exec, t)
     # entering vehicles still on the ramp: their gap is chosen and its
     # follower cooperates before they appear on lane 0
     pre: dict[str, str | None] = ws["pre"]
@@ -3181,12 +3294,86 @@ def _weave_step(
         coop.pop(vid, None)
     for fid in sorted(coop):
         v_new, a_cmd, follower = coop[fid]
+        if handback and _weave_handback_needed(
+            mod, ws, fid, float(results[fid][tc.VAR_SPEED]), step_s
+        ):
+            # amendment W2: its own model must brake harder than a target
+            # lets it this step; the target is withheld, not capped
+            ws["n_handback_skips"] += 1
+            continue
         mod.vehicle.slowDown(fid, v_new, 0.0)
         if follower:
             ws["n_cooperations"] += 1
             ws["coop_decel_sum"] += -a_cmd
         else:
             ws["n_changer_eased"] += 1
+
+
+def _weave_resolve_and_execute(
+    mod: Any,
+    tc: Any,
+    ws: dict[str, Any],
+    results: Any,
+    lanes: dict[int, list[tuple[float, str]]],
+    v_of: dict[str, float],
+    requests: dict[str, merge_model.ChangeRequest],
+    req_exec: dict[str, tuple[int, str]],
+    t: float,
+) -> None:
+    """Amendment W2's ``weave_resolve_opposing``: resolve a step's weave changes, then execute them.
+
+    :func:`merge_model.resolve_opposing`, unchanged (the measured model's
+    always-on rule, WP-92), on the step's requests and the section's lane
+    listings of the pre-step state (``lanes``, front-bumper ``x``; lengths
+    from :func:`_weave_veh`). An opponent that is not itself requesting is
+    ``open`` when it is driven, asked last step into a lane it has not
+    reached yet (that request may still execute this step, B§5.6); ``driven``
+    when driven otherwise (its model bits are cleared, it cannot change);
+    ``model`` when undriven with model bits (vetoable for one step); ``held``
+    when undriven without (its change cannot be read: the request waits).
+    A withheld request is left under ``LC_MODE_SCRIPTED_SAFE`` with no new
+    request; a vetoed vehicle's model bits are cleared for the step and its
+    mode recorded in ``ws["opp_veto"]`` for :func:`_weave_opposing_restore`.
+    Each executed request is recorded (``opp_req``: time, target lane) for the
+    ``open`` reading of the next step.
+    """
+    veh: dict[str, dict[str, Any]] = ws["veh"]
+    lane_map: dict[tuple[str, int], int] = ws["lane_map"]
+    step_s = float(ws["step_s"])
+
+    def state_of(pid: str) -> merge_model.OpponentState:
+        st_p = veh.get(pid)
+        if st_p is not None:
+            req = st_p.get("opp_req")
+            res_p = results.get(pid)
+            if req is not None and res_p is not None and req[0] >= t - step_s - _WEAVE_DWELL_EPS_S:
+                k_p = lane_map.get((res_p[tc.VAR_ROAD_ID], int(res_p[tc.VAR_LANE_INDEX])))
+                if k_p is not None and k_p != req[1]:
+                    return "open"
+            return "driven"
+        mode = int(mod.vehicle.getLaneChangeMode(pid))
+        return "model" if mode & LC_MODE_MODEL_BITS else "held"
+
+    opp = {
+        k: [merge_model.LaneVehicle(o, x, _weave_veh(mod, ws, o)["len"], v_of[o]) for x, o in lst]
+        for k, lst in lanes.items()
+    }
+    withheld, vetoed = merge_model.resolve_opposing(list(requests.values()), opp, state_of)
+    for vid in sorted(requests):
+        st = veh[vid]
+        target, kind = req_exec[vid]
+        if vid in withheld:
+            _weave_set_mode(mod, vid, st, LC_MODE_SCRIPTED_SAFE)
+            ws["n_opposing_deferred"] += 1
+            continue
+        _weave_exec_change(mod, vid, st, target, step_s, t, kind)
+        st["opp_req"] = (t, target)
+    for pid in sorted(vetoed):
+        mode = int(mod.vehicle.getLaneChangeMode(pid))
+        mod.vehicle.setLaneChangeMode(pid, mode & ~LC_MODE_MODEL_BITS)
+        ws["opp_veto"][pid] = mode
+        ws["n_opposing_deferred"] += 1
+        ws["n_opposing_vetoed"] += 1
 
 
 def _weave_meta(ws: dict[str, Any], n_departed_by_route: dict[str, int]) -> dict[str, Any]:
@@ -3223,7 +3410,15 @@ def _weave_meta(ws: dict[str, Any], n_departed_by_route: dict[str, int]) -> dict
     lane's end, halted still owing their change with no more than
     ``entrant_giveup_m`` of section ahead (with ``entrant_giveup_dwell_s``,
     amendment W1b, only after standing there that long) — also a subset of
-    ``n_missed``;
+    ``n_missed``; amendment W2's counters (docs/I94_CAL_COLLISIONS.md §13),
+    each written only while its switch is on, right after it:
+    ``n_handback_skips`` (``weave_handback``: vehicle-steps on which a speed
+    target was withheld because the vehicle's own model had to brake harder),
+    ``n_close_leader_withheld`` (``weave_close_leader``: target requests the
+    free-road reading of a leader inside ``minGap`` would have recorded),
+    ``n_opposing_deferred`` and ``n_opposing_vetoed``
+    (``weave_resolve_opposing``: requests withheld plus model changes vetoed
+    for opposing entries, and the vetoes alone);
     ``n_exit_prepared`` (WP-62, the exiters' early
     move) the vehicles bound for the paired exit that the rule asked, inside
     the vacate window, into the lane feeding section lane 1 and that were
@@ -3279,6 +3474,25 @@ def _weave_meta(ws: dict[str, Any], n_departed_by_route: dict[str, int]) -> dict
         **(
             {"n_entrant_took_exit": ws["n_entrant_took_exit"]}
             if _weave_entrant_giveup_m(ws["params"]) is not None
+            else {}
+        ),
+        # amendment W2's counters: each absent while its switch is off
+        **(
+            {"n_handback_skips": ws["n_handback_skips"]}
+            if _weave_switch(ws["params"], "weave_handback")
+            else {}
+        ),
+        **(
+            {"n_close_leader_withheld": ws["n_close_leader_withheld"]}
+            if _weave_switch(ws["params"], "weave_close_leader")
+            else {}
+        ),
+        **(
+            {
+                "n_opposing_deferred": ws["n_opposing_deferred"],
+                "n_opposing_vetoed": ws["n_opposing_vetoed"],
+            }
+            if _weave_switch(ws["params"], "weave_resolve_opposing")
             else {}
         ),
         "n_exit_prepared": ws["n_exit_prepared"],
@@ -6723,6 +6937,17 @@ def run_micro(
                     "took_exit": set(),
                     "n_entrant_took_exit": 0,
                     "exit_target": exit_w.edges[-1],
+                    # amendment W2 (three switches, off unless set): the fleet
+                    # model and the commanded-braking bound per vehicle of the
+                    # handback, the vetoes of the opposing resolution to
+                    # restore, and the counters (meta only while on)
+                    "cf_model": cfg.fleet.model,
+                    "hb_decel": {},
+                    "opp_veto": {},
+                    "n_handback_skips": 0,
+                    "n_close_leader_withheld": 0,
+                    "n_opposing_deferred": 0,
+                    "n_opposing_vetoed": 0,
                     "n_forced_deferred": 0,
                     "n_cooperations": 0,
                     "coop_decel_sum": 0.0,

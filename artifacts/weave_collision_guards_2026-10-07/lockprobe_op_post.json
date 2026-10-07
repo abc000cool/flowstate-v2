@@ -1,0 +1,42 @@
+[
+ {
+  "dir": "/private/tmp/claude-501/-Users-anshpathak-Desktop-apps-flowstate/b1e30512-d596-4228-ba4a-2c84632c93b4/scratchpad/w2/lk_op/th52_upstream_fleet_weave/a5ec5b67a15f/3",
+  "fixture": "th52_upstream_fleet",
+  "seed": 3,
+  "config_hash": "a5ec5b67a15f",
+  "n_collisions": 0,
+  "departed": 1676,
+  "hard_brake": 0,
+  "parquet_sha": {
+   "edges.parquet": "abe71fd62e017026c15f3e0fa6d5d2846f75953696602670f5770e561ba09fbb",
+   "journeys.parquet": "b56828907166723da8aaa0ff510714735d893f0e51d394d8f0defa930772d239",
+   "trajectories.parquet": "3077681ce3de000267b29acc4a8a57892e2aa7005ab5339ee2254373fdd8da98",
+   "vehicles.parquet": "3fd8427de6f834e91825ea25369e1c230be4ca77cb5f30022bffab82f82a96d2"
+  },
+  "meta_digest": "2a197f1fc8cb07b1b64feae4b8ba89b82b9ac4959444053a3d04abaca3947be3",
+  "sections": [
+   {
+    "ramp": "th52",
+    "exit": "cd exit",
+    "edges": [
+     "102"
+    ],
+    "x0": 914.6800000000001,
+    "gore": 1223.02,
+    "n_entered": 377,
+    "n_missed_exit": 1,
+    "n_unfinished": 6,
+    "n_entrant_took_exit": null,
+    "n_cooperations": 13310,
+    "n_changer_eased": 2604,
+    "n_handback_skips": null,
+    "n_close_leader_withheld": null,
+    "n_opposing_deferred": 58,
+    "n_opposing_vetoed": 57,
+    "locks": [],
+    "longest_front_stand_s": 5.0
+   }
+  ],
+  "collisions": []
+ }
+]

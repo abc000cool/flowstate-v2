@@ -51,8 +51,11 @@ Subcommands:
 ``--model weave`` only): the key is set in the ``weave_params`` of every weave
 block of every run, e.g. ``--weave-set entrant_giveup_m=5`` for amendment W1
 (docs/WEAVE_LOSS_DIAGNOSIS.md §6.2), or ``--weave-set entrant_giveup_m=5
---weave-set entrant_giveup_dwell_s=60`` for W1b (§10). The runs' config hashes
-then differ from the committed fixtures'; nothing committed is changed.
+--weave-set entrant_giveup_dwell_s=60`` for W1b (§10), or the three switches
+``weave_handback``, ``weave_close_leader``, ``weave_resolve_opposing`` at 1 for
+amendment W2 (docs/I94_CAL_COLLISIONS.md §13; ``grid`` zone rows then carry
+their counters). The runs' config hashes then differ from the committed
+fixtures'; nothing committed is changed.
 
 ``grid`` also takes ``--fleet-from`` (every fixture's fleet replaced by a
 scenario's, as ``th52 --fleet-from``; a fixture and its ``_fleet`` twin then
@@ -385,6 +388,9 @@ def run_summary(paths: Any, wall_s: float) -> dict[str, Any]:
                     "n_missed",
                     "n_missed_exit",
                     "n_entrant_took_exit",
+                    "n_handback_skips",
+                    "n_close_leader_withheld",
+                    "n_opposing_vetoed",
                     "n_reached_section_exiting",
                     "n_unfinished",
                     "n_pair_releases",

@@ -7,6 +7,7 @@ import json
 import math
 from collections import deque
 from pathlib import Path
+from typing import ClassVar
 
 import pandas as pd
 import pytest
@@ -2211,6 +2212,15 @@ def _weave_state(**params) -> dict:
         "took_exit": set(),
         "n_entrant_took_exit": 0,
         "exit_target": "x2",
+        # amendment W2 (three switches, off unless set): the handback's fleet
+        # model and per-vehicle bound, the opposing resolution's vetoes, counters
+        "cf_model": "EIDM",
+        "hb_decel": {},
+        "opp_veto": {},
+        "n_handback_skips": 0,
+        "n_close_leader_withheld": 0,
+        "n_opposing_deferred": 0,
+        "n_opposing_vetoed": 0,
         "n_forced_deferred": 0,
         "n_cooperations": 0,
         "coop_decel_sum": 0.0,
@@ -3501,7 +3511,7 @@ class TestWeaveEntrantGiveupDwell:
         without the give-up distance refused; it changes the config hash."""
         from flowstate_core.config import WEAVE_KEYS, WEAVE_OPTIONAL_KEYS, WeaveSpec
 
-        assert {"entrant_giveup_m", "entrant_giveup_dwell_s"} == WEAVE_OPTIONAL_KEYS
+        assert {"entrant_giveup_m", "entrant_giveup_dwell_s"} <= WEAVE_OPTIONAL_KEYS
         assert WEAVE_OPTIONAL_KEYS <= WEAVE_KEYS
         assert "entrant_giveup_dwell_s" not in WEAVE_DEFAULTS
         both = {"entrant_giveup_m": 5.0, "entrant_giveup_dwell_s": 60.0}
@@ -3568,6 +3578,317 @@ class TestWeaveEntrantGiveupDwell:
                 }
             )
         assert digests[0] == digests[1]
+
+
+class _GuardVehicle(_WeaveVehicle):
+    """The fake vehicle module with the reads amendment W2's handback makes:
+    ``getEmergencyDecel`` and a scripted ``getFollowSpeed`` (default: the
+    vehicle's own speed, i.e. no braking needed)."""
+
+    def __init__(self, speeds: dict[str, float], neighbors: dict | None = None) -> None:
+        super().__init__(speeds, neighbors)
+        self.follow: dict[str, float] = {}
+
+    def getEmergencyDecel(self, vid):
+        return 9.0
+
+    def getFollowSpeed(self, vid, speed, gap, leader_speed, leader_decel, leader=""):
+        self.calls.append(("follow", vid, gap))
+        return self.follow.get(vid, speed)
+
+
+class TestWeaveCollisionGuards:
+    """Amendment W2 (docs/I94_CAL_COLLISIONS.md §13; ``weave_handback``,
+    ``weave_close_leader``, ``weave_resolve_opposing``: switches with no
+    default, unset = off): the weave's command path gets the AV path's two
+    fixes (WP-95, WP-96) and the measured model's opposing-entry resolution
+    (WP-92)."""
+
+    W2: ClassVar[dict[str, float]] = {
+        "weave_handback": 1.0,
+        "weave_close_leader": 1.0,
+        "weave_resolve_opposing": 1.0,
+    }
+
+    @staticmethod
+    def _cooperating(**params):
+        """Entrant ``n`` on lane 0 with through vehicle ``f`` 5 m behind its
+        rear on lane 1 (as ``test_through_follower_cooperates_by_a_one_step_speed_target``):
+        f is the follower of n's gap and gets a one-step target at -b; f's
+        own leader ``g`` is 40 m ahead at its speed, so the runner's IDM
+        estimate of f's own acceleration is mild and the target is recorded."""
+        from microsim.runner import NEIGHBOR_LEFT_FOLLOWERS
+
+        ws = _weave_state(**params)
+        veh = _GuardVehicle(
+            {"n": 15.0, "f": 15.0, "g": 15.0}, {("n", NEIGHBOR_LEFT_FOLLOWERS): (("f", 4.0),)}
+        )
+        veh.leaders["f"] = ("g", 40.0)
+        mod = _WeaveMod(veh)
+        res = {"n": _res("a", 0, 50.0, 15.0), "f": _res("a", 1, 40.0, 15.0)}
+        return ws, veh, mod, res
+
+    def test_handback_withholds_a_target_the_model_must_brake_through(self):
+        """f's own model must brake to 10 m/s behind its leader this step,
+        below the 15 - 1.67 * 0.5 = 14.165 m/s a target can reach: with the
+        switch the target is withheld (no ``slowDown``, counted in
+        ``n_handback_skips``, not in ``n_cooperations``); unset, it is issued
+        and nothing is asked of the model."""
+        from microsim.runner import _weave_meta, _weave_step
+
+        ws, veh, mod, res = self._cooperating(weave_handback=1.0)
+        veh.follow["f"] = 10.0
+        _weave_step(mod, _tc, ws, res, 0.0)
+        assert not [c for c in veh.calls if c[0] == "slow"]
+        assert ("follow", "f", 40.0) in veh.calls
+        assert ws["n_handback_skips"] == 1 and ws["n_cooperations"] == 0
+        assert ws["hb_decel"] == {"f": 1.67}  # EIDM: decel
+        assert _weave_meta(ws, {"on0": 1})["n_handback_skips"] == 1
+        ws, veh, mod, res = self._cooperating()
+        veh.follow["f"] = 10.0
+        _weave_step(mod, _tc, ws, res, 0.0)
+        assert [c[:2] for c in veh.calls if c[0] == "slow"] == [("slow", "f")]
+        assert not [c for c in veh.calls if c[0] == "follow"]
+        assert ws["n_handback_skips"] == 0 and ws["n_cooperations"] == 1
+        assert "n_handback_skips" not in _weave_meta(ws, {"on0": 1})
+
+    def test_handback_keeps_a_target_the_model_can_follow_within_b(self):
+        """The model's follow speed at or above what the target can reach (and a
+        vehicle with no leader): the target is issued as without the switch."""
+        from microsim.runner import _weave_step
+
+        ws, veh, mod, res = self._cooperating(weave_handback=1.0)
+        veh.follow["f"] = 15.0 - 1.67 * 0.5
+        _weave_step(mod, _tc, ws, res, 0.0)
+        assert [c[:2] for c in veh.calls if c[0] == "slow"] == [("slow", "f")]
+        assert ws["n_handback_skips"] == 0 and ws["n_cooperations"] == 1
+        ws, veh, mod, res = self._cooperating(weave_handback=1.0)
+        del veh.leaders["f"]
+        _weave_step(mod, _tc, ws, res, 0.0)
+        assert [c[:2] for c in veh.calls if c[0] == "slow"] == [("slow", "f")]
+        assert ws["n_handback_skips"] == 0
+
+    def test_handback_bound_is_the_command_decel_of_the_fleet_model(self):
+        """Under SUMO's IDM a commanded vehicle brakes at max(decel, min(emergencyDecel, 1.5))
+        (``_command_decel``): 1.67 here either way; the bound is cached per vehicle."""
+        from microsim.runner import _weave_handback_needed
+
+        ws = _weave_state(weave_handback=1.0)
+        ws["cf_model"] = "IDM"
+        veh = _GuardVehicle({"f": 15.0, "g": 15.0})
+        veh.leaders["f"] = ("g", 40.0)
+        mod = _WeaveMod(veh)
+        veh.follow["f"] = 15.0 - 1.67 * 0.5 - 0.01
+        assert _weave_handback_needed(mod, ws, "f", 15.0, 0.5)
+        veh.follow["f"] = 15.0 - 1.67 * 0.5
+        assert not _weave_handback_needed(mod, ws, "f", 15.0, 0.5)
+        assert ws["hb_decel"] == {"f": 1.67}
+
+    def test_close_leader_is_a_leader_not_a_free_road(self):
+        """A leader 0.5 m inside f's minGap (reported gap -0.5): read as a free
+        road, the -b target is recorded and caps f's braking; read as a leader
+        at bumper gap 1.5 m, f's own IDM brakes far beyond b and nothing is
+        recorded (returned True: the reading withheld it). Overlapping
+        (bumper gap <= 0): IDM -inf, nothing recorded. A leader at or beyond
+        minGap reads as before."""
+        from microsim.runner import _weave_command
+
+        p = {"len": 5.0, "T": 1.4, "a": 0.73, "b": 1.67, "s0": 2.0, "vmax": 33.3}
+        veh = _WeaveVehicle({"f": 2.0, "g": 0.0})
+        veh.leaders["f"] = ("g", -0.5)
+        mod = _WeaveMod(veh)
+        coop: dict = {}
+        assert _weave_command(mod, coop, "f", 2.0, 30.0, p, -5.0, 0.5) is False
+        assert coop == {"f": (pytest.approx(2.0 - 1.67 * 0.5), -1.67, True)}
+        coop = {}
+        assert _weave_command(mod, coop, "f", 2.0, 30.0, p, -5.0, 0.5, close_leader=True) is True
+        assert coop == {}
+        veh.leaders["f"] = ("g", -2.5)  # bumper gap max(-0.5, 0) = 0
+        assert _weave_command(mod, coop, "f", 2.0, 30.0, p, -5.0, 0.5, close_leader=True) is True
+        assert coop == {}
+        veh.leaders["f"] = ("g", 40.0)
+        veh.speeds["g"] = 2.0
+        for close in (False, True):
+            coop = {}
+            assert (
+                _weave_command(mod, coop, "f", 2.0, 30.0, p, -5.0, 0.5, close_leader=close) is False
+            )
+            assert coop == {"f": (pytest.approx(2.0 - 1.67 * 0.5), -1.67, True)}
+
+    def test_close_leader_through_the_step_is_counted(self):
+        """In a weave step: f's leader inside its minGap withholds the
+        cooperation target and counts ``n_close_leader_withheld``; unset, the
+        target is issued (the free-road reading) and nothing is written."""
+        from microsim.runner import _weave_meta, _weave_step
+
+        for params, n_slow, n_withheld in (({"weave_close_leader": 1.0}, 0, 1), ({}, 1, 0)):
+            ws, veh, mod, res = self._cooperating(**params)
+            veh.leaders["f"] = ("g", -0.5)
+            veh.speeds["g"] = 10.0
+            _weave_step(mod, _tc, ws, res, 0.0)
+            assert len([c for c in veh.calls if c[0] == "slow"]) == n_slow, params
+            assert ws["n_close_leader_withheld"] == n_withheld, params
+            meta = _weave_meta(ws, {"on0": 1})
+            assert ("n_close_leader_withheld" in meta) is bool(params)
+
+    @staticmethod
+    def _opposing(p_driven: bool, **params):
+        """Exiter ``e`` on lane 2 at 55 m and, ahead of it at 60 m on lane 0,
+        either the entrant ``n`` (driven; ``p_driven``) or ``p``, an undriven
+        vehicle bound for the exit (already on lane 0, so not driven), both at
+        10 m/s with lane 1 empty: both ask into lane 1 in the same step, and
+        the one behind lands within one vehicle length of the one ahead."""
+        ws = _weave_state(**params)
+        front = "n" if p_driven else "p"
+        if not p_driven:
+            ws["exiting_ids"] = frozenset({"e", "p"})
+        veh = _GuardVehicle({"e": 10.0, front: 10.0})
+        mod = _WeaveMod(veh)
+        res = {"e": _res("a", 2, 55.0, 10.0), front: _res("a", 0, 60.0, 10.0)}
+        return ws, veh, mod, res
+
+    def test_opposing_runner_requests_the_rear_one_waits(self):
+        """Entrant n (ahead, 0 -> 1) and exiter e (behind, 2 -> 1) both
+        accepted in one step: with the switch only n's change is requested; e
+        is withheld under mode 512 (``n_opposing_deferred``) and requests
+        again next step; unset, both are requested in the same step."""
+        from microsim.runner import LC_MODE_SCRIPTED_SAFE, _weave_meta, _weave_step
+
+        ws, veh, mod, res = self._opposing(True, weave_resolve_opposing=1.0)
+        _weave_step(mod, _tc, ws, res, 0.0)
+        changes = [c for c in veh.calls if c[0] == "change"]
+        assert changes == [("change", "n", 1, 0.5)]
+        assert veh.lc_modes["e"] == LC_MODE_SCRIPTED_SAFE
+        assert ws["n_opposing_deferred"] == 1 and ws["n_opposing_vetoed"] == 0
+        assert ws["veh"]["n"]["opp_req"] == (0.0, 1) and "opp_req" not in ws["veh"]["e"]
+        meta = _weave_meta(ws, {"on0": 1})
+        assert meta["n_opposing_deferred"] == 1 and meta["n_opposing_vetoed"] == 0
+        # next step n has changed (lane 1): e's change goes
+        veh.calls.clear()
+        res = {"e": _res("a", 2, 60.0, 10.0), "n": _res("a", 1, 65.0, 10.0)}
+        _weave_step(mod, _tc, ws, res, 0.5)
+        assert [c for c in veh.calls if c[0] == "change"] == [("change", "e", 1, 0.5)]
+        ws, veh, mod, res = self._opposing(True)
+        _weave_step(mod, _tc, ws, res, 0.0)
+        assert sorted(c for c in veh.calls if c[0] == "change") == [
+            ("change", "e", 1, 0.5),
+            ("change", "n", 1, 0.5),
+        ]
+        assert "n_opposing_deferred" not in _weave_meta(ws, {"on0": 1})
+
+    def test_a_due_forced_change_goes_first(self):
+        """The rear exiter's forced change is due (in the forced zone for
+        ``force_after_s`` = 4 s; it was blocked until then by a vehicle beside
+        it) and the front entrant has just arrived in the zone: the exiter has
+        priority, the entrant waits a step."""
+        from microsim.runner import NEIGHBOR_RIGHT_LEADERS, _weave_step
+
+        ws, veh, mod, _ = self._opposing(True, weave_resolve_opposing=1.0)
+        veh.neighbors[("e", NEIGHBOR_RIGHT_LEADERS)] = (("q", 0.5),)
+        veh.speeds["q"] = 10.0
+        _weave_step(mod, _tc, ws, {"e": _res("b", 2, 55.0, 10.0)}, 0.0)
+        assert ws["veh"]["e"]["zone_s"] == 0.0
+        assert not [c for c in veh.calls if c[0] == "change"]
+        del veh.neighbors[("e", NEIGHBOR_RIGHT_LEADERS)]
+        res = {"e": _res("b", 2, 55.0, 10.0), "n": _res("b", 0, 60.0, 10.0)}
+        _weave_step(mod, _tc, ws, res, 4.0)
+        assert ws["veh"]["n"]["zone_s"] == 4.0
+        assert [c for c in veh.calls if c[0] == "change"] == [("change", "e", 1, 0.5)]
+        assert ws["n_opposing_deferred"] == 1
+
+    def test_an_undriven_model_change_is_vetoed_for_one_step(self):
+        """The vehicle ahead on lane 0 is not driven (its model may change it):
+        its model bits are cleared for the step (``n_opposing_vetoed``), the
+        exiter's change goes, and at the start of the next step the vehicle
+        gets its mode back."""
+        from microsim.runner import LC_MODE_MODEL_BITS, _weave_step
+
+        ws, veh, mod, res = self._opposing(False, weave_resolve_opposing=1.0)
+        _weave_step(mod, _tc, ws, res, 0.0)
+        assert [c for c in veh.calls if c[0] == "change"] == [("change", "e", 1, 0.5)]
+        assert veh.lc_modes["p"] == 1621 & ~LC_MODE_MODEL_BITS
+        assert ws["opp_veto"] == {"p": 1621}
+        assert ws["n_opposing_deferred"] == 1 and ws["n_opposing_vetoed"] == 1
+        res = {"e": _res("a", 1, 60.0, 10.0), "p": _res("a", 0, 65.0, 10.0)}
+        _weave_step(mod, _tc, ws, res, 0.5)
+        assert veh.lc_modes["p"] == 1621 and ws["opp_veto"] == {}
+
+    def test_a_request_still_open_from_last_step_wins(self):
+        """n asked into lane 1 last step and is still on lane 0 (its request
+        may execute this step) but cannot ask again (a leader beside it): it
+        is ``open``, so the exiter behind it waits."""
+        from microsim.runner import NEIGHBOR_LEFT_LEADERS, _weave_step
+
+        ws, veh, mod, res = self._opposing(True, weave_resolve_opposing=1.0)
+        res = {"n": _res("a", 0, 60.0, 10.0)}
+        _weave_step(mod, _tc, ws, res, 0.0)
+        assert ws["veh"]["n"]["opp_req"] == (0.0, 1)
+        veh.calls.clear()
+        veh.neighbors[("n", NEIGHBOR_LEFT_LEADERS)] = (("q", 0.5),)
+        veh.speeds["q"] = 10.0
+        res = {"e": _res("a", 2, 55.0, 10.0), "n": _res("a", 0, 60.0, 10.0)}
+        _weave_step(mod, _tc, ws, res, 0.5)
+        assert not [c for c in veh.calls if c[0] == "change"]
+        assert ws["n_opposing_deferred"] == 1
+
+    def test_schema(self):
+        """Three switches with no default: 0 or 1 accepted, anything else
+        refused; absent from ``WEAVE_DEFAULTS``; setting one changes the hash."""
+        from flowstate_core.config import (
+            WEAVE_KEYS,
+            WEAVE_OPTIONAL_KEYS,
+            WEAVE_W2_SWITCHES,
+            WeaveSpec,
+        )
+
+        assert set(self.W2) == WEAVE_W2_SWITCHES
+        assert WEAVE_W2_SWITCHES <= WEAVE_OPTIONAL_KEYS <= WEAVE_KEYS
+        assert not WEAVE_W2_SWITCHES & set(WEAVE_DEFAULTS)
+        assert WeaveSpec(exit_ramp="x", weave_params=self.W2).weave_params == self.W2
+        WeaveSpec(exit_ramp="x", weave_params=dict.fromkeys(self.W2, 0.0))
+        for bad in (0.5, 2.0, -1.0):
+            with pytest.raises(ValueError, match="weave_handback is a switch"):
+                WeaveSpec(exit_ramp="x", weave_params={"weave_handback": bad})
+        raw = _th52_corridor_config(3).model_dump(mode="json")
+        base = config_hash(ScenarioConfig.model_validate(raw))
+        for key in self.W2:
+            raw["network"]["ramps"][0]["weave"]["weave_params"] = {key: 1.0}
+            assert config_hash(ScenarioConfig.model_validate(raw)) != base, key
+
+    def test_on_the_th52_fixture_off_is_byte_identical_and_on_runs(self, tmp_path):
+        """SUMO, the T.H.52 section with the calibrated drivers, seed 4: the
+        three switches at 0 write byte-identical outputs to unset (no counter
+        in ``meta.json``); all three on, the run completes with every counter
+        recorded."""
+        import hashlib
+
+        th52_dc = TestWeaveEntrantGiveup._th52_dc
+        digests = []
+        for tag, params in (("unset", None), ("zero", dict.fromkeys(self.W2, 0.0))):
+            paths = run_micro(th52_dc(4, params), 4, tmp_path / tag)
+            (z,) = json.loads(paths.meta.read_text())["weave_sections"]
+            assert not {"n_handback_skips", "n_close_leader_withheld", "n_opposing_deferred"} & set(
+                z
+            )
+            digests.append(
+                {
+                    n: hashlib.sha256((paths.run_dir / n).read_bytes()).hexdigest()
+                    for n in ("trajectories.parquet", "vehicles.parquet", "edges.parquet")
+                }
+            )
+        assert digests[0] == digests[1]
+        paths = run_micro(th52_dc(4, dict(self.W2)), 4, tmp_path / "w2")
+        meta = json.loads(paths.meta.read_text())
+        (z,) = meta["weave_sections"]
+        for key in (
+            "n_handback_skips",
+            "n_close_leader_withheld",
+            "n_opposing_deferred",
+            "n_opposing_vetoed",
+        ):
+            assert isinstance(z[key], int) and z[key] >= 0, key
+        assert z["n_opposing_vetoed"] <= z["n_opposing_deferred"]
+        assert z["params"]["weave_handback"] == 1.0
 
 
 class TestRampToRampShareRun:

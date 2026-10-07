@@ -1,0 +1,891 @@
+{
+ "model": "weave",
+ "speed_factor": null,
+ "fleet_from": "scenarios/mndot_i94_wb_stpaul_weave_dc.yaml",
+ "weave_set": {
+  "weave_close_leader": 1.0
+ },
+ "ramp_to_ramp_share": null,
+ "rows": [
+  {
+   "seed": 3,
+   "config_hash": "7788446ff2d5",
+   "mainline_departed": [
+    1196,
+    1196
+   ],
+   "entrance_departed": [
+    404,
+    407
+   ],
+   "exit_end_flow_vph": 4490.0,
+   "observed_inflow_vph": 4877.0,
+   "exit_end_flow_geh": 5.65,
+   "station_speed_by_5min": [
+    21.6,
+    18.4,
+    19.6,
+    20.0
+   ],
+   "station_speed_min_ms": 18.375,
+   "n_collisions": 0,
+   "exits_given_up": [
+    3,
+    388
+   ],
+   "entrants_took_exit": [
+    null,
+    404
+   ],
+   "hard_brake_vehicle_steps": 0,
+   "ramp_to_ramp": null,
+   "criteria": {
+    "i_departed": true,
+    "ii_a_flow_geh": false,
+    "ii_b_station_speed": false,
+    "iii_collisions": true,
+    "iv_give_ups": true
+   },
+   "pass": false,
+   "lock": false,
+   "lowest_zone_minute_ms": 12.94296499561707,
+   "wall_s": 1.96
+  },
+  {
+   "seed": 4,
+   "config_hash": "3c5c9965506c",
+   "mainline_departed": [
+    1196,
+    1196
+   ],
+   "entrance_departed": [
+    362,
+    407
+   ],
+   "exit_end_flow_vph": 4270.0,
+   "observed_inflow_vph": 4877.0,
+   "exit_end_flow_geh": 8.98,
+   "station_speed_by_5min": [
+    19.3,
+    19.6,
+    18.4,
+    13.1
+   ],
+   "station_speed_min_ms": 13.08,
+   "n_collisions": 0,
+   "exits_given_up": [
+    5,
+    422
+   ],
+   "entrants_took_exit": [
+    null,
+    362
+   ],
+   "hard_brake_vehicle_steps": 0,
+   "ramp_to_ramp": null,
+   "criteria": {
+    "i_departed": false,
+    "ii_a_flow_geh": false,
+    "ii_b_station_speed": false,
+    "iii_collisions": true,
+    "iv_give_ups": true
+   },
+   "pass": false,
+   "lock": false,
+   "lowest_zone_minute_ms": 7.496064504796808,
+   "wall_s": 2.39
+  },
+  {
+   "seed": 5,
+   "config_hash": "4d19ffc7d611",
+   "mainline_departed": [
+    1196,
+    1196
+   ],
+   "entrance_departed": [
+    407,
+    407
+   ],
+   "exit_end_flow_vph": 4446.7,
+   "observed_inflow_vph": 4877.0,
+   "exit_end_flow_geh": 6.3,
+   "station_speed_by_5min": [
+    19.7,
+    19.0,
+    19.7,
+    18.5
+   ],
+   "station_speed_min_ms": 18.509,
+   "n_collisions": 0,
+   "exits_given_up": [
+    1,
+    448
+   ],
+   "entrants_took_exit": [
+    null,
+    407
+   ],
+   "hard_brake_vehicle_steps": 0,
+   "ramp_to_ramp": null,
+   "criteria": {
+    "i_departed": true,
+    "ii_a_flow_geh": false,
+    "ii_b_station_speed": false,
+    "iii_collisions": true,
+    "iv_give_ups": true
+   },
+   "pass": false,
+   "lock": false,
+   "lowest_zone_minute_ms": 12.51841453665905,
+   "wall_s": 2.17
+  },
+  {
+   "seed": 6,
+   "config_hash": "db7cc9e57873",
+   "mainline_departed": [
+    1191,
+    1196
+   ],
+   "entrance_departed": [
+    382,
+    407
+   ],
+   "exit_end_flow_vph": 4293.3,
+   "observed_inflow_vph": 4877.0,
+   "exit_end_flow_geh": 8.62,
+   "station_speed_by_5min": [
+    20.2,
+    18.3,
+    19.0,
+    16.9
+   ],
+   "station_speed_min_ms": 16.9,
+   "n_collisions": 0,
+   "exits_given_up": [
+    3,
+    428
+   ],
+   "entrants_took_exit": [
+    null,
+    382
+   ],
+   "hard_brake_vehicle_steps": 2,
+   "ramp_to_ramp": null,
+   "criteria": {
+    "i_departed": false,
+    "ii_a_flow_geh": false,
+    "ii_b_station_speed": false,
+    "iii_collisions": true,
+    "iv_give_ups": true
+   },
+   "pass": false,
+   "lock": false,
+   "lowest_zone_minute_ms": 10.813822405465627,
+   "wall_s": 2.23
+  },
+  {
+   "seed": 7,
+   "config_hash": "4255268a668f",
+   "mainline_departed": [
+    1196,
+    1196
+   ],
+   "entrance_departed": [
+    390,
+    407
+   ],
+   "exit_end_flow_vph": 4310.0,
+   "observed_inflow_vph": 4877.0,
+   "exit_end_flow_geh": 8.37,
+   "station_speed_by_5min": [
+    19.1,
+    20.3,
+    18.7,
+    19.9
+   ],
+   "station_speed_min_ms": 18.699,
+   "n_collisions": 0,
+   "exits_given_up": [
+    2,
+    398
+   ],
+   "entrants_took_exit": [
+    null,
+    390
+   ],
+   "hard_brake_vehicle_steps": 0,
+   "ramp_to_ramp": null,
+   "criteria": {
+    "i_departed": true,
+    "ii_a_flow_geh": false,
+    "ii_b_station_speed": false,
+    "iii_collisions": true,
+    "iv_give_ups": true
+   },
+   "pass": false,
+   "lock": false,
+   "lowest_zone_minute_ms": 11.838108020704212,
+   "wall_s": 2.28
+  },
+  {
+   "seed": 8,
+   "config_hash": "e2d4b1324e77",
+   "mainline_departed": [
+    1196,
+    1196
+   ],
+   "entrance_departed": [
+    389,
+    407
+   ],
+   "exit_end_flow_vph": 4416.7,
+   "observed_inflow_vph": 4877.0,
+   "exit_end_flow_geh": 6.75,
+   "station_speed_by_5min": [
+    19.9,
+    20.2,
+    18.0,
+    18.2
+   ],
+   "station_speed_min_ms": 17.988,
+   "n_collisions": 0,
+   "exits_given_up": [
+    3,
+    421
+   ],
+   "entrants_took_exit": [
+    null,
+    389
+   ],
+   "hard_brake_vehicle_steps": 0,
+   "ramp_to_ramp": null,
+   "criteria": {
+    "i_departed": true,
+    "ii_a_flow_geh": false,
+    "ii_b_station_speed": false,
+    "iii_collisions": true,
+    "iv_give_ups": true
+   },
+   "pass": false,
+   "lock": false,
+   "lowest_zone_minute_ms": 10.564481401446233,
+   "wall_s": 2.21
+  },
+  {
+   "seed": 9,
+   "config_hash": "9018ea793120",
+   "mainline_departed": [
+    1194,
+    1196
+   ],
+   "entrance_departed": [
+    374,
+    407
+   ],
+   "exit_end_flow_vph": 4346.7,
+   "observed_inflow_vph": 4877.0,
+   "exit_end_flow_geh": 7.81,
+   "station_speed_by_5min": [
+    20.5,
+    20.4,
+    16.9,
+    15.3
+   ],
+   "station_speed_min_ms": 15.293,
+   "n_collisions": 0,
+   "exits_given_up": [
+    3,
+    447
+   ],
+   "entrants_took_exit": [
+    null,
+    374
+   ],
+   "hard_brake_vehicle_steps": 0,
+   "ramp_to_ramp": null,
+   "criteria": {
+    "i_departed": false,
+    "ii_a_flow_geh": false,
+    "ii_b_station_speed": false,
+    "iii_collisions": true,
+    "iv_give_ups": true
+   },
+   "pass": false,
+   "lock": false,
+   "lowest_zone_minute_ms": 8.457357553170054,
+   "wall_s": 2.38
+  },
+  {
+   "seed": 10,
+   "config_hash": "feccea50cd5d",
+   "mainline_departed": [
+    1196,
+    1196
+   ],
+   "entrance_departed": [
+    394,
+    407
+   ],
+   "exit_end_flow_vph": 4356.7,
+   "observed_inflow_vph": 4877.0,
+   "exit_end_flow_geh": 7.66,
+   "station_speed_by_5min": [
+    21.8,
+    19.9,
+    19.6,
+    14.8
+   ],
+   "station_speed_min_ms": 14.813,
+   "n_collisions": 0,
+   "exits_given_up": [
+    3,
+    429
+   ],
+   "entrants_took_exit": [
+    null,
+    394
+   ],
+   "hard_brake_vehicle_steps": 0,
+   "ramp_to_ramp": null,
+   "criteria": {
+    "i_departed": true,
+    "ii_a_flow_geh": false,
+    "ii_b_station_speed": false,
+    "iii_collisions": true,
+    "iv_give_ups": true
+   },
+   "pass": false,
+   "lock": false,
+   "lowest_zone_minute_ms": 6.602583471431425,
+   "wall_s": 2.23
+  },
+  {
+   "seed": 11,
+   "config_hash": "6f08cb0111f1",
+   "mainline_departed": [
+    1196,
+    1196
+   ],
+   "entrance_departed": [
+    389,
+    407
+   ],
+   "exit_end_flow_vph": 4353.3,
+   "observed_inflow_vph": 4877.0,
+   "exit_end_flow_geh": 7.71,
+   "station_speed_by_5min": [
+    20.4,
+    19.5,
+    20.1,
+    18.7
+   ],
+   "station_speed_min_ms": 18.69,
+   "n_collisions": 0,
+   "exits_given_up": [
+    2,
+    427
+   ],
+   "entrants_took_exit": [
+    null,
+    389
+   ],
+   "hard_brake_vehicle_steps": 0,
+   "ramp_to_ramp": null,
+   "criteria": {
+    "i_departed": true,
+    "ii_a_flow_geh": false,
+    "ii_b_station_speed": false,
+    "iii_collisions": true,
+    "iv_give_ups": true
+   },
+   "pass": false,
+   "lock": false,
+   "lowest_zone_minute_ms": 10.969598882345338,
+   "wall_s": 2.2
+  },
+  {
+   "seed": 12,
+   "config_hash": "9a0e7a688d53",
+   "mainline_departed": [
+    1196,
+    1196
+   ],
+   "entrance_departed": [
+    392,
+    407
+   ],
+   "exit_end_flow_vph": 4416.7,
+   "observed_inflow_vph": 4877.0,
+   "exit_end_flow_geh": 6.75,
+   "station_speed_by_5min": [
+    22.2,
+    21.8,
+    18.9,
+    18.2
+   ],
+   "station_speed_min_ms": 18.182,
+   "n_collisions": 0,
+   "exits_given_up": [
+    4,
+    383
+   ],
+   "entrants_took_exit": [
+    null,
+    392
+   ],
+   "hard_brake_vehicle_steps": 0,
+   "ramp_to_ramp": null,
+   "criteria": {
+    "i_departed": true,
+    "ii_a_flow_geh": false,
+    "ii_b_station_speed": false,
+    "iii_collisions": true,
+    "iv_give_ups": true
+   },
+   "pass": false,
+   "lock": false,
+   "lowest_zone_minute_ms": 12.77852675297217,
+   "wall_s": 2.19
+  },
+  {
+   "seed": 13,
+   "config_hash": "9abae0b5e992",
+   "mainline_departed": [
+    1196,
+    1196
+   ],
+   "entrance_departed": [
+    384,
+    407
+   ],
+   "exit_end_flow_vph": 4340.0,
+   "observed_inflow_vph": 4877.0,
+   "exit_end_flow_geh": 7.91,
+   "station_speed_by_5min": [
+    21.7,
+    20.2,
+    17.3,
+    17.0
+   ],
+   "station_speed_min_ms": 16.987,
+   "n_collisions": 0,
+   "exits_given_up": [
+    5,
+    419
+   ],
+   "entrants_took_exit": [
+    null,
+    384
+   ],
+   "hard_brake_vehicle_steps": 0,
+   "ramp_to_ramp": null,
+   "criteria": {
+    "i_departed": false,
+    "ii_a_flow_geh": false,
+    "ii_b_station_speed": false,
+    "iii_collisions": true,
+    "iv_give_ups": true
+   },
+   "pass": false,
+   "lock": false,
+   "lowest_zone_minute_ms": 9.128262269175304,
+   "wall_s": 2.22
+  },
+  {
+   "seed": 14,
+   "config_hash": "e30ce7eadcdb",
+   "mainline_departed": [
+    1196,
+    1196
+   ],
+   "entrance_departed": [
+    389,
+    407
+   ],
+   "exit_end_flow_vph": 4323.3,
+   "observed_inflow_vph": 4877.0,
+   "exit_end_flow_geh": 8.16,
+   "station_speed_by_5min": [
+    20.9,
+    19.0,
+    20.1,
+    17.3
+   ],
+   "station_speed_min_ms": 17.275,
+   "n_collisions": 0,
+   "exits_given_up": [
+    3,
+    409
+   ],
+   "entrants_took_exit": [
+    null,
+    389
+   ],
+   "hard_brake_vehicle_steps": 0,
+   "ramp_to_ramp": null,
+   "criteria": {
+    "i_departed": true,
+    "ii_a_flow_geh": false,
+    "ii_b_station_speed": false,
+    "iii_collisions": true,
+    "iv_give_ups": true
+   },
+   "pass": false,
+   "lock": false,
+   "lowest_zone_minute_ms": 8.756001985597848,
+   "wall_s": 2.42
+  },
+  {
+   "seed": 15,
+   "config_hash": "1fe1d223d8c3",
+   "mainline_departed": [
+    1196,
+    1196
+   ],
+   "entrance_departed": [
+    377,
+    407
+   ],
+   "exit_end_flow_vph": 4360.0,
+   "observed_inflow_vph": 4877.0,
+   "exit_end_flow_geh": 7.61,
+   "station_speed_by_5min": [
+    22.5,
+    19.4,
+    20.3,
+    17.2
+   ],
+   "station_speed_min_ms": 17.236,
+   "n_collisions": 0,
+   "exits_given_up": [
+    3,
+    421
+   ],
+   "entrants_took_exit": [
+    null,
+    377
+   ],
+   "hard_brake_vehicle_steps": 0,
+   "ramp_to_ramp": null,
+   "criteria": {
+    "i_departed": false,
+    "ii_a_flow_geh": false,
+    "ii_b_station_speed": false,
+    "iii_collisions": true,
+    "iv_give_ups": true
+   },
+   "pass": false,
+   "lock": false,
+   "lowest_zone_minute_ms": 10.092246901037083,
+   "wall_s": 2.45
+  },
+  {
+   "seed": 16,
+   "config_hash": "c97191941022",
+   "mainline_departed": [
+    1196,
+    1196
+   ],
+   "entrance_departed": [
+    405,
+    407
+   ],
+   "exit_end_flow_vph": 4580.0,
+   "observed_inflow_vph": 4877.0,
+   "exit_end_flow_geh": 4.32,
+   "station_speed_by_5min": [
+    17.7,
+    20.9,
+    18.3,
+    17.6
+   ],
+   "station_speed_min_ms": 17.62,
+   "n_collisions": 0,
+   "exits_given_up": [
+    3,
+    401
+   ],
+   "entrants_took_exit": [
+    null,
+    405
+   ],
+   "hard_brake_vehicle_steps": 0,
+   "ramp_to_ramp": null,
+   "criteria": {
+    "i_departed": true,
+    "ii_a_flow_geh": true,
+    "ii_b_station_speed": false,
+    "iii_collisions": true,
+    "iv_give_ups": true
+   },
+   "pass": false,
+   "lock": false,
+   "lowest_zone_minute_ms": 11.392414904953295,
+   "wall_s": 2.28
+  },
+  {
+   "seed": 17,
+   "config_hash": "7b910c1bb0f6",
+   "mainline_departed": [
+    1196,
+    1196
+   ],
+   "entrance_departed": [
+    379,
+    407
+   ],
+   "exit_end_flow_vph": 4293.3,
+   "observed_inflow_vph": 4877.0,
+   "exit_end_flow_geh": 8.62,
+   "station_speed_by_5min": [
+    21.5,
+    17.6,
+    18.7,
+    19.6
+   ],
+   "station_speed_min_ms": 17.576,
+   "n_collisions": 0,
+   "exits_given_up": [
+    4,
+    407
+   ],
+   "entrants_took_exit": [
+    null,
+    379
+   ],
+   "hard_brake_vehicle_steps": 0,
+   "ramp_to_ramp": null,
+   "criteria": {
+    "i_departed": false,
+    "ii_a_flow_geh": false,
+    "ii_b_station_speed": false,
+    "iii_collisions": true,
+    "iv_give_ups": true
+   },
+   "pass": false,
+   "lock": false,
+   "lowest_zone_minute_ms": 9.037195526234191,
+   "wall_s": 2.4
+  },
+  {
+   "seed": 18,
+   "config_hash": "691af836888a",
+   "mainline_departed": [
+    1196,
+    1196
+   ],
+   "entrance_departed": [
+    384,
+    407
+   ],
+   "exit_end_flow_vph": 4343.3,
+   "observed_inflow_vph": 4877.0,
+   "exit_end_flow_geh": 7.86,
+   "station_speed_by_5min": [
+    20.6,
+    19.3,
+    18.9,
+    18.3
+   ],
+   "station_speed_min_ms": 18.335,
+   "n_collisions": 0,
+   "exits_given_up": [
+    2,
+    421
+   ],
+   "entrants_took_exit": [
+    null,
+    384
+   ],
+   "hard_brake_vehicle_steps": 0,
+   "ramp_to_ramp": null,
+   "criteria": {
+    "i_departed": false,
+    "ii_a_flow_geh": false,
+    "ii_b_station_speed": false,
+    "iii_collisions": true,
+    "iv_give_ups": true
+   },
+   "pass": false,
+   "lock": false,
+   "lowest_zone_minute_ms": 12.401952715069623,
+   "wall_s": 2.32
+  },
+  {
+   "seed": 19,
+   "config_hash": "bff9bc977b4c",
+   "mainline_departed": [
+    1196,
+    1196
+   ],
+   "entrance_departed": [
+    400,
+    407
+   ],
+   "exit_end_flow_vph": 4430.0,
+   "observed_inflow_vph": 4877.0,
+   "exit_end_flow_geh": 6.55,
+   "station_speed_by_5min": [
+    20.2,
+    18.2,
+    17.4,
+    18.7
+   ],
+   "station_speed_min_ms": 17.432,
+   "n_collisions": 0,
+   "exits_given_up": [
+    4,
+    418
+   ],
+   "entrants_took_exit": [
+    null,
+    400
+   ],
+   "hard_brake_vehicle_steps": 0,
+   "ramp_to_ramp": null,
+   "criteria": {
+    "i_departed": true,
+    "ii_a_flow_geh": false,
+    "ii_b_station_speed": false,
+    "iii_collisions": true,
+    "iv_give_ups": true
+   },
+   "pass": false,
+   "lock": false,
+   "lowest_zone_minute_ms": 11.849245473487596,
+   "wall_s": 2.17
+  },
+  {
+   "seed": 20,
+   "config_hash": "077c7f23a78e",
+   "mainline_departed": [
+    1196,
+    1196
+   ],
+   "entrance_departed": [
+    378,
+    407
+   ],
+   "exit_end_flow_vph": 4320.0,
+   "observed_inflow_vph": 4877.0,
+   "exit_end_flow_geh": 8.21,
+   "station_speed_by_5min": [
+    22.1,
+    17.2,
+    15.5,
+    17.1
+   ],
+   "station_speed_min_ms": 15.539,
+   "n_collisions": 0,
+   "exits_given_up": [
+    5,
+    399
+   ],
+   "entrants_took_exit": [
+    null,
+    378
+   ],
+   "hard_brake_vehicle_steps": 0,
+   "ramp_to_ramp": null,
+   "criteria": {
+    "i_departed": false,
+    "ii_a_flow_geh": false,
+    "ii_b_station_speed": false,
+    "iii_collisions": true,
+    "iv_give_ups": true
+   },
+   "pass": false,
+   "lock": false,
+   "lowest_zone_minute_ms": 6.774146638498201,
+   "wall_s": 2.61
+  },
+  {
+   "seed": 21,
+   "config_hash": "115fda26ba9e",
+   "mainline_departed": [
+    1196,
+    1196
+   ],
+   "entrance_departed": [
+    369,
+    407
+   ],
+   "exit_end_flow_vph": 4240.0,
+   "observed_inflow_vph": 4877.0,
+   "exit_end_flow_geh": 9.43,
+   "station_speed_by_5min": [
+    20.5,
+    19.6,
+    19.0,
+    17.4
+   ],
+   "station_speed_min_ms": 17.413,
+   "n_collisions": 0,
+   "exits_given_up": [
+    4,
+    415
+   ],
+   "entrants_took_exit": [
+    null,
+    369
+   ],
+   "hard_brake_vehicle_steps": 0,
+   "ramp_to_ramp": null,
+   "criteria": {
+    "i_departed": false,
+    "ii_a_flow_geh": false,
+    "ii_b_station_speed": false,
+    "iii_collisions": true,
+    "iv_give_ups": true
+   },
+   "pass": false,
+   "lock": false,
+   "lowest_zone_minute_ms": 9.009321950621743,
+   "wall_s": 2.56
+  },
+  {
+   "seed": 22,
+   "config_hash": "079adaad0b9d",
+   "mainline_departed": [
+    1196,
+    1196
+   ],
+   "entrance_departed": [
+    390,
+    407
+   ],
+   "exit_end_flow_vph": 4356.7,
+   "observed_inflow_vph": 4877.0,
+   "exit_end_flow_geh": 7.66,
+   "station_speed_by_5min": [
+    20.7,
+    19.0,
+    19.3,
+    17.1
+   ],
+   "station_speed_min_ms": 17.093,
+   "n_collisions": 0,
+   "exits_given_up": [
+    1,
+    427
+   ],
+   "entrants_took_exit": [
+    null,
+    390
+   ],
+   "hard_brake_vehicle_steps": 0,
+   "ramp_to_ramp": null,
+   "criteria": {
+    "i_departed": true,
+    "ii_a_flow_geh": false,
+    "ii_b_station_speed": false,
+    "iii_collisions": true,
+    "iv_give_ups": true
+   },
+   "pass": false,
+   "lock": false,
+   "lowest_zone_minute_ms": 10.701638781839778,
+   "wall_s": 2.37
+  }
+ ]
+}
