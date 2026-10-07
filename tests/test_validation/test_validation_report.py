@@ -1091,10 +1091,35 @@ class TestAggregationAndLabels:
         assert labels == ["5 min", "15 min (criterion)", "30 min", "60 min", "whole period"]
         ten = speed_aggregation_rows(obs, obs, 300.0, criterion_aggregation_s=600.0)
         assert [r["aggregation"] for r in ten][:3] == ["5 min", "10 min (criterion)", "15 min"]
-        with pytest.raises(ValueError, match="whole number"):
-            speed_aggregation_rows(obs, obs, 300.0, criterion_aggregation_s=400.0)
         with pytest.raises(ValueError, match="window_s"):
             speed_aggregation_rows(obs, obs, None, criterion_aggregation_s=900.0)
+
+    @pytest.mark.parametrize(
+        ("window_s", "criterion_s"),
+        [(600.0, 900.0), (1200.0, 900.0), (3600.0, 900.0), (300.0, 400.0)],
+    )
+    def test_a_criterion_the_windows_do_not_divide_is_skipped_with_a_note(
+        self, window_s: float, criterion_s: float
+    ) -> None:
+        """Review 2026-10-07: observations on 10-, 20- or 60-minute windows cannot form C3's
+        15 minutes; the row is skipped with a note instead of aborting the whole scoring."""
+        import numpy as np
+
+        from validation.report import speed_aggregation_rows
+
+        obs = np.full((24, 4), 20.0)
+        rows = speed_aggregation_rows(obs, obs, window_s, criterion_aggregation_s=criterion_s)
+        plain = speed_aggregation_rows(obs, obs, window_s)
+        # the diagnostic rows are those without a criterion, none labelled (criterion)
+        assert [r["aggregation"] for r in rows[:-1]] == [
+            r["aggregation"].replace(" (criterion)", "") for r in plain
+        ]
+        assert [r["rmspe"] for r in rows[:-1]] == [r["rmspe"] for r in plain]
+        assert not any("(criterion)" in r["aggregation"] for r in rows[:-1])
+        last = rows[-1]
+        assert last["aggregation"] == f"{criterion_s / 60.0:g} min (criterion)"
+        assert last["rmspe"] == "not formed"
+        assert "not a whole number" in last["note"]
 
     def test_both_sides_of_a_block_cover_the_same_windows(self):
         """A window missing on the observed side is left out of the simulated mean too."""

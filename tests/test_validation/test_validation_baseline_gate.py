@@ -376,6 +376,34 @@ class TestSpeedNotes:
         labels = [r["aggregation"] for r in rows]
         assert labels == ["5 min", "15 min (criterion)", "30 min", "60 min", "whole period"]
 
+    @pytest.mark.parametrize("window_s", [600.0, 1200.0, 3600.0])
+    def test_windows_that_do_not_divide_15_minutes_leave_c3_not_evaluated(
+        self, window_s: float
+    ) -> None:
+        """Review 2026-10-07: 10-, 20- or 60-minute observations aborted the whole gate
+        (the replicate-mean table raised on C3's 15 minutes). C3 is defined at 15 minutes
+        (protocol section 4): on such windows it is not evaluated, with a note saying why,
+        and every other check is scored."""
+        obs = dataclasses.replace(_artifact(), window_s=window_s, duration_s=window_s * N_WIN)
+        gate = _gate(scored=obs)
+        for day_set in ("calibration", "validation"):
+            assert _status(gate, "C3", day_set) == "not_evaluated"
+            assert _status(gate, "C1", day_set) != "not_evaluated"
+            block = gate.day_sets[day_set]
+            assert block is not None
+            assert any(
+                f"{window_s:g} s windows, which do not divide C3's 15-minute" in n
+                for n in block["notes"]
+            )
+            rows = block["replicate_mean_field"]
+            assert not any(
+                "(criterion)" in r["aggregation"] and r["rmspe"] != "not formed" for r in rows
+            )
+            assert rows[-1]["rmspe"] == "not formed"
+        assert not gate.passed  # a gating check not evaluated never passes the gate
+        # 5-minute observations: no such note
+        assert not any("do not divide" in n for n in _gate().day_sets["calibration"]["notes"])  # type: ignore[index]
+
     def test_point_speeds_without_the_standstill_rule_are_named(self) -> None:
         obs = _artifact()
         old = _gate()

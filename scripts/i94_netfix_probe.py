@@ -29,8 +29,13 @@ explains (§6.3 of the note, written before any run):
   targets as committed (IRIS lane order) and with S791's labels reversed (the
   data-quality report's ``lane_order`` check, docs/I94_LANE_SHARES.md §3; the
   correction to a target fixed in advance is the owner's decision, so both
-  are reported). Shares at every station by IRIS lane (lane 1 = rightmost =
-  SUMO lane 0) are listed, compared or not.
+  are reported). When the observed-lanes artifact already stores S791 in
+  corrected order (``calibrate_driver_grid.py --build-observed-lanes
+  --reverse-lane-order S791``, or ``--remap-reversed-lanes``; its stations
+  record ``lane_order.iris_labels_reversed``), the targets are not reversed a
+  second time (:func:`already_corrected`): both score sets are then the
+  corrected ones, and the artifact says so. Shares at every station by IRIS
+  lane (lane 1 = rightmost = SUMO lane 0) are listed, compared or not.
 * **Expectations** — the note's §6.3 statements, evaluated mechanically.
 * **Reproduction** — the as-built runs at the grid's two seeds are compared
   with the committed grid readings (``artifacts/p3_driver_grid_2026-10-07``):
@@ -274,6 +279,36 @@ def reverse_station_shares(observed: dict[str, Any], stations: tuple[str, ...]) 
     return out
 
 
+def already_corrected(observed_lanes: dict[str, Any], stations: tuple[str, ...]) -> tuple[str, ...]:
+    """The ``stations`` whose shares the observed-lanes artifact already stores in reverse.
+
+    ``calibrate_driver_grid.build_observed_lanes`` remaps a station named by
+    ``--reverse-lane-order`` (top-level ``lane_order.reversed_by_reviewer``)
+    or found reversed by the data-quality report under
+    ``--remap-reversed-lanes``, and marks it ``lane_order.iris_labels_reversed``;
+    such a station must not be reversed again.
+    """
+    order = observed_lanes.get("lane_order") or {}
+    done = {str(x) for x in order.get("reversed_by_reviewer") or ()}
+    for st in observed_lanes.get("stations") or ():
+        if (st.get("lane_order") or {}).get("iris_labels_reversed"):
+            done.add(str(st.get("id")))
+    return tuple(sid for sid in stations if sid in done)
+
+
+def corrected_variants(
+    variants: dict[str, dict[str, Any]], to_reverse: tuple[str, ...]
+) -> dict[str, dict[str, Any]]:
+    """``variants`` plus a ``<key>_s791_reversed`` copy of each with ``to_reverse`` reversed.
+
+    ``to_reverse`` excludes the stations the targets already store corrected
+    (:func:`already_corrected`), so a correction is never applied twice.
+    """
+    return variants | {
+        f"{k}_s791_reversed": reverse_station_shares(v, to_reverse) for k, v in variants.items()
+    }
+
+
 def restrict_compared(observed: dict[str, Any], ids: set[str]) -> dict[str, Any]:
     """The targets with only the compared stations in ``ids``."""
     out = copy.deepcopy(observed)
@@ -397,6 +432,9 @@ def analyze_probe(
     assert ol_path is not None
     lanes = {net: json.loads((root / net / g.LANES).read_text())["lanes"] for net in plan.specs}
     ctx = _context(plan, ol_path)
+    # a station the observed-lanes artifact already stores corrected is not reversed again
+    pre_corrected = already_corrected(json.loads(ol_path.read_text()), REVERSED_STATIONS)
+    to_reverse = tuple(sid for sid in REVERSED_STATIONS if sid not in pre_corrected)
     observed: dict[str, dict[str, Any]] = {}
     for net, ref in plan.references.items():
         cfg = ScenarioConfig.model_validate(ref)
@@ -437,10 +475,7 @@ def analyze_probe(
                     "own": observed[net],
                     "common": restrict_compared(observed[net], common),
                 }
-                variants |= {
-                    f"{k}_s791_reversed": reverse_station_shares(v, REVERSED_STATIONS)
-                    for k, v in list(variants.items())
-                }
+                variants = corrected_variants(variants, to_reverse)
                 scores: dict[str, dict[str, Any]] = {}
                 for key, obs in variants.items():
                     try:
@@ -469,6 +504,13 @@ def analyze_probe(
         "network's chain is 2.3 m shorter downstream of 45782590 (junction geometry), far "
         "below the 12.5 m between two 2-Hz samples at 25 m/s.",
     ]
+    if pre_corrected:
+        notes.append(
+            f"The observed-lanes artifact already stores {', '.join(pre_corrected)} in corrected "
+            "lane order (lane_order.iris_labels_reversed): the unsuffixed scores are the "
+            "corrected ones, and '_s791_reversed' does not reverse "
+            f"{', '.join(pre_corrected)} a second time."
+        )
     if any(r.get("n_collisions") for net in rows.values() for r in net.values()):
         notes.append("Collisions were recorded (column n_collisions): see the runs.")
     out = {
@@ -497,7 +539,9 @@ def analyze_probe(
             "lane_use_source": observed["as_built"]["lane_use"]["source"],
             "lane_use_window": observed["as_built"]["lane_use"]["window"],
             "discharge": observed["as_built"]["discharge"],
-            "reversed_for_the_corrected_scores": list(REVERSED_STATIONS),
+            "reversed_for_the_corrected_scores": list(to_reverse),
+            # additive: only when the targets already carry the correction
+            **({"already_corrected_in_targets": list(pre_corrected)} if pre_corrected else {}),
         },
         "results": rows,
         "expectations": expectations(rows, plan.names),

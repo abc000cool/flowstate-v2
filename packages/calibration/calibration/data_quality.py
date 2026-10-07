@@ -2032,9 +2032,19 @@ def lane_order_check(
         s for s in data if read[s] and all(pairs[(s, o)].reading == "mirrored" for o in read[s])
     }
 
+    reversed_set: set[str] = set()
+
+    def through(a: str, o: str) -> str:
+        """``a``'s reading of ``o``, read through ``o``'s remapped lanes when ``o`` was found
+        reversed (mirrored against a reversed station is consistent with its true order)."""
+        r = pairs[(a, o)].reading
+        if o in reversed_set and r in ("consistent", "mirrored"):
+            return "consistent" if r == "mirrored" else "mirrored"
+        return r
+
     def anchored(b: str, excluding: str) -> bool:
-        """``b`` agrees with some neighbour other than ``excluding``."""
-        return any(pairs[(b, c)].reading == "consistent" for c in nb[b] if c != excluding)
+        """``b`` agrees with some neighbour other than ``excluding`` (read through a reversal)."""
+        return any(through(b, c) == "consistent" for c in nb[b] if c != excluding)
 
     def support(s: str) -> dict[str, str]:
         out: dict[str, str] = {}
@@ -2054,7 +2064,26 @@ def lane_order_check(
 
     verdicts: dict[str, tuple[LaneOrderVerdict, str]] = {}
     supports = {s: support(s) for s in data}
-    reversed_set: set[str] = set()
+
+    def explained(s: str) -> bool:
+        """A mirrored reading of ``s`` is laid on a neighbour found reversed: ``s`` is read
+        through that neighbour's remapped lanes (the second loop), never reversed itself."""
+        return any(o in reversed_set for o in read[s])
+
+    def confirmed_reversed(s: str) -> bool:
+        corroborated = len(read[s]) >= 2 or anchored(read[s][0], s)
+        available = [v for v in supports[s].values() if v != "unavailable"]
+        return corroborated and bool(available) and all(v == "reversed" for v in available)
+
+    # The reversed stations first, to a fixpoint: the first pass is the rule on
+    # the raw readings; a later pass may anchor a station through a neighbour
+    # found reversed. A candidate whose mirrored reading is laid on a reversed
+    # neighbour is explained by it and left to the second loop below.
+    while True:
+        found = {s for s in candidates - reversed_set if not explained(s) and confirmed_reversed(s)}
+        if not found:
+            break
+        reversed_set |= found
 
     def majority_support(s: str, exclude: set[str]) -> dict[str, str]:
         """``s``'s signatures against the corridor's other stations with as many lanes.
@@ -2095,14 +2124,15 @@ def lane_order_check(
     for s in sorted(candidates):
         if s in verdicts:
             continue
+        if s not in reversed_set and explained(s):
+            continue  # read through the reversed neighbour in the loop below
         corroborated = len(read[s]) >= 2 or anchored(read[s][0], s)
         sup = supports[s]
         available = [v for v in sup.values() if v != "unavailable"]
         confirmed = bool(available) and all(v == "reversed" for v in available)
         n = data[s].lanes
         pair_text = _pairs_text([pairs[(s, o)] for o in read[s]])
-        if corroborated and confirmed:
-            reversed_set.add(s)
+        if s in reversed_set:
             shown = ", ".join(f"{k.replace('_', ' ')}" for k, v in sup.items() if v == "reversed")
             verdicts[s] = (
                 "reversed",

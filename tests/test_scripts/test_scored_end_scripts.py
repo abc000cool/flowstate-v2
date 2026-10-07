@@ -181,3 +181,254 @@ class TestBatteryArtifact:
         base += ["--report-dir", "d"]
         assert battery.parse_args(base).scored_end_s is None
         assert battery.parse_args([*base, "--scored-end-s", "6600"]).scored_end_s == 6600.0
+
+
+# --- review 2026-10-07: runs record their window; resumes never mix windows ------------------
+
+MARGS = {"x_ref": 500.0, "span": (0.0, 1000.0)}
+
+
+class TestRunsRecordTheirWindow:
+    @pytest.fixture()
+    def fake(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        import microsim.runner
+        import validation.metrics
+
+        def fake_run(cfg: Any, seed: int, root: Path) -> Any:
+            run_dir = Path(root) / str(seed)
+            run_dir.mkdir(parents=True)
+            return microsim.runner.RunPaths(
+                run_dir=run_dir,
+                trajectories=run_dir / "trajectories.parquet",
+                edges=run_dir / "edges.parquet",
+                meta=run_dir / "meta.json",
+            )
+
+        monkeypatch.setattr(microsim.runner, "run_micro", fake_run)
+        monkeypatch.setattr(validation.metrics, "compute_metrics", lambda d, **kw: _metrics())
+        monkeypatch.setattr(
+            validation.metrics, "compute_waiting_metrics", lambda d, **kw: _waiting()
+        )
+
+    @pytest.mark.parametrize("end", [None, 6600.0])
+    def test_metrics_json_records_the_metric_arguments(
+        self, tmp_path: Path, fake: None, end: float | None
+    ) -> None:
+        margs = {**MARGS, **({} if end is None else {"scored_end_s": end})}
+        *_, ok, err = sweep._worker(("baseline", CONFIG, 7, margs, str(tmp_path), True))
+        assert ok, err
+        stored = json.loads((tmp_path / "baseline" / "7" / "metrics.json").read_text())
+        assert stored["metrics_args"] == {
+            "x_ref": 500.0,
+            "span": [0.0, 1000.0],
+            "scored_end_s": end,
+        }
+
+
+def _stored_run(root: Path, cell: str, chash: str, seed: int, record: Any = "absent") -> Path:
+    d = root / cell / chash / str(seed)
+    d.mkdir(parents=True)
+    payload: dict[str, Any] = {"throughput_veh_h": 1000.0}
+    if record != "absent":
+        payload["metrics_args"] = record
+    (d / "metrics.json").write_text(json.dumps(payload))
+    return d
+
+
+def _manifest(root: Path, metrics_args: dict[str, Any]) -> None:
+    root.mkdir(parents=True, exist_ok=True)
+    (root / "MANIFEST.json").write_text(json.dumps({"metrics_args": metrics_args}))
+
+
+class TestResumeConflict:
+    RUNS = (("baseline", "h0", 1), ("baseline", "h0", 2))
+
+    def test_nothing_stored_nothing_to_refuse(self, tmp_path: Path) -> None:
+        _manifest(tmp_path, {"x_ref": 1.0, "span": [0.0, 2.0]})
+        assert sweep.resume_conflict(tmp_path, self.RUNS, {**MARGS, "scored_end_s": 6600.0}) is None
+
+    def test_a_manifest_scored_otherwise_is_refused(self, tmp_path: Path) -> None:
+        # a tree launched without --scored-end-s (the manifest before the option existed)
+        _manifest(tmp_path, {"x_ref": 500.0, "span": [0.0, 1000.0]})
+        _stored_run(tmp_path, "baseline", "h0", 1)
+        assert sweep.resume_conflict(tmp_path, self.RUNS, MARGS) is None
+        why = sweep.resume_conflict(tmp_path, self.RUNS, {**MARGS, "scored_end_s": 6600.0})
+        assert why is not None and "MANIFEST.json" in why and "fresh --out" in why
+        # and the other way round: a tree scored to 6600 s resumed without the option
+        _manifest(tmp_path, {**MARGS, "scored_end_s": 6600.0})
+        why = sweep.resume_conflict(tmp_path, self.RUNS, MARGS)
+        assert why is not None and "'scored_end_s': 6600.0" in why
+        # x_ref and span count too
+        why = sweep.resume_conflict(tmp_path, self.RUNS, {**MARGS, "x_ref": 400.0})
+        assert why is not None
+
+    def test_a_run_scored_otherwise_is_refused(self, tmp_path: Path) -> None:
+        _manifest(tmp_path, dict(MARGS))
+        record = {"x_ref": 500.0, "span": [0.0, 1000.0], "scored_end_s": 6600.0}
+        p = _stored_run(tmp_path, "baseline", "h0", 2, record) / "metrics.json"
+        why = sweep.resume_conflict(tmp_path, self.RUNS, MARGS)
+        assert why is not None and str(p) in why and "fresh --out" in why
+        assert sweep.resume_conflict(tmp_path, [], MARGS) is None  # not among the runs reused
+
+    def test_an_unrecorded_run_is_unknown(self, tmp_path: Path) -> None:
+        """A run stored before the record existed: refused only when a scored end is set."""
+        _manifest(tmp_path, {**MARGS, "scored_end_s": 6600.0})
+        _stored_run(tmp_path, "baseline", "h0", 1)
+        _stored_run(tmp_path, "baseline", "h0", 2, {**MARGS, "scored_end_s": 6600.0})
+        why = sweep.resume_conflict(tmp_path, self.RUNS, {**MARGS, "scored_end_s": 6600.0})
+        assert why is not None and "do not record the window" in why
+        _manifest(tmp_path, dict(MARGS))
+        (tmp_path / "baseline" / "h0" / "2" / "metrics.json").unlink()
+        assert sweep.resume_conflict(tmp_path, self.RUNS, MARGS) is None
+
+
+def _scenario(tmp_path: Path) -> Path:
+    path = tmp_path / "table_corridor.yaml"
+    path.write_text(yaml.safe_dump(CONFIG, sort_keys=False))
+    return path
+
+
+def _sweep_argv(scenario: Path, out: Path, *extra: str) -> list[str]:
+    return [
+        "corridor_sweep.py", "--scenario", str(scenario), "--penetration", "--strategies", "none",
+        "--x-ref", "500", "--span", "0", "1000", "--replicates", "2", "--out", str(out),
+        "--summary", str(out.parent / "summary.json"), *extra,
+    ]  # fmt: skip
+
+
+def _no_pool(monkeypatch: pytest.MonkeyPatch) -> None:
+    def refuse(*_a: Any, **_k: Any) -> Any:
+        raise AssertionError("simulation started")
+
+    monkeypatch.setattr(sweep.mp, "get_context", refuse)
+
+
+class TestSweepRefusesBeforeSimulating:
+    def test_a_resume_with_another_scored_end(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from flowstate_core.config import ScenarioConfig, config_hash
+        from flowstate_core.rng import spawn_seeds
+
+        scenario = _scenario(tmp_path)
+        out = tmp_path / "sweep"
+        base = ScenarioConfig.from_yaml(scenario)
+        cfg = sweep.cell_config(json.loads(base.model_dump_json()), 0.0, 1.0, None, "none", None)
+        chash = config_hash(ScenarioConfig.model_validate(cfg))
+        _manifest(out, {"x_ref": 500.0, "span": [0.0, 1000.0]})
+        _stored_run(out, "baseline", chash, spawn_seeds(base.seed, 2)[0])  # before the record
+        before = (out / "MANIFEST.json").read_text()
+        _no_pool(monkeypatch)
+        monkeypatch.setattr("sys.argv", _sweep_argv(scenario, out, "--scored-end-s", "6600"))
+        with pytest.raises(SystemExit, match="refusing to resume"):
+            sweep.main()
+        assert (out / "MANIFEST.json").read_text() == before  # the manifest is not rewritten
+
+    @pytest.mark.parametrize("end", ["0", "7200.5", "nan"])
+    def test_an_out_of_range_scored_end(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, end: str
+    ) -> None:
+        scenario = _scenario(tmp_path)
+        out = tmp_path / "sweep"
+        _no_pool(monkeypatch)
+        monkeypatch.setattr("sys.argv", _sweep_argv(scenario, out, "--scored-end-s", end))
+        with pytest.raises(SystemExit, match="nothing was simulated"):
+            sweep.main()
+        assert not out.exists()
+
+    def test_the_bounds(self) -> None:
+        cfg = {**CONFIG, "sim": {**CONFIG["sim"], "warmup_s": 600.0}}
+        assert sweep.scored_end_problem(cfg, None) is None
+        assert sweep.scored_end_problem(cfg, 7200.0) is None  # the run's end itself
+        assert sweep.scored_end_problem(cfg, 601.0) is None
+        for bad in (600.0, 4.0, 7201.0, math.inf):
+            why = sweep.scored_end_problem(cfg, bad)
+            assert why is not None and "after the warm-up (600 s)" in why
+
+
+class TestTuneRefusesBeforeRunning:
+    @staticmethod
+    def _argv(scenario: Path, out: Path, *extra: str) -> list[str]:
+        return [
+            "--scenario", str(scenario), "--strategies", "vsl", "--budget", "1",
+            "--tuning-seeds", "1", "--eval-seeds", "1", "--x-ref", "500", "--span", "0", "1000",
+            "--procs", "1", "--out", str(out), *extra,
+        ]  # fmt: skip
+
+    @staticmethod
+    def _no_runs(monkeypatch: pytest.MonkeyPatch) -> None:
+        def refuse(*_a: Any, **_k: Any) -> int:
+            raise AssertionError("runs started")
+
+        monkeypatch.setattr(tune, "execute", refuse)
+
+    def test_a_resume_with_another_scored_end(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from flowstate_core.config import ScenarioConfig
+
+        scenario = _scenario(tmp_path)
+        out = tmp_path / "study"
+        plan = tune.build_plan(
+            ScenarioConfig.from_yaml(scenario), str(scenario), ["vsl"], budget=1, n_tune=1,
+            n_eval=1, metrics_args={"x_ref": 500.0, "span": [0.0, 1000.0]}, rho_c_veh_km=None,
+        )  # fmt: skip
+        troot = out / tune.TUNING_DIR
+        _manifest(troot, plan.metrics_args)
+        _stored_run(troot, "baseline", plan.hashes["baseline"], plan.tune_seeds[0])
+        self._no_runs(monkeypatch)
+        with pytest.raises(SystemExit, match="refusing to resume"):
+            tune.main(self._argv(scenario, out, "--scored-end-s", "6600"))
+        # the evaluation tree is checked before anything runs too
+        (troot / "baseline").rename(tmp_path / "moved")
+        eroot = out / tune.EVALUATION_DIR
+        eroot.mkdir(parents=True)
+        (eroot / "MANIFEST.json").write_text(
+            json.dumps(
+                {
+                    "metrics_args": {**plan.metrics_args, "scored_end_s": 6600.0},
+                    "cells": {"baseline": plan.hashes["baseline"]},
+                    "seeds": plan.eval_seeds,
+                }
+            )
+        )
+        _stored_run(eroot, "baseline", plan.hashes["baseline"], plan.eval_seeds[0])
+        with pytest.raises(SystemExit, match=r"refusing to resume .*evaluation"):
+            tune.main(self._argv(scenario, out))
+
+    def test_an_out_of_range_scored_end(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        scenario = _scenario(tmp_path)
+        out = tmp_path / "study"
+        self._no_runs(monkeypatch)
+        with pytest.raises(SystemExit, match="nothing was simulated"):
+            tune.main(self._argv(scenario, out, "--scored-end-s", "9000"))
+        assert not out.exists()
+
+
+def test_the_battery_refuses_an_out_of_range_scored_end_before_simulating(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    from tests.test_validation.test_validation_corridor_battery_gate import (
+        write_observations,
+        write_scenario,
+    )
+
+    battery = _load_script()
+
+    def refuse(*_a: Any, **_k: Any) -> None:
+        raise AssertionError("simulation started")
+
+    monkeypatch.setattr(battery, "run_replicates", refuse)
+    scenario = write_scenario(tmp_path / "s.yaml")  # 3600 s, no warm-up
+    observations = write_observations(tmp_path / "obs.json")
+    out = tmp_path / "runs"
+    argv = [
+        "--scenario", str(scenario), "--observations", str(observations), "--replicates", "1",
+        "--out", str(out), "--artifact", str(tmp_path / "a.json"), "--report-dir",
+        str(tmp_path / "rep"), "--scored-end-s", "14400",
+    ]  # fmt: skip
+    assert battery.main(argv) == 2
+    assert "nothing was simulated" in capsys.readouterr().out
+    assert not out.exists() and not (tmp_path / "a.json").exists()

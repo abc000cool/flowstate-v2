@@ -808,14 +808,19 @@ def speed_aggregation_rows(
             among the standard rows); ``None`` (the default) labels the native
             window, the criteria profile's RMSPE row. The baseline gate passes
             C3's 15 minutes (``validation.baseline_gate.SPEED_AGGREGATION_S``).
+            When it is not a whole number of windows (observations on 10-,
+            20-, 30- or 60-minute windows against C3's 15 minutes) the
+            criterion cannot be formed on these windows: no row is labelled
+            ``(criterion)``, and a last row says why (``rmspe`` "not formed",
+            the reason under ``note``); the other rows are unchanged.
 
     Returns:
-        Table rows (``aggregation``, ``rmspe``, ``floor``) as strings.
+        Table rows (``aggregation``, ``rmspe``, ``floor``; ``note`` on the
+        not-formed criterion row only) as strings.
 
     Raises:
-        ValueError: The matrices differ in shape or are not 2-D, or the
-            criterion aggregation is not a whole number of windows (or is
-            given without ``window_s``).
+        ValueError: The matrices differ in shape or are not 2-D, or a
+            criterion aggregation is given without ``window_s``.
     """
     import warnings
 
@@ -829,17 +834,27 @@ def speed_aggregation_rows(
         raise ValueError(
             f"segment-speed matrices must share a 2-D shape, got {o.shape} vs {s.shape}"
         )
-    criterion_k = 1
+    criterion_k: int | None = 1
+    not_formed: dict[str, str] | None = None
     if criterion_aggregation_s is not None:
         if not window_s:
             raise ValueError("criterion_aggregation_s needs the window length window_s")
         ratio = criterion_aggregation_s / window_s
         criterion_k = round(ratio)
         if criterion_k < 1 or abs(ratio - criterion_k) > 1e-9:
-            raise ValueError(
-                f"criterion aggregation {criterion_aggregation_s:g} s is not a whole number "
-                f"of {window_s:g} s windows"
-            )
+            # the criterion cannot be formed on these windows: the row is
+            # skipped with a note, the diagnostic rows stand (a caller scoring
+            # the criterion itself reports it as not evaluated)
+            criterion_k = None
+            not_formed = {
+                "aggregation": f"{criterion_aggregation_s / 60.0:g} min (criterion)",
+                "rmspe": "not formed",
+                "floor": "",
+                "note": (
+                    f"criterion aggregation {criterion_aggregation_s:g} s is not a whole "
+                    f"number of {window_s:g} s windows"
+                ),
+            }
     # Both sides on the cells the RMSPE compares (joint mask), as C3 does.
     joint = np.isfinite(s) & np.isfinite(o) & (o != 0.0)
     s_j = np.where(joint, s, np.nan)
@@ -871,7 +886,8 @@ def speed_aggregation_rows(
         return f"{k * window_s / 60.0:g} min" if window_s else f"{k} windows"
 
     rows: list[dict[str, str]] = []
-    for k in sorted({1, 3, 6, 12, criterion_k}):
+    standard = {1, 3, 6, 12} if criterion_k is None else {1, 3, 6, 12, criterion_k}
+    for k in sorted(standard):
         if k > n_win:
             continue
         rows.append(
@@ -889,6 +905,8 @@ def speed_aggregation_rows(
             "floor": "",
         }
     )
+    if not_formed is not None:
+        rows.append(not_formed)
     return rows
 
 

@@ -10,10 +10,19 @@ sampler, how a sample changes a scenario and the aggregation are
 
 Every run goes through ``scripts/corridor_sweep.py``'s own worker
 (``_worker``: ``microsim.runner.run_micro`` then
-``validation.metrics.compute_metrics`` with the same ``--x-ref``/``--span``),
-and every arm is built by its ``cell_config`` (penetration, compliance,
-controller, strategy), so the metrics are exactly the ones a sweep records,
-over the same window. An arm is ``NAME key=value ...`` with the keys
+``validation.metrics.compute_metrics`` with the same ``--x-ref``/``--span``
+and ``--scored-end-s``), and every arm is built by its ``cell_config``
+(penetration, compliance, controller, strategy), so the metrics are exactly
+the ones a sweep records, over the same window. ``--scored-end-s T`` scores a
+scenario that runs on past its study period with a cool-down
+(docs/FRISCO_PROTOCOL.md §8.2), as ``scripts/strategy_tune.py`` and
+``scripts/corridor_sweep.py`` do: give the value the tuned best was scored
+with. It is checked against the scenario's warm-up and length before anything
+runs, and it enters the design's ``metrics_args`` (and so its key) only when
+given, so a design without it keeps the key it had before the option existed;
+a design resumed with another value is refused.
+
+An arm is ``NAME key=value ...`` with the keys
 ``strategy`` (default ``none``), ``controller``, ``penetration``,
 ``compliance`` (default 1.0), ``rho_target_veh_km`` (ALINEA strategies) and
 ``override`` — a YAML/JSON file holding the arm's own tuned settings, the
@@ -107,7 +116,7 @@ import yaml
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from corridor_sweep import FIELDS, _done, _worker, cell_config
+from corridor_sweep import FIELDS, _done, _worker, cell_config, scored_end_problem
 
 from controllers.ramp_meter import ALINEA_DEFAULTS
 from flowstate_core.config import ScenarioConfig, config_hash
@@ -460,6 +469,14 @@ def build_parser() -> argparse.ArgumentParser:
     )
     ap.add_argument("--x-ref", type=float, help="throughput cross-section [m]")
     ap.add_argument("--span", type=float, nargs=2, metavar=("LO", "HI"), help="analysed span [m]")
+    ap.add_argument(
+        "--scored-end-s",
+        type=float,
+        default=None,
+        metavar="T",
+        help="end of the scored period [s, simulation time], the study period's end before a "
+        "cool-down (docs/FRISCO_PROTOCOL.md section 8.2); default: score to the run's end",
+    )
     ap.add_argument("--headline", default=None, help="metric of the plain-language headline")
     ap.add_argument("--procs", type=int, default=8)
     ap.add_argument("--out", required=True, type=Path, help="run tree root")
@@ -558,15 +575,26 @@ def stated_bases(args: argparse.Namespace) -> dict[str, str]:
     return out
 
 
+def metrics_args_of(args: argparse.Namespace) -> dict[str, Any]:
+    """The design's ``metrics_args``: ``x_ref`` and ``span``, plus ``scored_end_s`` only when
+    given (so a design without it keeps the key it had before the option existed)."""
+    out: dict[str, Any] = {"x_ref": float(args.x_ref), "span": [float(v) for v in args.span]}
+    scored_end = getattr(args, "scored_end_s", None)
+    if scored_end is not None:
+        out["scored_end_s"] = float(scored_end)
+    return out
+
+
 def design_inputs(
     args: argparse.Namespace, base: ScenarioConfig, space: ParameterSpace, arms: list[Arm]
 ) -> dict[str, Any]:
     """Everything the design is a function of (its key covers exactly this).
 
     The transfer check's path and sha256 are included only when it is given,
-    and so are the data-quality artifact's path, sha256 and count error, so a
-    design without them keeps the key it had before the options existed
-    (its demand range is then flagged assumed, which the space records).
+    and so are the data-quality artifact's path, sha256 and count error, and
+    the scored end (:func:`metrics_args_of`), so a design without them keeps
+    the key it had before the options existed (its demand range is then
+    flagged assumed, which the space records).
     """
     inputs: dict[str, Any] = {
         "scenario": str(args.scenario),
@@ -577,7 +605,7 @@ def design_inputs(
         "seeds_per_sample": args.seeds,
         "space": space.to_dict(),
         "arms": [a.to_dict() for a in arms],
-        "metrics_args": {"x_ref": float(args.x_ref), "span": [float(v) for v in args.span]},
+        "metrics_args": metrics_args_of(args),
     }
     record = transfer_record(args)
     if record is not None:
@@ -649,9 +677,16 @@ def make_design(
     if design_path.is_file():
         stored = json.loads(design_path.read_text())
         if stored.get("design_key") != key:
+            recorded = stored.get("metrics_args")
+            window = (
+                f"; its runs were scored with metrics_args {recorded}, this launch asks for "
+                f"{inputs['metrics_args']} (runs scored on two windows are never mixed)"
+                if recorded != inputs["metrics_args"]
+                else ""
+            )
             raise SystemExit(
                 f"{design_path} holds a different design (key {stored.get('design_key')} against "
-                f"{key}): use a new --out, or rerun with the inputs it records"
+                f"{key}){window}: use a new --out, or rerun with the inputs it records"
             )
     seed = int(inputs["design_seed"])
     samples = sample_space(space, args.samples, seed)
@@ -699,10 +734,12 @@ def pending_runs(
     root: Path, design: dict[str, Any], arms: list[Arm], keep: bool
 ) -> tuple[int, list[tuple[str, dict[str, Any], int, dict[str, Any], str, bool]]]:
     """``(total, pending)``: payloads for ``corridor_sweep._worker``."""
-    metrics_args = {
+    metrics_args: dict[str, Any] = {
         "x_ref": float(design["metrics_args"]["x_ref"]),
         "span": tuple(float(v) for v in design["metrics_args"]["span"]),
     }
+    if design["metrics_args"].get("scored_end_s") is not None:
+        metrics_args["scored_end_s"] = float(design["metrics_args"]["scored_end_s"])
     total = 0
     pending: list[tuple[str, dict[str, Any], int, dict[str, Any], str, bool]] = []
     for row in design["samples"]:
@@ -881,6 +918,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         raise SystemExit(f"duplicate arm names: {names}")
     base = ScenarioConfig.from_yaml(args.scenario)
     base_doc = json.loads(base.model_dump_json())
+    problem = scored_end_problem(base_doc, args.scored_end_s)
+    if problem is not None:
+        raise SystemExit(problem)
     for arm in arms:  # fail before anything runs
         try:
             ScenarioConfig.model_validate(arm.config(base_doc))

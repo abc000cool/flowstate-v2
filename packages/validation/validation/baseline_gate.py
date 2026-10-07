@@ -973,6 +973,16 @@ def score_day_set(
     left_out = _left_out_note(rescored, aggregations, target.window_s)
     if left_out:
         notes.append(left_out)
+    try:
+        _windows_per_block(SPEED_AGGREGATION_S, target.window_s)
+    except ValueError:
+        # C3 is defined at 15 minutes (protocol section 4): on windows that do
+        # not divide it the check is not evaluated, never re-defined
+        notes.append(
+            f"the observations use {target.window_s:g} s windows, which do not divide C3's "
+            f"{SPEED_AGGREGATION_S / _S_PER_MIN:g}-minute aggregation: C3 cannot be formed on "
+            "them and is not evaluated"
+        )
     rmspe_by: dict[float, tuple[float, ...]] = {}
     cells_by: dict[float, int] = {}
     for agg in aggregations:

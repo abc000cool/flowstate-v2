@@ -755,3 +755,108 @@ def test_a_derived_population_widens_the_checks_reading_to_its_own_mean(
     assert v.high * mean == pytest.approx(mean)  # widened to 28.5 m/s, not 30
     assert v.basis == "observed_interval" and not v.assumed
     assert "is not carried over" in v.source
+
+
+# --- review 2026-10-07: the scored end of a cool-down scenario ---------------------------------
+
+COMMITTED_DESIGNS = (
+    "artifacts/uncertainty_mndot_i94_wb_stpaul_p1_rehearsal.json",
+    "artifacts/uncertainty_mndot_i94_wb_stpaul_p1b_rehearsal.json",
+)
+
+
+class _Recorded:
+    """An object whose ``to_dict`` is a recorded JSON form (a space or an arm)."""
+
+    def __init__(self, raw: Any) -> None:
+        self.raw = raw
+
+    def to_dict(self) -> Any:
+        return self.raw
+
+
+@pytest.mark.parametrize("rel", COMMITTED_DESIGNS)
+def test_the_committed_designs_keep_their_keys(rel: str, monkeypatch: pytest.MonkeyPatch) -> None:
+    """``design_inputs`` rebuilt from what each committed rehearsal records (its scenario's
+    sha256, config hash, transfer-check and data-quality records stand in for the files,
+    which are not in the repository) gives the recorded key: the scored end enters the
+    design only when given."""
+    doc = json.loads((REPO_ROOT / rel).read_text())
+    prov = doc["provenance"]
+    monkeypatch.setattr(ur, "file_sha256", lambda path: prov["scenario_sha256"])
+    monkeypatch.setattr(ur, "config_hash", lambda cfg: prov["base_config_hash"])
+    monkeypatch.setattr(ur, "transfer_record", lambda args: prov.get("transfer_check"))
+    monkeypatch.setattr(ur, "data_quality_record", lambda args: prov.get("data_quality"))
+    args = ur.build_parser().parse_args(
+        [
+            *("--scenario", prov["scenario"], "--out", "unused"),
+            *("--seed", str(prov["design_seed"]), "--samples", str(doc["n_samples_design"])),
+            *(
+                "--seeds",
+                str(prov["seeds_per_sample"]),
+                "--x-ref",
+                str(prov["metrics_args"]["x_ref"]),
+            ),
+            *("--span", *(str(v) for v in prov["metrics_args"]["span"])),
+        ]
+    )
+    assert args.scored_end_s is None
+    space = _Recorded(doc["space"])
+    arms = [_Recorded(a) for a in prov["arms"]]
+    inputs = ur.design_inputs(args, object(), space, arms)  # type: ignore[arg-type]
+    assert "scored_end_s" not in inputs["metrics_args"]
+    assert ur._key(inputs) == prov["design_key"]
+    args.scored_end_s = 14_400.0
+    with_end = ur.design_inputs(args, object(), space, arms)  # type: ignore[arg-type]
+    assert with_end["metrics_args"]["scored_end_s"] == 14_400.0
+    assert ur._key(with_end) != prov["design_key"]
+
+
+def test_the_scored_end_reaches_the_design_and_every_payload(
+    scenario: Path, tmp_path: Path
+) -> None:
+    out = tmp_path / "unc"
+    plain, _ = _design(scenario, tmp_path / "plain")
+    design, arms = _design(scenario, out, "--scored-end-s", "50")
+    assert design["metrics_args"] == {"x_ref": 300.0, "span": [100.0, 500.0], "scored_end_s": 50.0}
+    assert "scored_end_s" not in plain["metrics_args"]
+    assert design["design_key"] != plain["design_key"]
+    total, pending = ur.pending_runs(out, design, arms, False)
+    assert total == len(pending) == 12
+    assert all(
+        p[3] == {"x_ref": 300.0, "span": (100.0, 500.0), "scored_end_s": 50.0} for p in pending
+    )
+    _, plain_pending = ur.pending_runs(tmp_path / "plain", plain, arms, False)
+    assert all("scored_end_s" not in p[3] for p in plain_pending)
+
+
+@pytest.mark.parametrize(("first", "second"), [((), ("50",)), (("50",), ("40",)), (("50",), ())])
+def test_a_design_resumed_with_another_scored_end_is_refused(
+    scenario: Path, tmp_path: Path, first: tuple[str, ...], second: tuple[str, ...]
+) -> None:
+    out = tmp_path / "unc"
+    _design(scenario, out, *(("--scored-end-s", *first) if first else ()))
+    with pytest.raises(
+        SystemExit, match=r"different design.*scored with metrics_args.*never mixed"
+    ):
+        _design(scenario, out, *(("--scored-end-s", *second) if second else ()))
+
+
+@pytest.mark.parametrize("end", ["0", "61", "inf"])
+def test_an_out_of_range_scored_end_is_refused_before_anything_runs(
+    scenario: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, end: str
+) -> None:
+    def refuse(_payload: Any) -> Any:
+        raise AssertionError("a run started")
+
+    monkeypatch.setattr(ur, "_worker", refuse)
+    out = tmp_path / "unc"
+    with pytest.raises(SystemExit, match="nothing was simulated"):
+        ur.main(
+            [
+                *("--scenario", str(scenario), "--samples", "2", "--seeds", "1", "--procs", "1"),
+                *ARGS,
+                *("--scored-end-s", end, "--out", str(out)),
+            ]
+        )
+    assert not out.exists()

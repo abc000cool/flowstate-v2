@@ -10,7 +10,8 @@ No cloud call is made: ``gcloud``, ``curl`` (the metadata server), ``sudo``, ``s
   instance and never powers it off: after a failed full upload (once the light archive is
   uploaded again), with no archive in the bucket at all, under SIGTERM (light archive only);
   a failed delete is retried and leaves the instance up, not stopped. Without --self-delete it
-  powers off. Every archive carries logs/INSTANCE_ID.
+  powers off. Every archive carries logs/INSTANCE_ID. A fallback archive (a stop killing tar
+  during the full archive) never replaces a complete one: it is final_partial.tgz beside it.
 * The idle guard: a --self-delete instance whose delete fails is never powered off; any other
   falls back to a power-off.
 * The watcher: refuses a bucket archive another instance wrote; restarts a stopped instance
@@ -428,6 +429,97 @@ def test_sigterm_ships_the_light_archive_and_deletes(tmp_path: Path) -> None:
     assert sb.count("gcloud storage cp") == 1
     assert sb.count("gcloud compute instances delete") == 1
     assert not any(c.startswith("sudo shutdown") for c in sb.calls())
+
+
+#: A ``tar`` that blocks on the exit trap's FULL archive (its file list names the ring
+#: benchmark, which only the full mode adds) until a signal kills it, and is the real tar
+#: otherwise.
+TAR_BLOCKING_FULL = r"""#!/bin/bash
+for a in "$@"; do
+  case "$a" in *ring_benchmark.json) touch "$STUB_DIR/full_tar_started"; exec /bin/sleep 60 ;; esac
+done
+exec __TAR__ "$@"
+"""
+
+
+def test_a_stop_during_the_full_archive_never_replaces_the_light_one(tmp_path: Path) -> None:
+    """Review 2026-10-07: a system stop's SIGTERM during the exit trap's full archive killed
+    tar; the fallback (artifacts, scenarios, logs) then replaced $BUCKET/final.tgz, the
+    complete light copy, losing runs/** while still passing the watcher's checks. The
+    fallback now goes to final_partial.tgz beside it, and the bucket keeps the light copy."""
+    sb = Sandbox(tmp_path, {})
+    tar = sb.bin / "tar"
+    tar.write_text(TAR_BLOCKING_FULL.replace("__TAR__", shutil.which("tar") or "/usr/bin/tar"))
+    tar.chmod(0o755)
+    repo = _pipeline_repo(tmp_path)
+    ring = repo / "runs" / "i24_validation_zip" / "ring"
+    ring.mkdir(parents=True)
+    (ring / "ring_benchmark.json").write_text("{}")
+    run = repo / "runs" / "i24_cap_sweep" / "cafe" / "1"
+    run.mkdir(parents=True)
+    (run / "metrics.json").write_text("{}")  # rides in every archive, light ones too
+    env = sb.env(PIPELINE_BUCKET="gs://b/p", PIPELINE_SELF_DELETE="1")
+    proc = subprocess.Popen(
+        [BASH, str(repo / "scripts" / "gcp" / "pipeline_i24.sh"), "--stages", "none_selected"],
+        env=env,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        start_new_session=True,
+    )
+    try:
+        for _ in range(400):
+            if (sb.dir / "full_tar_started").exists():
+                break
+            time.sleep(0.05)
+        assert (sb.dir / "full_tar_started").exists()
+        os.killpg(proc.pid, signal.SIGTERM)  # systemd's stop: every process of the unit
+        proc.wait(timeout=60)
+    finally:
+        if proc.poll() is None:
+            os.killpg(proc.pid, signal.SIGKILL)
+    log = (repo / "logs" / "pipeline.log").read_text()
+    assert "SIGTERM received in the exit trap" in log
+    bucket = sb.dir / "bucket" / "b" / "p"
+    final = _members(bucket / "final.tgz")
+    assert "runs/i24_cap_sweep/cafe/1/metrics.json" in final  # still the complete light copy
+    assert final["logs/PIPELINE_EXIT"].startswith(b"rc=0")
+    partial = _members(bucket / "final_partial.tgz")
+    assert "logs/PIPELINE_EXIT" in partial and not any(m.startswith("runs/") for m in partial)
+    # light, the fallback beside it, the light copy again (the full one never landed)
+    assert sb.uploads() == ["01_final.tgz", "02_final_partial.tgz", "03_final_light.tgz"]
+    home = Path(env["HOME"])
+    assert "runs/i24_cap_sweep/cafe/1/metrics.json" in _members(home / "final.tgz")
+    assert (home / "final_partial.tgz").is_file()
+    assert "FALLBACK" in log and "the complete archive" in log
+    assert sb.count("gcloud compute instances delete") == 1
+
+
+def test_a_fallback_with_no_complete_archive_is_the_archive(tmp_path: Path) -> None:
+    """Without a complete archive anywhere the fallback is still final.tgz (all there is);
+    once one exists, a later fallback goes beside it."""
+    sb = Sandbox(tmp_path, {})
+    tar = sb.bin / "tar"
+    real = shutil.which("tar") or "/usr/bin/tar"
+    # the archives' own file lists (beyond the fallback's artifacts, scenarios, logs) fail
+    tar.write_text(f'#!/bin/bash\nif [ "$#" -gt 5 ]; then exit 2; fi\nexec {real} "$@"\n')
+    tar.chmod(0o755)
+    repo = _pipeline_repo(tmp_path)
+    run = repo / "runs" / "i24_cap_sweep" / "cafe" / "1"
+    run.mkdir(parents=True)
+    (run / "metrics.json").write_text("{}")
+    env = sb.env(PIPELINE_BUCKET="gs://b/p", PIPELINE_SELF_DELETE="1")
+    r = subprocess.run(
+        [BASH, str(repo / "scripts" / "gcp" / "pipeline_i24.sh"), "--stages", "none_selected"],
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=120,
+    )
+    assert r.returncode == 0, r.stderr
+    final = _members(sb.dir / "bucket" / "b" / "p" / "final.tgz")
+    assert "logs/PIPELINE_EXIT" in final
+    # the first fallback is the archive; the second (full) sits beside it
+    assert sb.uploads()[:2] == ["01_final.tgz", "02_final_partial.tgz"]
 
 
 # --- the idle guard ----------------------------------------------------------------------------

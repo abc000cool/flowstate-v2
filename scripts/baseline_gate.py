@@ -16,6 +16,12 @@ the battery was scored against (``--scored-against``; by default the battery
 artifact's ``observations.path``); ``scripts/observations_for_dates.py``
 builds them from the corridor's detector frame, quality-masked.
 
+A battery scored with ``--scored-end-s`` (a cool-down run, docs/FRISCO_PROTOCOL.md
+§8.2) records the value in its artifact and in each replicate's
+``metrics.json``; the gate reads it from ``--battery-artifact`` (with
+``--runs`` alone, the replicates must have been scored to the run's end) and
+refuses — exit 2, saying what to give — replicates scored with another value.
+
 The calibration-day artifact (``--calibration-observations``) and the study's
 day split (``--day-split``) are required: the gate checks that each day set's
 artifact holds exactly its side of the split and that the two sides are
@@ -56,6 +62,7 @@ from validation.baseline_gate import GateResult, gate_from_replicates, render_ma
 from validation.battery import (
     METRICS_FILE,
     SCORES_FILE,
+    ReplicateAnalysis,
     collision_counts,
     json_safe,
     load_meta,
@@ -88,6 +95,45 @@ def stored_detector(run_dir: Path) -> str:
     """The wave detector a replicate's ``metrics.json`` says it was read with."""
     stored = json.loads((run_dir / METRICS_FILE).read_text())
     return str(stored.get("criterion_detector") or "")
+
+
+def artifact_scored_end(artifact: dict[str, Any] | None) -> float | None:
+    """The scored end the battery artifact records (``scored_end_s``; None = the run's end)."""
+    value = (artifact or {}).get("scored_end_s")
+    return None if value is None else float(value)
+
+
+def load_analyses(
+    dirs: list[Path], artifact: dict[str, Any] | None, artifact_path: Path | None
+) -> list[ReplicateAnalysis]:
+    """Every replicate's stored analysis, read with the battery's recorded scored end.
+
+    Raises:
+        ValueError: A replicate's ``metrics.json`` records another
+            ``scored_end_s`` than the battery artifact (None without one); the
+            message says what to give the gate.
+    """
+    scored_end = artifact_scored_end(artifact)
+    expected = (
+        f"the battery artifact {artifact_path} records scored_end_s={scored_end!r}"
+        if artifact is not None
+        else "without --battery-artifact the gate expects replicates scored to the run's end "
+        "(scored_end_s=None)"
+    )
+    out: list[ReplicateAnalysis] = []
+    for d in dirs:
+        stored = json.loads((d / METRICS_FILE).read_text()).get("scored_end_s")
+        recorded = None if stored is None else float(stored)
+        if recorded != scored_end:
+            raise ValueError(
+                f"{d / METRICS_FILE} was scored with scored_end_s={recorded!r}, but {expected}. "
+                "Give --battery-artifact the artifact the battery wrote for these replicates (it "
+                "records their scored end), or re-score them with scripts/corridor_battery.py "
+                "--criteria-only --scored-end-s <the value they were scored with>, which rewrites "
+                "that artifact"
+            )
+        out.append(load_replicate_analysis(d, scored_end))
+    return out
 
 
 def split_summary(path: Path) -> dict[str, Any]:
@@ -214,7 +260,11 @@ def main(argv: list[str] | None = None) -> int:
         if args.validation_observations is None
         else ObservedCorridor.from_json(args.validation_observations)
     )
-    analyses = [load_replicate_analysis(d) for d in dirs]
+    try:
+        analyses = load_analyses(dirs, artifact, args.battery_artifact)
+    except ValueError as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
     metas = [load_meta(d) for d in dirs]
     detectors = {stored_detector(d) for d in dirs}
     detector = detectors.pop() if len(detectors) == 1 else ""

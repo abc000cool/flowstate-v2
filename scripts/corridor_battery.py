@@ -86,8 +86,9 @@ stops at simulation time ``T``, the study period's end, while the waiting
 clocks run on to the run's end so the study period's vehicles can finish.
 Each replicate's ``metrics.json`` and the artifact record ``scored_end_s``
 (only when given), and ``--criteria-only`` refuses stored files scored with
-another value. Without the option everything scores to the run's end, as
-before.
+another value. The value is checked against the scenario's warm-up and length
+before anything is simulated (:func:`scored_end_usage_error`). Without the
+option everything scores to the run's end, as before.
 
 Per-seed results are written into each replicate directory (``metrics.json``,
 ``observed_scores.json``) so ``--criteria-only`` can re-score a finished
@@ -176,6 +177,7 @@ from validation.battery import (
     load_meta,
     load_replicate_analysis,
     mean_finite,
+    measurement_window,
     score_pool_size,
     trajectory_rows,
     waiting_summary,
@@ -1008,6 +1010,23 @@ def gate_usage_error(args: argparse.Namespace) -> str | None:
     return None
 
 
+def scored_end_usage_error(cfg: ScenarioConfig, scored_end_s: float | None) -> str | None:
+    """Why ``--scored-end-s`` cannot score this scenario's runs (checked before simulating).
+
+    The bounds are :func:`validation.battery.measurement_window`'s — after the
+    warm-up, no later than the run's end — applied to the configuration
+    rather than to a finished replicate's ``meta.json``, so a mistyped value
+    costs no simulation.
+    """
+    if scored_end_s is None:
+        return None
+    try:
+        measurement_window({"config": cfg.model_dump(mode="json")}, scored_end_s)
+    except ValueError as exc:
+        return f"--scored-end-s {scored_end_s:g}: {exc}; nothing was simulated"
+    return None
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     """Run (or re-score) one corridor battery; returns a process exit code."""
     args = parse_args(argv)
@@ -1019,6 +1038,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     profile = get_profile(args.criteria_profile)
     observed = ObservedCorridor.from_json(args.observations)
     cfg = load_scenario(args.scenario).model_copy(update={"replicates": args.replicates})
+    scored_end_error = scored_end_usage_error(cfg, args.scored_end_s)
+    if scored_end_error is not None:
+        print(scored_end_error, flush=True)
+        return 2
     seeds = spawn_seeds(cfg.seed, args.replicates)
     out_root = Path(args.out)
     dirs = seed_dirs(out_root, cfg, seeds)

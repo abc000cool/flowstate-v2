@@ -151,3 +151,82 @@ def test_the_analysis_reproduces_the_grids_scores(tmp_path: Path) -> None:
     # the note's expectations are evaluated (identical readings here: none met)
     assert len(res["expectations"]) == 2 * 5
     assert all(e["met"] is False for e in res["expectations"])
+
+
+# --- review 2026-10-07: a target already corrected is not reversed twice ---------------------
+
+
+def _observed_lanes(shares: dict[str, float], *, flagged: bool, reviewer: bool) -> dict[str, Any]:
+    st: dict[str, Any] = {"id": "S791", "lanes": 3, "shares": shares}
+    if flagged:
+        st["lane_order"] = {"iris_labels_reversed": True, "by": "reviewer (--reverse-lane-order)"}
+    doc: dict[str, Any] = {"stations": [st, {"id": "S97", "lanes": 3, "shares": {}}]}
+    if reviewer:
+        doc["lane_order"] = {"reversed_by_reviewer": ["S791"], "reversed_by_report": []}
+    return doc
+
+
+def test_a_station_the_targets_store_corrected_is_recognised() -> None:
+    iris = {"1": 0.403, "2": 0.338, "3": 0.259}
+    assert (
+        probe.already_corrected(_observed_lanes(iris, flagged=False, reviewer=False), ("S791",))
+        == ()
+    )
+    for flagged, reviewer in ((True, False), (False, True), (True, True)):
+        doc = _observed_lanes(iris, flagged=flagged, reviewer=reviewer)
+        assert probe.already_corrected(doc, ("S791",)) == ("S791",)
+    # the committed observed lanes carry S791 in IRIS order: reversed by the probe, once
+    committed = json.loads(
+        (REPO_ROOT / "artifacts" / "driver_calibration_i94_observed_lanes.json").read_text()
+    )
+    assert probe.already_corrected(committed, probe.REVERSED_STATIONS) == ()
+
+
+def test_the_corrected_variants_never_reverse_twice() -> None:
+    target = {
+        "lane_use": {
+            "stations_compared": [
+                {"id": "S791", "lanes": 3, "shares": {"1": 0.5, "2": 0.3, "3": 0.2}}
+            ]
+        }
+    }
+    once = probe.corrected_variants({"own": target}, ("S791",))
+    assert once["own_s791_reversed"]["lane_use"]["stations_compared"][0]["shares"] == {
+        "1": 0.2, "2": 0.3, "3": 0.5,
+    }  # fmt: skip
+    none = probe.corrected_variants({"own": target}, ())
+    assert none["own_s791_reversed"] == target and none["own"] is target
+
+
+@needs_grid
+def test_targets_already_corrected_are_not_reversed_again(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """After ``--build-observed-lanes --reverse-lane-order S791`` (docs/I94_LANE_SHARES.md §6
+    step 1) the targets store S791 corrected: the probe's corrected scores must stay the
+    corrected ones (5.87 / 5.76 pp), not return to IRIS order (8.24 / 8.40 pp)."""
+    src = REPO_ROOT / "artifacts" / "driver_calibration_i94_observed_lanes.json"
+    doc = json.loads(src.read_text())
+    for st in doc["stations"]:
+        if st["id"] == "S791":
+            n = int(st["lanes"])
+            st["shares"] = {str(k): st["shares"][str(n + 1 - k)] for k in range(1, n + 1)}
+            st["lane_order"] = {
+                "iris_labels_reversed": True,
+                "by": "reviewer (--reverse-lane-order)",
+            }
+    doc["lane_order"] = {"reversed_by_reviewer": ["S791"], "reversed_by_report": []}
+    corrected = tmp_path / "observed_lanes_s791_corrected.json"
+    corrected.write_text(json.dumps(doc))
+    monkeypatch.setattr(g, "_observed_lanes_path", lambda spec, override: corrected)
+    plan = probe.build_probe()
+    root = tmp_path / "probe"
+    _fake_tree(plan, root)
+    res = probe.analyze_probe(plan, root, tmp_path / "probe.json", argv=["--analyze-only"])
+    for name, value in (("k0.0_kr0.0", 5.87), ("k1.0_kr0.1", 5.76)):
+        sc = res["results"]["as_built"][name]["scores"]
+        assert sc["own"]["lane_rmse_pp"] == pytest.approx(value, abs=0.005)
+        assert sc["own_s791_reversed"]["lane_rmse_pp"] == pytest.approx(value, abs=0.005)
+    assert res["targets"]["reversed_for_the_corrected_scores"] == []
+    assert res["targets"]["already_corrected_in_targets"] == ["S791"]
+    assert any("already stores S791 in corrected lane order" in n for n in res["notes"])

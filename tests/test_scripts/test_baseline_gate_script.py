@@ -18,6 +18,7 @@ import json
 import sys
 from pathlib import Path
 from types import ModuleType
+from typing import Any
 
 import pytest
 
@@ -173,3 +174,73 @@ def test_per_day_scores_each_validation_day_beside_the_gate(
     # an unreadable artifact in the directory is a usage error
     (days / "junk.json").write_text("{}")
     assert script.main(argv) == 2
+
+
+def _scored_with_end(tree: dict[str, Any], end: float) -> None:
+    """Mark the stored replicates as a battery run with ``--scored-end-s end`` writes them."""
+    for d in tree["dirs"]:
+        path = d / "metrics.json"
+        stored = json.loads(path.read_text())
+        stored["scored_end_s"] = end
+        path.write_text(json.dumps(stored))
+
+
+def _artifact(tmp_path: Path, tree: dict[str, Any], **extra: Any) -> Path:
+    artifact = tmp_path / "battery.json"
+    artifact.write_text(
+        json.dumps(
+            {
+                "schema": "flowstate.corridor_validation/1",
+                "scenario": str(tree["scenario"]),
+                "observations": {"path": str(tree["observations"])},
+                "per_seed": [{"run_dir": str(d)} for d in tree["dirs"]],
+                **extra,
+            }
+        )
+    )
+    return artifact
+
+
+def test_a_battery_scored_with_a_scored_end_is_gated(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Review 2026-10-07: the gate read every replicate as scored to the run's end, so a
+    battery run with --scored-end-s (a cool-down, protocol section 8.2) crashed it. The
+    artifact records the scored end; the gate reads the replicates with it, and refuses
+    (exit 2, saying what to give) replicates scored with another value."""
+    tree = write_tree(load_battery(), tmp_path)
+    _scored_with_end(tree, 3000.0)
+    script = _script()
+    split = _split(tmp_path / "split.json", ["2026-09-02"])
+    common = [
+        "--calibration-observations", str(tree["observations"]),
+        "--day-split", str(split),
+    ]  # fmt: skip
+    artifact = _artifact(tmp_path, tree, scored_end_s=3000.0)
+    out_json = tmp_path / "gate.json"
+    assert (
+        script.main(["--battery-artifact", str(artifact), "--out-json", str(out_json), *common])
+        == 0
+    )
+    statuses = {
+        (c["check"], c["day_set"]): c["status"] for c in json.loads(out_json.read_text())["checks"]
+    }
+    assert statuses[("C1", "calibration")] == "pass"
+    # an artifact recording no scored end (or another one): refused, with what to do
+    for extra in ({}, {"scored_end_s": 3300.0}):
+        refused = tmp_path / "refused.json"
+        art = _artifact(tmp_path, tree, **extra)
+        assert (
+            script.main(["--battery-artifact", str(art), "--out-json", str(refused), *common]) == 2
+        )
+        err = capsys.readouterr().err
+        assert "was scored with scored_end_s=3000.0" in err
+        assert "--battery-artifact" in err and "--criteria-only --scored-end-s" in err
+        assert not refused.exists()
+    # --runs alone expects replicates scored to the run's end
+    runs = [
+        "--runs", str(tree["dirs"][0].parent), "--scored-against", str(tree["observations"]),
+        "--out-json", str(tmp_path / "runs.json"), *common,
+    ]  # fmt: skip
+    assert script.main(runs) == 2
+    assert "without --battery-artifact" in capsys.readouterr().err

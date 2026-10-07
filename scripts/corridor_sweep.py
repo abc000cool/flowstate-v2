@@ -50,9 +50,17 @@ simulation time ``T`` (throughput, σ_v, VMT/VHT and waves over the study
 period; the waiting measures over the departures planned before ``T``, their
 clocks running on to the run's end), and ``metrics_args`` in the manifest
 records it. Without the option every run is scored to its end, as before.
+The value is checked against the scenario's warm-up and length before
+anything is simulated (:func:`scored_end_problem`).
 
 Resumable: a run whose ``metrics.json`` exists under its cell/config-hash/seed
-directory is skipped. ``--analyze-only`` rebuilds the summary from stored files.
+directory is skipped. Each run's ``metrics.json`` records the metric arguments
+it was scored with (``metrics_args``: ``x_ref``, ``span``, ``scored_end_s``,
+null = the run's end; 2026-10-07), and a resume whose arguments differ from
+the stored ``MANIFEST.json``'s or from a stored run's is refused
+(:func:`resume_conflict`): runs scored on two windows are never mixed. A run
+stored before the record existed is "unknown", refused only when the launch
+sets a scored end. ``--analyze-only`` rebuilds the summary from stored files.
 
 Example::
 
@@ -69,6 +77,7 @@ import json
 import multiprocessing as mp
 import shutil
 import time
+from collections.abc import Iterable, Mapping
 from dataclasses import asdict
 from pathlib import Path
 from typing import Any
@@ -93,6 +102,111 @@ FIELDS = (
     "meter_wait_veh_h",
     "n_censored",
 )
+
+
+#: Key of a run's ``metrics.json`` that records its metric arguments (module docstring).
+RUN_METRICS_ARGS_KEY = "metrics_args"
+
+
+def metrics_args_record(metrics_args: Mapping[str, Any]) -> dict[str, Any]:
+    """The canonical record of a run's metric arguments.
+
+    ``x_ref`` and ``span`` as floats, ``scored_end_s`` a float or None (an
+    absent key is None: scored to the run's end), so a manifest written
+    before the scored end existed compares equal to a launch without it.
+    """
+    x_ref = metrics_args.get("x_ref")
+    span = metrics_args.get("span")
+    end = metrics_args.get("scored_end_s")
+    return {
+        "x_ref": None if x_ref is None else float(x_ref),
+        "span": None if span is None else [float(v) for v in span],
+        "scored_end_s": None if end is None else float(end),
+    }
+
+
+def resume_conflict(
+    root: Path, runs: Iterable[tuple[str, str, int]], metrics_args: Mapping[str, Any]
+) -> str | None:
+    """Why the stored tree under ``root`` cannot be resumed with ``metrics_args``, or None.
+
+    Only a tree with a stored run among ``runs`` is checked (nothing else
+    would be reused). Refused: the stored ``MANIFEST.json`` records other
+    metric arguments; a stored run's ``metrics.json`` records other ones; a
+    stored run records none (written before the record existed, so its scored
+    end is unknown) while the launch sets a scored end.
+
+    Args:
+        root: Run tree root (``<root>/<cell>/<config hash>/<seed>/``).
+        runs: ``(cell, config hash, seed)`` of the runs the launch would reuse.
+        metrics_args: The launch's metric arguments.
+
+    Returns:
+        The refusal (it names a fresh ``--out``), or None.
+    """
+    want = metrics_args_record(metrics_args)
+    stored: list[Path] = []
+    for cell, chash, seed in runs:
+        p = root / cell / chash / str(seed) / "metrics.json"
+        if p.is_file():
+            stored.append(p)
+    if not stored:
+        return None
+    advice = (
+        "runs scored on different windows cannot be mixed: use a fresh --out, or rerun with "
+        "the recorded values"
+    )
+    manifest = root / "MANIFEST.json"
+    if manifest.is_file():
+        recorded = json.loads(manifest.read_text()).get("metrics_args")
+        if isinstance(recorded, Mapping) and metrics_args_record(recorded) != want:
+            return (
+                f"{manifest} records metrics_args {metrics_args_record(recorded)}; this launch "
+                f"asks for {want} and {len(stored)} stored run(s) would be reused; {advice}"
+            )
+    unknown: list[Path] = []
+    for p in stored:
+        rec = json.loads(p.read_text()).get(RUN_METRICS_ARGS_KEY)
+        if not isinstance(rec, Mapping):
+            unknown.append(p)
+        elif metrics_args_record(rec) != want:
+            return (
+                f"{p} was scored with metrics_args {metrics_args_record(rec)}; this launch asks "
+                f"for {want}; {advice}"
+            )
+    if unknown and want["scored_end_s"] is not None:
+        return (
+            f"{len(unknown)} stored run(s) (e.g. {unknown[0]}) do not record the window they "
+            f"were scored on (written before 2026-10-07), and this launch sets scored_end_s "
+            f"{want['scored_end_s']:g}; {advice}"
+        )
+    return None
+
+
+def scored_end_problem(config: Mapping[str, Any], scored_end_s: float | None) -> str | None:
+    """Why ``scored_end_s`` cannot score runs of ``config`` (checked before simulating), or None.
+
+    The scored end must lie after the warm-up and no later than the run's
+    end, the bounds :func:`validation.battery.measurement_window` (and the
+    metrics) apply after a run; checked up front, a mistyped value costs
+    nothing instead of every run's simulation.
+
+    Args:
+        config: A serialized scenario (``ScenarioConfig.model_dump``).
+        scored_end_s: ``--scored-end-s``; None scores to the run's end.
+
+    Returns:
+        The refusal, or None.
+    """
+    if scored_end_s is None:
+        return None
+    from validation.battery import measurement_window
+
+    try:
+        measurement_window({"config": dict(config)}, scored_end_s)
+    except ValueError as exc:
+        return f"--scored-end-s {scored_end_s:g}: {exc}; nothing was simulated"
+    return None
 
 
 def cell_config(
@@ -125,9 +239,10 @@ def _worker(
         m = compute_metrics(paths.run_dir, **metrics_args)
         # the waiting measures (WP-105) beside the standard ones, same window
         w = compute_waiting_metrics(paths.run_dir, scored_end_s=metrics_args.get("scored_end_s"))
-        (paths.run_dir / "metrics.json").write_text(
-            json.dumps({**asdict(m), **asdict(w)}, indent=2)
-        )
+        record = {**asdict(m), **asdict(w)}
+        # the window it was scored on, so a resume can refuse to mix windows
+        record[RUN_METRICS_ARGS_KEY] = metrics_args_record(metrics_args)
+        (paths.run_dir / "metrics.json").write_text(json.dumps(record, indent=2))
         if not keep:
             paths.trajectories.unlink(missing_ok=True)
             paths.edges.unlink(missing_ok=True)
@@ -599,6 +714,9 @@ def main() -> None:
         )
     base_cfg = ScenarioConfig.from_yaml(args.scenario)
     base_json = json.loads(base_cfg.model_dump_json())
+    problem = scored_end_problem(base_json, args.scored_end_s)
+    if problem is not None:
+        raise SystemExit(problem)
     seeds = spawn_seeds(base_cfg.seed, args.replicates)
     metrics_args: dict[str, Any] = {
         "x_ref": float(args.x_ref),
@@ -645,6 +763,11 @@ def main() -> None:
         )
         hashes[name] = config_hash(ScenarioConfig.model_validate(cfg_json))
         configs[name] = cfg_json
+    conflict = resume_conflict(
+        root, [(name, hashes[name], s) for name in grid for s in seeds], metrics_args
+    )
+    if conflict is not None:
+        raise SystemExit(f"refusing to resume {root}: {conflict}")
     root.mkdir(parents=True, exist_ok=True)
     (root / "MANIFEST.json").write_text(
         json.dumps(

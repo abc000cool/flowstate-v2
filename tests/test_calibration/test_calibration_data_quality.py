@@ -703,6 +703,24 @@ class TestLaneOrder:
         assert report.lanes_reversed() == ["S1"]
         assert self._verdicts(report)["S2"] == "ok"
 
+    @pytest.mark.parametrize(("reversed_station", "neighbour"), [("S2", "S1"), ("S4", "S5")])
+    def test_an_end_station_beside_a_reversed_one_reads_through_it(
+        self, reversed_station: str, neighbour: str
+    ) -> None:
+        """Review 2026-10-07: a correctly labelled end station whose only clear neighbour is
+        the station found reversed was flagged uncertain (and its sensor-days suspect). Its
+        mirrored reading is the reversed neighbour's: read through the remapped lanes, it
+        is ok and nothing of it is flagged."""
+        report = self._report(syn.lane_order_frame(seed=0, reversed_stations=(reversed_station,)))
+        verdicts = self._verdicts(report)
+        assert verdicts[reversed_station] == "reversed"
+        assert verdicts[neighbour] == "ok"
+        assert report.lanes_reversed() == [reversed_station]
+        assert list(self._lane_order_findings(report)) == [reversed_station]
+        st = next(s for s in report.lane_order if s.station == neighbour)
+        assert f"read through the reversed labels of {reversed_station}" in st.reason
+        assert not st.lanes_reversed
+
     def test_a_pair_no_third_station_anchors_is_never_remapped(self) -> None:
         """Two comparable stations that disagree: the pair alone cannot say
         which is reversed. The corridor's other stations of that lane count

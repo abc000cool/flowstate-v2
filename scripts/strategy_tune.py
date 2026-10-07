@@ -56,7 +56,10 @@ with a cool-down (docs/FRISCO_PROTOCOL.md §8.2): it is carried in
 ``metrics_args`` to every run, so the objective counts only the departures
 planned before ``T`` (their clocks running on to the run's end) and the
 throughput guard is measured over the study period. Without it every run is
-scored to its end, as before.
+scored to its end, as before. The value is checked against the scenario's
+warm-up and length before anything runs, and a resume of either tree with
+other metric arguments than its stored runs were scored with is refused
+(``corridor_sweep.scored_end_problem`` / ``resume_conflict``).
 
 ``--plan-only`` prints the candidates and the run counts and writes nothing;
 ``--analyze-only`` re-analyses an existing tree (and refuses when the
@@ -89,7 +92,16 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from corridor_sweep import _done, _worker, analyze, cell_config, run_records, write_comparison
+from corridor_sweep import (
+    _done,
+    _worker,
+    analyze,
+    cell_config,
+    resume_conflict,
+    run_records,
+    scored_end_problem,
+    write_comparison,
+)
 
 from flowstate_core.config import ScenarioConfig, config_hash
 from flowstate_core.rng import spawn_seeds
@@ -1120,6 +1132,17 @@ def build_parser() -> argparse.ArgumentParser:
     return ap
 
 
+def _refuse_mixed_windows(
+    root: Path, cells: Mapping[str, str], seeds: Sequence[int], metrics_args: Mapping[str, Any]
+) -> None:
+    """Exit when a stored run of ``root`` was scored with other metric arguments."""
+    conflict = resume_conflict(
+        root, [(c, h, int(s)) for c, h in cells.items() for s in seeds], metrics_args
+    )
+    if conflict is not None:
+        raise SystemExit(f"refusing to resume {root}: {conflict}")
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     """Run (or plan, or re-analyse) a study; returns the exit code."""
     args = build_parser().parse_args(argv)
@@ -1133,6 +1156,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.scenario is None or args.x_ref is None or args.span is None:
         raise SystemExit("--scenario, --x-ref and --span are required (except with --analyze-only)")
     base_cfg = ScenarioConfig.from_yaml(args.scenario)
+    problem = scored_end_problem(json.loads(base_cfg.model_dump_json()), args.scored_end_s)
+    if problem is not None:
+        raise SystemExit(problem)
     plan = build_plan(
         base_cfg,
         str(args.scenario),
@@ -1155,6 +1181,13 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 0
 
     troot = out / TUNING_DIR
+    eroot = out / EVALUATION_DIR
+    # before anything runs: neither tree may mix runs scored on two windows
+    _refuse_mixed_windows(troot, plan.hashes, plan.tune_seeds, plan.metrics_args)
+    epath = eroot / "MANIFEST.json"
+    if epath.is_file():
+        stored = json.loads(epath.read_text())
+        _refuse_mixed_windows(eroot, stored["cells"], stored["seeds"], plan.metrics_args)
     troot.mkdir(parents=True, exist_ok=True)
     tm = tuning_manifest(plan, out)
     (troot / "MANIFEST.json").write_text(json.dumps(tm, indent=2))
@@ -1166,7 +1199,7 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     sel = select(tm, run_records(troot, tm["cells"], plan.tune_seeds))
     em, econfigs = evaluation_manifest(tm, out, sel["selected"], plan.configs)
-    eroot = out / EVALUATION_DIR
+    _refuse_mixed_windows(eroot, em["cells"], em["seeds"], plan.metrics_args)
     eroot.mkdir(parents=True, exist_ok=True)
     (eroot / "MANIFEST.json").write_text(json.dumps(em, indent=2))
     pending = pending_payloads(

@@ -22,7 +22,11 @@
 #     powers it off three minutes after the end and the laptop watcher (its
 #     TERMINATED branch) deletes the stopped instance;
 #   * logs/INSTANCE_ID (this instance's id) rides in every archive, so the
-#     watcher can refuse a bucket archive another launch left under the prefix.
+#     watcher can refuse a bucket archive another launch left under the prefix;
+#   * when an archive's file list fails (a read error, or a stop's SIGTERM killing
+#     tar in the exit trap) the fallback (artifacts, scenarios, logs only) never
+#     replaces a complete archive: beside one, locally or in the bucket, it is
+#     final_partial.tgz.
 #
 # Usage on the VM (from the repo root, under systemd-run so it survives logout):
 #   scripts/gcp/pipeline_i24.sh [--procs N] [--no-shutdown] [--quick] [--stages "name name ..."]
@@ -65,11 +69,12 @@ if md instance/id > logs/INSTANCE_ID.part && [ -s logs/INSTANCE_ID.part ]; then 
 UPLOADED=0       # 1 when the last make_archive's bucket copy landed
 TERMINATING=0    # 1 once a SIGTERM (a system stop) arrived
 ARCHIVE_LIGHT="$HOME/final_light.tgz"   # the exit-time light archive, kept for the upload retry after a failed full copy
-upload_archive() {  # upload_archive <file> [tries]: copy <file> to $BUCKET/final.tgz, waiting 30, 60, 90 s between tries
-  local f="$1" tries="${2:-1}" i=1
+ARCHIVE_PARTIAL="$HOME/final_partial.tgz"   # a fallback archive (artifacts, scenarios, logs) beside a complete one
+upload_archive() {  # upload_archive <file> [tries] [object]: copy <file> to $BUCKET/<object> (final.tgz), waiting 30, 60, 90 s between tries
+  local f="$1" tries="${2:-1}" object="${3:-final.tgz}" i=1
   [ -n "$BUCKET" ] || return 1
   while true; do
-    if gcloud storage cp "$f" "$BUCKET/final.tgz" >>"$LOG" 2>&1; then say "archive copied to $BUCKET/final.tgz"; return 0; fi
+    if gcloud storage cp "$f" "$BUCKET/$object" >>"$LOG" 2>&1; then say "archive copied to $BUCKET/$object"; return 0; fi
     say "bucket copy FAILED (attempt $i of $tries; see $LOG)"
     [ "$i" -ge "$tries" ] || [ "$TERMINATING" -eq 1 ] && return 1
     sleep $((30 * i)); i=$((i + 1))
@@ -128,11 +133,24 @@ make_archive() {  # make_archive light|full [tries] — atomic replace of $ARCHI
   # stage 24's probe (<root>/<network>/<pair>/<config hash>/<seed>/: readings and meta of every run, each network's lanes)
   extra="$extra $(ls runs/p5/i94_netfix_probe/*/LANES.json runs/p5/i94_netfix_probe/*/*/*/*/readings.json runs/p5/i94_netfix_probe/*/*/*/*/meta.json 2>/dev/null | tr '\n' ' ')"
   # shellcheck disable=SC2086
-  tar czf "$ARCHIVE.part" --exclude=net artifacts/*.json scenarios/*.yaml logs $extra 2>/dev/null \
-    || tar czf "$ARCHIVE.part" artifacts/*.json scenarios/*.yaml logs 2>/dev/null || { rm -f "$ARCHIVE.part"; return 1; }
-  mv -f "$ARCHIVE.part" "$ARCHIVE"
-  ls -la "$ARCHIVE" | awk -v m="$mode" '{print "archive (" m "):", $5, "bytes"}' | tee -a "$LOG"
-  if [ -n "$BUCKET" ] && upload_archive "$ARCHIVE" "$tries"; then UPLOADED=1; fi
+  if tar czf "$ARCHIVE.part" --exclude=net artifacts/*.json scenarios/*.yaml logs $extra 2>/dev/null; then
+    mv -f "$ARCHIVE.part" "$ARCHIVE"
+    ls -la "$ARCHIVE" | awk -v m="$mode" '{print "archive (" m "):", $5, "bytes"}' | tee -a "$LOG"
+    if [ -n "$BUCKET" ] && upload_archive "$ARCHIVE" "$tries"; then UPLOADED=1; fi
+    return 0
+  fi
+  # the file list failed (a read error, or a system stop's SIGTERM killed tar inside the exit trap): a fallback of
+  # artifacts, scenarios and logs only. It never replaces a complete archive, here or in the bucket (2026-10-07
+  # review: a stop during the exit trap's full archive put the fallback over the bucket's complete light copy,
+  # which lost runs/** and still passed the watcher's checks): beside one it goes under final_partial.tgz
+  tar czf "$ARCHIVE.part" artifacts/*.json scenarios/*.yaml logs 2>/dev/null || { rm -f "$ARCHIVE.part"; return 1; }
+  local dest="$ARCHIVE" object=final.tgz
+  [ -f "$ARCHIVE" ] && dest="$ARCHIVE_PARTIAL"
+  if [ -n "$BUCKET" ] && gcloud storage ls "$BUCKET/final.tgz" >/dev/null 2>&1; then object=final_partial.tgz; fi
+  mv -f "$ARCHIVE.part" "$dest"
+  ls -la "$dest" | awk -v m="$mode" '{print "archive (" m ", FALLBACK: artifacts, scenarios and logs only):", $5, "bytes"}' | tee -a "$LOG"
+  [ "$dest" = "$ARCHIVE" ] || say "the complete archive $ARCHIVE is kept; the fallback is $dest"
+  if [ -n "$BUCKET" ] && upload_archive "$dest" "$tries" "$object" && [ "$object" = final.tgz ]; then UPLOADED=1; fi
   return 0
 }
 self_delete() {  # self_delete [tries]: delete this instance (the compute-rw scope and the instanceAdmin grant of --self-delete)
