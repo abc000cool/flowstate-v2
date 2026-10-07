@@ -1,0 +1,268 @@
+{
+ "schema": "flowstate.driver_grid_manifest/1",
+ "corridor": "i24",
+ "spec": {
+  "key": "i24",
+  "base_scenario": "scenarios/i24_replica_flow_speedcal.yaml",
+  "transform": null,
+  "n_seeds": 1,
+  "mem_gb": 9.0,
+  "mode": "i24",
+  "guard_small_machine": true,
+  "population_base": "artifacts/idm_i24_capacity.json",
+  "population_dir": "artifacts",
+  "population_stem": "idm_i24_capacity_amax",
+  "measured_population": "artifacts/idm_i24.json",
+  "observations": null,
+  "clock_offset_s": 0.0,
+  "discharge_stations": [],
+  "discharge_upstream": [],
+  "observed_lanes": null,
+  "min_clearance_m": 25.0,
+  "notes": [
+   "I-24 calibrates on its one recorded morning (I-24 MOTION, 30 Nov 2022, 06:30-08:30 CST), which has no holdout: the chosen pair is not validated on other data (docs/FRISCO_PROTOCOL.md Amendment 1).",
+   "Lane-use segment: data x 0-5,500 m (the measured span), the segment whose observed vehicle-time shares are the amendment's 30/24/20/26 % (the 2026-09 calibration's measurement); the Old Hickory merge area alone (750-2,000 m) gives 28.0/23.4/19.0/29.6 % and is reported as a diagnostic, not scored.",
+   "One seed per pair (the amendment's design): differences between pairs include seed-level noise the grid does not estimate."
+  ]
+ },
+ "reference_scenario": "scenarios/i24_replica_flow_speedcal.yaml",
+ "reference_transform": null,
+ "reference_config_hash": "ae5861a4d906",
+ "grid": {
+  "k": [
+   0.0,
+   0.25,
+   0.5,
+   0.75,
+   1.0
+  ],
+  "lc_keep_right": [
+   0.0,
+   0.1,
+   0.25,
+   0.5,
+   1.0
+  ],
+  "is_amendment_grid": true
+ },
+ "pairs": [
+  {
+   "name": "k0.0_kr0.0",
+   "k": 0.0,
+   "lc_keep_right": 0.0,
+   "config_hash": "ae5861a4d906",
+   "population": "artifacts/idm_i24_capacity.json"
+  },
+  {
+   "name": "k0.0_kr0.1",
+   "k": 0.0,
+   "lc_keep_right": 0.1,
+   "config_hash": "ca8d36dc5537",
+   "population": "artifacts/idm_i24_capacity.json"
+  },
+  {
+   "name": "k0.0_kr0.25",
+   "k": 0.0,
+   "lc_keep_right": 0.25,
+   "config_hash": "46c5be7558d9",
+   "population": "artifacts/idm_i24_capacity.json"
+  },
+  {
+   "name": "k0.0_kr0.5",
+   "k": 0.0,
+   "lc_keep_right": 0.5,
+   "config_hash": "c33ddd3db0bc",
+   "population": "artifacts/idm_i24_capacity.json"
+  },
+  {
+   "name": "k0.0_kr1.0",
+   "k": 0.0,
+   "lc_keep_right": 1.0,
+   "config_hash": "c4a5722751c1",
+   "population": "artifacts/idm_i24_capacity.json"
+  },
+  {
+   "name": "k0.25_kr0.0",
+   "k": 0.25,
+   "lc_keep_right": 0.0,
+   "config_hash": "0d31f6e2d981",
+   "population": "artifacts/idm_i24_capacity_amax_k0.25.json"
+  },
+  {
+   "name": "k0.25_kr0.1",
+   "k": 0.25,
+   "lc_keep_right": 0.1,
+   "config_hash": "fb601fa48086",
+   "population": "artifacts/idm_i24_capacity_amax_k0.25.json"
+  },
+  {
+   "name": "k0.25_kr0.25",
+   "k": 0.25,
+   "lc_keep_right": 0.25,
+   "config_hash": "c5fdfea36cbb",
+   "population": "artifacts/idm_i24_capacity_amax_k0.25.json"
+  },
+  {
+   "name": "k0.25_kr0.5",
+   "k": 0.25,
+   "lc_keep_right": 0.5,
+   "config_hash": "db261798233d",
+   "population": "artifacts/idm_i24_capacity_amax_k0.25.json"
+  },
+  {
+   "name": "k0.25_kr1.0",
+   "k": 0.25,
+   "lc_keep_right": 1.0,
+   "config_hash": "54e70488d8fd",
+   "population": "artifacts/idm_i24_capacity_amax_k0.25.json"
+  },
+  {
+   "name": "k0.5_kr0.0",
+   "k": 0.5,
+   "lc_keep_right": 0.0,
+   "config_hash": "169c72ac1abc",
+   "population": "artifacts/idm_i24_capacity_amax_k0.5.json"
+  },
+  {
+   "name": "k0.5_kr0.1",
+   "k": 0.5,
+   "lc_keep_right": 0.1,
+   "config_hash": "8ae89ebe0829",
+   "population": "artifacts/idm_i24_capacity_amax_k0.5.json"
+  },
+  {
+   "name": "k0.5_kr0.25",
+   "k": 0.5,
+   "lc_keep_right": 0.25,
+   "config_hash": "afb40214c979",
+   "population": "artifacts/idm_i24_capacity_amax_k0.5.json"
+  },
+  {
+   "name": "k0.5_kr0.5",
+   "k": 0.5,
+   "lc_keep_right": 0.5,
+   "config_hash": "2031f936d196",
+   "population": "artifacts/idm_i24_capacity_amax_k0.5.json"
+  },
+  {
+   "name": "k0.5_kr1.0",
+   "k": 0.5,
+   "lc_keep_right": 1.0,
+   "config_hash": "3e207581dc04",
+   "population": "artifacts/idm_i24_capacity_amax_k0.5.json"
+  },
+  {
+   "name": "k0.75_kr0.0",
+   "k": 0.75,
+   "lc_keep_right": 0.0,
+   "config_hash": "d8ccdd497379",
+   "population": "artifacts/idm_i24_capacity_amax_k0.75.json"
+  },
+  {
+   "name": "k0.75_kr0.1",
+   "k": 0.75,
+   "lc_keep_right": 0.1,
+   "config_hash": "a10df9c7a2d4",
+   "population": "artifacts/idm_i24_capacity_amax_k0.75.json"
+  },
+  {
+   "name": "k0.75_kr0.25",
+   "k": 0.75,
+   "lc_keep_right": 0.25,
+   "config_hash": "ec058547a444",
+   "population": "artifacts/idm_i24_capacity_amax_k0.75.json"
+  },
+  {
+   "name": "k0.75_kr0.5",
+   "k": 0.75,
+   "lc_keep_right": 0.5,
+   "config_hash": "f40de2d5866b",
+   "population": "artifacts/idm_i24_capacity_amax_k0.75.json"
+  },
+  {
+   "name": "k0.75_kr1.0",
+   "k": 0.75,
+   "lc_keep_right": 1.0,
+   "config_hash": "01d64260c4eb",
+   "population": "artifacts/idm_i24_capacity_amax_k0.75.json"
+  },
+  {
+   "name": "k1.0_kr0.0",
+   "k": 1.0,
+   "lc_keep_right": 0.0,
+   "config_hash": "9f65ad0eaa6e",
+   "population": "artifacts/idm_i24_capacity_amax_k1.0.json"
+  },
+  {
+   "name": "k1.0_kr0.1",
+   "k": 1.0,
+   "lc_keep_right": 0.1,
+   "config_hash": "fce9785c6c0e",
+   "population": "artifacts/idm_i24_capacity_amax_k1.0.json"
+  },
+  {
+   "name": "k1.0_kr0.25",
+   "k": 1.0,
+   "lc_keep_right": 0.25,
+   "config_hash": "16677e9113d9",
+   "population": "artifacts/idm_i24_capacity_amax_k1.0.json"
+  },
+  {
+   "name": "k1.0_kr0.5",
+   "k": 1.0,
+   "lc_keep_right": 0.5,
+   "config_hash": "1ac0fcacc42b",
+   "population": "artifacts/idm_i24_capacity_amax_k1.0.json"
+  },
+  {
+   "name": "k1.0_kr1.0",
+   "k": 1.0,
+   "lc_keep_right": 1.0,
+   "config_hash": "27bef10cfcd2",
+   "population": "artifacts/idm_i24_capacity_amax_k1.0.json"
+  }
+ ],
+ "seeds": [
+  6914975401685141156
+ ],
+ "populations": {
+  "0.0": {
+   "k": 0.0,
+   "path": "artifacts/idm_i24_capacity.json",
+   "sha256": "80a7579b72510112e5131f73b02ce9afbb0df13eda3febf3cf8411dfb8296217",
+   "a_max_mean": 1.054909533427964
+  },
+  "0.25": {
+   "k": 0.25,
+   "path": "artifacts/idm_i24_capacity_amax_k0.25.json",
+   "sha256": "3baf93b63cce595a0e7a5420c2e1def10bda5c3a091d7c74d5540ddfaa8ffa2d",
+   "a_max_mean": 1.1620136795064078
+  },
+  "0.5": {
+   "k": 0.5,
+   "path": "artifacts/idm_i24_capacity_amax_k0.5.json",
+   "sha256": "d7530259e114be49b245cfe7df9beacdb451d0816a2b16b78ff6746165c8fe40",
+   "a_max_mean": 1.2691178255848516
+  },
+  "0.75": {
+   "k": 0.75,
+   "path": "artifacts/idm_i24_capacity_amax_k0.75.json",
+   "sha256": "27640a6c76116eb28e4b7867f65d430031cafc43b05221a8372962c02001496e",
+   "a_max_mean": 1.3762219716632957
+  },
+  "1.0": {
+   "k": 1.0,
+   "path": "artifacts/idm_i24_capacity_amax_k1.0.json",
+   "sha256": "c381e35787cedce6c2195684303e45002fae8a20726db88288a9715776a87218",
+   "a_max_mean": 1.4833261177417396
+  }
+ },
+ "measured_population": {
+  "path": "artifacts/idm_i24.json",
+  "sha256": "224a53dc670215da9025b50aa4b017e56429ea8f107d5d56ec35af7681f4d162",
+  "a_max_mean": 1.054909533427964,
+  "a_max_sd": 0.42841658431377566,
+  "formula": "mean a_max = measured mean + k x sqrt(cov[a_max, a_max]) of the measured population"
+ },
+ "created_at": "2026-10-07T04:48:26Z"
+}

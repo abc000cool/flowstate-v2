@@ -50,6 +50,7 @@ from calibration.transfer_check import (
     judge_absolute,
     judge_relative,
     mean_driver_capacity,
+    measured_source,
     model_side,
     model_speed_limit,
     observe,
@@ -744,6 +745,39 @@ class TestSidecars:
         assert report.comparison("capacity_per_lane").verdict == "not_available"
         rec = report.recommendation("capacity_per_lane")
         assert rec.action == "no_data" and "calibrate_capacity" in rec.text
+
+    def test_a_shifted_population_takes_its_bases_measured_source(self, tmp_path, pop_path):
+        """scripts/derive_population.py: a T-scaled base (with its sidecar) with mean
+        a_max shifted and no sidecar of its own. The sidecar measured another a_max, so
+        its capacity is not used, but the §7.2 measured ranges are the measured source's."""
+        sc = _sidecar(tmp_path, pop_path)
+        base = IDMCalibration.load(_derived(tmp_path, pop_path, 0.9, "cap.json"))
+        shifted_path = tmp_path / "cap_amax.json"
+        mean = {**base.mean, "a_max": base.mean["a_max"] + 0.15}
+        base.model_copy(update={"mean": mean}).save(shifted_path)
+        shifted = population_from_artifact(shifted_path)
+        assert not evaluate_sidecar(sc, shifted, explicit=True)[0].accepted
+        ref = measured_source(shifted, [sc])
+        assert ref is not None and ref.sources["idm_calibration"] == str(pop_path)
+        assert "mean a_max shifted from" in ref.label and "cap.json" in ref.label
+        assert measured_source(shifted, []) is None
+        assert measured_source(population_from_artifact(pop_path), [sc]) is None
+        obs = observed_side(ff_speed=30.0, capacity=1700.0)
+        report = check_transfer(obs, shifted, sidecars=[sc], n_draws=N_DRAWS)
+        assert report.model.capacity_basis == "analytical"
+        cap = report.comparison("capacity_per_lane").uncertainty_range
+        mean_t = 1.4 * 0.9
+        # the measured T 1.4 ± 0.3, not the configured 1.26 ± 0.3
+        assert cap is not None and cap.measured_range == (
+            pytest.approx(1.1 / mean_t),
+            pytest.approx(1.7 / mean_t),
+        )
+        own = check_transfer(obs, shifted, sidecars=[], n_draws=N_DRAWS)
+        cap = own.comparison("capacity_per_lane").uncertainty_range
+        assert cap is not None and cap.measured_range == (
+            pytest.approx(0.96 / mean_t),
+            pytest.approx(1.56 / mean_t),
+        )
 
 
 # ---------------------------------------------------------------------------

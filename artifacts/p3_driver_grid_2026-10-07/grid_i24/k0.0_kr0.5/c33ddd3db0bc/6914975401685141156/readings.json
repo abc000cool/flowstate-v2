@@ -1,0 +1,42 @@
+{
+ "lane_time_counts": {
+  "span": {
+   "1": 3802833,
+   "2": 2855031,
+   "3": 3008463,
+   "4": 4082663,
+   "5": 676245
+  },
+  "merge_area": {
+   "1": 818241,
+   "2": 594219,
+   "3": 695511,
+   "4": 1076864,
+   "5": 459405
+  }
+ },
+ "discharge_veh_h": {
+  "2200": 5853.5,
+  "3200": 5823.0
+ },
+ "n_samples_unmapped": 0,
+ "run": {
+  "seed": 6914975401685141156,
+  "config_hash": "c33ddd3db0bc",
+  "n_vehicles_planned": 14688,
+  "n_vehicles_departed": 14534,
+  "departed_share": 0.9895152505446623,
+  "n_collisions": 0,
+  "wall_time_s": 402.76672050499997,
+  "versions": {
+   "python": "3.12.15",
+   "numpy": "2.5.2",
+   "pandas": "3.0.5",
+   "pyarrow": "25.0.1",
+   "eclipse-sumo": "1.27.1",
+   "libsumo": "1.27.1",
+   "flowstate_core": "2.0.0",
+   "microsim": "2.0.0"
+  }
+ }
+}

@@ -1,0 +1,661 @@
+{
+ "schema": "flowstate.observed_lane_shares/1",
+ "corridor": "I-94 WB",
+ "lane_numbering": "IRIS: 1 = rightmost lane; SUMO lane = IRIS lane - 1",
+ "window": {
+  "local": "07:05-07:35",
+  "local_start_s": 25500.0,
+  "local_end_s": 27300.0,
+  "window_s": 300.0
+ },
+ "dates": [
+  "2026-09-02",
+  "2026-09-03",
+  "2026-09-08",
+  "2026-09-15",
+  "2026-09-16"
+ ],
+ "stations": [
+  {
+   "id": "S1063",
+   "x_m": 1089.1,
+   "lanes": 4,
+   "detectors_by_lane": {
+    "1": [
+     "5136"
+    ],
+    "2": [
+     "5137"
+    ],
+    "3": [
+     "5138"
+    ],
+    "4": [
+     "5139"
+    ]
+   },
+   "excluded_detectors": [],
+   "usable": false,
+   "reason": "no date-window with a reading in every lane",
+   "n_date_windows": 0,
+   "n_date_windows_possible": 30,
+   "mean_flow_veh_h_by_lane": {},
+   "shares": {}
+  },
+  {
+   "id": "S1064",
+   "x_m": 2305.4,
+   "lanes": 3,
+   "detectors_by_lane": {
+    "1": [
+     "5141"
+    ],
+    "2": [
+     "5142"
+    ],
+    "3": [
+     "5153"
+    ]
+   },
+   "excluded_detectors": [],
+   "usable": true,
+   "reason": null,
+   "n_date_windows": 30,
+   "n_date_windows_possible": 30,
+   "mean_flow_veh_h_by_lane": {
+    "1": 1009.6,
+    "2": 1291.6,
+    "3": 1272.4
+   },
+   "shares": {
+    "1": 0.2825162301320797,
+    "2": 0.36142825162301323,
+    "3": 0.3560555182449071
+   }
+  },
+  {
+   "id": "S1065",
+   "x_m": 3467.6,
+   "lanes": 3,
+   "detectors_by_lane": {
+    "1": [
+     "5145"
+    ],
+    "2": [
+     "5146"
+    ],
+    "3": [
+     "5148"
+    ]
+   },
+   "excluded_detectors": [],
+   "usable": true,
+   "reason": null,
+   "n_date_windows": 30,
+   "n_date_windows_possible": 30,
+   "mean_flow_veh_h_by_lane": {
+    "1": 650.0,
+    "2": 1207.2,
+    "3": 1291.6
+   },
+   "shares": {
+    "1": 0.20642784552845528,
+    "2": 0.3833841463414634,
+    "3": 0.4101880081300813
+   }
+  },
+  {
+   "id": "S1066",
+   "x_m": 4060.4,
+   "lanes": 3,
+   "detectors_by_lane": {
+    "1": [
+     "5052"
+    ],
+    "2": [
+     "5053"
+    ],
+    "3": [
+     "5054"
+    ]
+   },
+   "excluded_detectors": [],
+   "usable": true,
+   "reason": null,
+   "n_date_windows": 30,
+   "n_date_windows_possible": 30,
+   "mean_flow_veh_h_by_lane": {
+    "1": 924.4,
+    "2": 1336.0,
+    "3": 1368.4
+   },
+   "shares": {
+    "1": 0.25473985890652556,
+    "2": 0.3681657848324515,
+    "3": 0.37709435626102294
+   }
+  },
+  {
+   "id": "S1067",
+   "x_m": 4970.1,
+   "lanes": 3,
+   "detectors_by_lane": {
+    "1": [
+     "5150"
+    ],
+    "2": [
+     "5151"
+    ],
+    "3": [
+     "5152"
+    ]
+   },
+   "excluded_detectors": [],
+   "usable": true,
+   "reason": null,
+   "n_date_windows": 30,
+   "n_date_windows_possible": 30,
+   "mean_flow_veh_h_by_lane": {
+    "1": 1117.2888888888888,
+    "2": 1372.0,
+    "3": 1453.2
+   },
+   "shares": {
+    "1": 0.28339683899623475,
+    "2": 0.3480035172367146,
+    "3": 0.36859964376705073
+   }
+  },
+  {
+   "id": "S1068",
+   "x_m": 5580.3,
+   "lanes": 3,
+   "detectors_by_lane": {
+    "1": [
+     "5156"
+    ],
+    "2": [
+     "5157"
+    ],
+    "3": [
+     "5158"
+    ]
+   },
+   "excluded_detectors": [],
+   "usable": true,
+   "reason": null,
+   "n_date_windows": 30,
+   "n_date_windows_possible": 30,
+   "mean_flow_veh_h_by_lane": {
+    "1": 1017.2444444444444,
+    "2": 1237.3333333333333,
+    "3": 1342.311111111111
+   },
+   "shares": {
+    "1": 0.2828123069319165,
+    "2": 0.3440009885085877,
+    "3": 0.3731867045594959
+   }
+  },
+  {
+   "id": "S1947",
+   "x_m": 6074.9,
+   "lanes": 3,
+   "detectors_by_lane": {
+    "1": [
+     "7743"
+    ],
+    "2": [
+     "7744"
+    ],
+    "3": [
+     "7745"
+    ]
+   },
+   "excluded_detectors": [],
+   "usable": true,
+   "reason": null,
+   "n_date_windows": 30,
+   "n_date_windows_possible": 30,
+   "mean_flow_veh_h_by_lane": {
+    "1": 1348.0,
+    "2": 1261.6,
+    "3": 1322.8
+   },
+   "shares": {
+    "1": 0.34279320516732786,
+    "2": 0.3208218899399858,
+    "3": 0.3363849048926864
+   }
+  },
+  {
+   "id": "S1069",
+   "x_m": 6683.8,
+   "lanes": 3,
+   "detectors_by_lane": {
+    "1": [
+     "5161"
+    ],
+    "2": [
+     "5162"
+    ],
+    "3": [
+     "5163"
+    ]
+   },
+   "excluded_detectors": [],
+   "usable": true,
+   "reason": null,
+   "n_date_windows": 30,
+   "n_date_windows_possible": 30,
+   "mean_flow_veh_h_by_lane": {
+    "1": 1056.8,
+    "2": 1061.5111111111112,
+    "3": 1190.0
+   },
+   "shares": {
+    "1": 0.3194379139406478,
+    "2": 0.3208619369399627,
+    "3": 0.3597001491193896
+   }
+  },
+  {
+   "id": "S1070",
+   "x_m": 7674.6,
+   "lanes": 5,
+   "detectors_by_lane": {
+    "1": [
+     "5171"
+    ],
+    "2": [
+     "5172"
+    ],
+    "3": [
+     "5173"
+    ],
+    "4": [
+     "5174"
+    ],
+    "5": [
+     "5175"
+    ]
+   },
+   "excluded_detectors": [],
+   "usable": true,
+   "reason": null,
+   "n_date_windows": 30,
+   "n_date_windows_possible": 30,
+   "mean_flow_veh_h_by_lane": {
+    "1": 585.6,
+    "2": 636.8,
+    "3": 1010.4,
+    "4": 1114.0,
+    "5": 1220.4
+   },
+   "shares": {
+    "1": 0.1282186022070415,
+    "2": 0.139428971798914,
+    "3": 0.22122963741460852,
+    "4": 0.24391311963566298,
+    "5": 0.267209668943773
+   }
+  },
+  {
+   "id": "S1948",
+   "x_m": 8400.9,
+   "lanes": 5,
+   "detectors_by_lane": {
+    "1": [
+     "7746"
+    ],
+    "2": [
+     "7747"
+    ],
+    "3": [
+     "7748"
+    ],
+    "4": [
+     "7749"
+    ],
+    "5": [
+     "7750"
+    ]
+   },
+   "excluded_detectors": [],
+   "usable": false,
+   "reason": "no date-window with a reading in every lane",
+   "n_date_windows": 0,
+   "n_date_windows_possible": 30,
+   "mean_flow_veh_h_by_lane": {},
+   "shares": {}
+  },
+  {
+   "id": "S792",
+   "x_m": 8977.3,
+   "lanes": 3,
+   "detectors_by_lane": {
+    "1": [
+     "3238"
+    ],
+    "2": [
+     "3239"
+    ]
+   },
+   "excluded_detectors": [
+    "3240"
+   ],
+   "usable": false,
+   "reason": "detector lanes [1, 2] do not cover lanes [1, 2, 3]",
+   "n_date_windows": 0,
+   "n_date_windows_possible": 30,
+   "mean_flow_veh_h_by_lane": {},
+   "shares": {}
+  },
+  {
+   "id": "S791",
+   "x_m": 9716.3,
+   "lanes": 3,
+   "detectors_by_lane": {
+    "1": [
+     "3234"
+    ],
+    "2": [
+     "3235"
+    ],
+    "3": [
+     "3236"
+    ]
+   },
+   "excluded_detectors": [],
+   "usable": true,
+   "reason": null,
+   "n_date_windows": 30,
+   "n_date_windows_possible": 30,
+   "mean_flow_veh_h_by_lane": {
+    "1": 1656.0,
+    "2": 1388.311111111111,
+    "3": 1063.5111111111112
+   },
+   "shares": {
+    "1": 0.40313331746478265,
+    "2": 0.33796767143444484,
+    "3": 0.2588990111007725
+   }
+  },
+  {
+   "id": "S790",
+   "x_m": 10128.0,
+   "lanes": 3,
+   "detectors_by_lane": {
+    "1": [
+     "3231",
+     "T9333"
+    ],
+    "2": [
+     "3232",
+     "T9334"
+    ],
+    "3": [
+     "3233"
+    ]
+   },
+   "excluded_detectors": [],
+   "usable": true,
+   "reason": null,
+   "n_date_windows": 30,
+   "n_date_windows_possible": 30,
+   "mean_flow_veh_h_by_lane": {
+    "1": 1267.6,
+    "2": 1547.6,
+    "3": 1813.2
+   },
+   "shares": {
+    "1": 0.2738743410249762,
+    "2": 0.3343704087805721,
+    "3": 0.3917552501944516
+   }
+  },
+  {
+   "id": "S97",
+   "x_m": 11071.8,
+   "lanes": 3,
+   "detectors_by_lane": {
+    "1": [
+     "1897"
+    ],
+    "2": [
+     "1898"
+    ],
+    "3": [
+     "1899"
+    ]
+   },
+   "excluded_detectors": [],
+   "usable": true,
+   "reason": null,
+   "n_date_windows": 30,
+   "n_date_windows_possible": 30,
+   "mean_flow_veh_h_by_lane": {
+    "1": 1175.6,
+    "2": 1497.6,
+    "3": 1817.3333333333333
+   },
+   "shares": {
+    "1": 0.2617951839425161,
+    "2": 0.33350158852697526,
+    "3": 0.40470322753050864
+   }
+  }
+ ],
+ "quality": {
+  "path": "runs/p3/dq_lanes/data_quality.json",
+  "sha256": "167cf4aced9c339825a5e7a9e2dbe988577f42774a5b73cd1685c494f770a40b",
+  "n_masked_sensor_days": 22,
+  "masked_sensor_days": [
+   {
+    "sensor": "S1063:5139",
+    "date": "2026-09-02",
+    "verdict": "exclude",
+    "checks": [
+     "missing",
+     "lane_imbalance"
+    ]
+   },
+   {
+    "sensor": "S1948:7746",
+    "date": "2026-09-02",
+    "verdict": "exclude",
+    "checks": [
+     "lane_imbalance"
+    ]
+   },
+   {
+    "sensor": "S790:T9333",
+    "date": "2026-09-02",
+    "verdict": "exclude",
+    "checks": [
+     "missing"
+    ]
+   },
+   {
+    "sensor": "S790:T9334",
+    "date": "2026-09-02",
+    "verdict": "exclude",
+    "checks": [
+     "missing"
+    ]
+   },
+   {
+    "sensor": "S1063:5139",
+    "date": "2026-09-03",
+    "verdict": "exclude",
+    "checks": [
+     "day_outlier",
+     "lane_imbalance"
+    ]
+   },
+   {
+    "sensor": "S1948:7746",
+    "date": "2026-09-03",
+    "verdict": "exclude",
+    "checks": [
+     "lane_imbalance"
+    ]
+   },
+   {
+    "sensor": "S790:T9333",
+    "date": "2026-09-03",
+    "verdict": "exclude",
+    "checks": [
+     "missing"
+    ]
+   },
+   {
+    "sensor": "S790:T9334",
+    "date": "2026-09-03",
+    "verdict": "exclude",
+    "checks": [
+     "missing"
+    ]
+   },
+   {
+    "sensor": "S1063:5139",
+    "date": "2026-09-08",
+    "verdict": "exclude",
+    "checks": [
+     "implied_length",
+     "lane_imbalance"
+    ]
+   },
+   {
+    "sensor": "S1948:7746",
+    "date": "2026-09-08",
+    "verdict": "exclude",
+    "checks": [
+     "lane_imbalance"
+    ]
+   },
+   {
+    "sensor": "S1948:7747",
+    "date": "2026-09-08",
+    "verdict": "exclude",
+    "checks": [
+     "lane_imbalance"
+    ]
+   },
+   {
+    "sensor": "S790:T9333",
+    "date": "2026-09-08",
+    "verdict": "exclude",
+    "checks": [
+     "missing",
+     "mass_balance_pattern"
+    ]
+   },
+   {
+    "sensor": "S790:T9334",
+    "date": "2026-09-08",
+    "verdict": "exclude",
+    "checks": [
+     "missing",
+     "mass_balance_pattern"
+    ]
+   },
+   {
+    "sensor": "S1063:5139",
+    "date": "2026-09-15",
+    "verdict": "exclude",
+    "checks": [
+     "impossible",
+     "day_outlier",
+     "lane_imbalance"
+    ]
+   },
+   {
+    "sensor": "S1948:7746",
+    "date": "2026-09-15",
+    "verdict": "exclude",
+    "checks": [
+     "lane_imbalance"
+    ]
+   },
+   {
+    "sensor": "S1948:7747",
+    "date": "2026-09-15",
+    "verdict": "exclude",
+    "checks": [
+     "lane_imbalance"
+    ]
+   },
+   {
+    "sensor": "S790:T9333",
+    "date": "2026-09-15",
+    "verdict": "exclude",
+    "checks": [
+     "missing"
+    ]
+   },
+   {
+    "sensor": "S790:T9334",
+    "date": "2026-09-15",
+    "verdict": "exclude",
+    "checks": [
+     "missing"
+    ]
+   },
+   {
+    "sensor": "S1063:5139",
+    "date": "2026-09-16",
+    "verdict": "exclude",
+    "checks": [
+     "lane_imbalance"
+    ]
+   },
+   {
+    "sensor": "S1948:7746",
+    "date": "2026-09-16",
+    "verdict": "exclude",
+    "checks": [
+     "lane_imbalance"
+    ]
+   },
+   {
+    "sensor": "S790:T9333",
+    "date": "2026-09-16",
+    "verdict": "exclude",
+    "checks": [
+     "missing"
+    ]
+   },
+   {
+    "sensor": "S790:T9334",
+    "date": "2026-09-16",
+    "verdict": "exclude",
+    "checks": [
+     "missing"
+    ]
+   }
+  ],
+  "n_masked_windows": 72,
+  "rule": "exclude drops the sensor-day; suspect sets aside only the windows and quantities its findings name; a station reading is set aside when any lane sensor of the station (lanes that never reported anywhere in the report excepted) sets it aside; a reading whose window overlaps a set-aside window of the report is set aside; applied before the dates are averaged"
+ },
+ "provenance": {
+  "script": "scripts/calibrate_driver_grid.py --build-observed-lanes",
+  "created_at": "2026-10-07T05:09:21Z",
+  "code": "b3efdfaf36aed70bb1bedb38bdadc562f527fab5 snapshot 571b9e4eaa77a1bda129988ebd74152dc240745b",
+  "code_dirty": false,
+  "cache_dir": "data/mndot/cache",
+  "allow_fetch": true,
+  "metro_config": "data/mndot/config/metro_config.xml.gz",
+  "metro_config_sha256": "cc54ebd10cd8049496613a0a8f30efec86d24a0ffb06a52631d1f6bb9963c911",
+  "metro_config_time_stamp": "Tue Sep 22 20:00:04 CDT 2026",
+  "day_split": "artifacts/p1_rehearsal_2026-10-04/day_split.json",
+  "day_split_sha256": "771060a3a25500ad27e301accfc790564e7699a3ab1e6af9f3a425e87321c53c",
+  "observations": "artifacts/p1_rehearsal_2026-10-04/observations_calibration.json",
+  "exclude_detectors": [
+   "3240"
+  ],
+  "n_rows": 1440,
+  "frame_sha256": "b68bca3e6e611b19de946ff26b889aca8ad257f11242a2ac58c88440735922a7"
+ }
+}

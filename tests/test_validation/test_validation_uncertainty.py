@@ -115,6 +115,8 @@ def test_constants_agree_with_the_calibration_package() -> None:
     assert unc.HEAVY_SHARE_ASSUMED_HALF_WIDTH == transfer_check.HEAVY_SHARE_TOLERANCE
     assert unc.HEAVY_FRACTION_BOUNDS == transfer_check.HEAVY_SHARE_RANGE
     assert unc.TRANSFER_SCHEMA == transfer_check.TRANSFER_SCHEMA
+    assert unc.SIDECAR_SUFFIX == transfer_check.SIDECAR_SUFFIX
+    assert unc.SCALED_MEANS == transfer_check.SCALED_MEANS
     assert set(unc.KIND_MAPS_TO) == set(PARAMETER_KINDS)
     assert set(unc.BASIS_WORDS) == set(unc.RANGE_BASES)
     assert unc.ROBUST_SIGN_SHARE == 0.90
@@ -610,6 +612,168 @@ def test_a_configured_mean_outside_the_measured_range_is_said(
     t = default_space(_cfg(derived), kinds=["t_scale"]).parameters[0]
     assert "the configured mean lies outside this range" in t.source
     assert t.high < 1.0
+
+
+# --- a population with one mean shifted from a derived base (Amendment 1) ------------------------
+
+
+def _shift(
+    base: Path,
+    out: Path,
+    *,
+    by: dict[str, float] | None = None,
+    cov_scale: float = 1.0,
+    data_hash: str | None = None,
+) -> Path:
+    """``base`` with means moved (default: a_max + 0.5 sd, as scripts/derive_population.py
+    with k = 0.5), no sidecar written."""
+    cal = IDMCalibration.load(base)
+    mean = dict(cal.mean)
+    for k, d in (by if by is not None else {"a_max": 0.5 * SD["a_max"]}).items():
+        mean[k] += d
+    update: dict[str, Any] = {"mean": mean, "notes": f"Derived from {base} (test)"}
+    if cov_scale != 1.0:
+        update["cov"] = (np.asarray(cal.cov) * cov_scale).tolist()
+    if data_hash is not None:
+        update["data_hash"] = data_hash
+    cal.model_copy(update=update).save(out)
+    return out
+
+
+@pytest.fixture
+def capacity(population: Path, tmp_path: Path) -> Path:
+    """The measured population with mean T x 0.8 and its sidecar (calibrate_capacity)."""
+    derived = _derive(population, tmp_path / "idm_capacity.json")  # mean T 1.04
+    _sidecar(derived, population)
+    return derived
+
+
+def test_a_shifted_population_resolves_through_its_base_to_the_measured_source(
+    population: Path, capacity: Path, tmp_path: Path
+) -> None:
+    shifted = _shift(capacity, tmp_path / "idm_capacity_amax_k0.5.json")  # a_max 1.2
+    assert not (tmp_path / "idm_capacity_amax_k0.5.calibration.json").exists()
+    lineage = unc.population_lineage(str(shifted))
+    assert lineage is not None and lineage.scaled
+    assert lineage.source.label.startswith(str(population))
+    assert lineage.source.means == pytest.approx(MEAN)
+    assert lineage.sidecar.endswith("idm_capacity.calibration.json")
+    ((key, base),) = lineage.shifts
+    assert key == "a_max" and base.startswith(str(capacity))
+    assert f"sha256 {unc.file_sha256(capacity)[:12]}" in base
+    words = lineage.words()
+    assert "mean a_max shifted from" in words and "mean T / v0 scaled" in words
+    found = unc.source_population(str(shifted))
+    assert found is not None and found == (lineage.source, lineage.sidecar)
+    # the base itself keeps the sidecar derivation and its words, unchanged
+    direct = unc.population_lineage(str(capacity))
+    assert direct is not None and direct.shifts == ()
+    assert direct.words() == (f"sidecar {direct.sidecar}; covariance shared, mean T / v0 scaled")
+    # mean T: the measured 1.3 ± 0.5 = 0.8–1.8, as a factor on the configured 1.04
+    t = default_space(_cfg(shifted), kinds=["t_scale"]).parameters[0]
+    assert (t.low, t.high) == (pytest.approx(0.8 / 1.04), pytest.approx(1.8 / 1.04))
+    assert "source of the configured" in t.source and "mean a_max shifted from" in t.source
+
+
+def test_the_measured_range_of_a_shifted_mean_is_centred_on_the_measured_mean(
+    capacity: Path, tmp_path: Path
+) -> None:
+    shifted = _shift(capacity, tmp_path / "idm_capacity_amax_k0.5.json")  # a_max 1.0 → 1.2
+    m = unc._measured_range("a_max", _cfg(shifted), 1.0, "measured")
+    # the measured 1.0 ± 0.4, not the shifted 1.2 ± 0.4 (0.8–1.6, cut to 1.5)
+    assert (m.lo, m.hi) == (pytest.approx(0.6), pytest.approx(1.4))
+    assert m.mean == pytest.approx(1.2) and not m.scalar
+    assert "mean a_max 1 ± 1 sd" in m.text
+    narrowed = unc._measured_range("a_max", _cfg(shifted), 1.0, "configured")
+    assert (narrowed.lo, narrowed.hi) == (pytest.approx(0.8), pytest.approx(1.4))
+
+
+def test_a_shift_from_the_measured_source_itself_resolves_to_it(
+    population: Path, capacity: Path, tmp_path: Path
+) -> None:
+    shifted = _shift(population, tmp_path / "idm_amax.json")
+    lineage = unc.population_lineage(str(shifted))
+    assert lineage is not None and not lineage.scaled
+    assert lineage.source.label.startswith(str(population))
+    assert [k for k, _ in lineage.shifts] == ["a_max"]
+    assert "the source itself" in lineage.words()
+
+
+def test_a_measured_source_is_not_read_as_a_shift_of_its_derived_population(
+    population: Path, capacity: Path
+) -> None:
+    # the measured population differs from its T-scaled capacity population in mean T
+    # alone; a sidecar names it as a source, so it is measured, not derived
+    assert unc.population_lineage(str(population)) is None
+
+
+@pytest.mark.parametrize(
+    ("shift", "why"),
+    [
+        ({"by": {"a_max": 0.2, "b": 0.3}}, "two means moved"),
+        ({"cov_scale": 1.5}, "another covariance"),
+        ({"data_hash": "1" * 64}, "another data source"),
+    ],
+)
+def test_only_a_single_mean_shift_is_a_derivation(
+    capacity: Path, tmp_path: Path, shift: dict[str, Any], why: str
+) -> None:
+    other = _shift(capacity, tmp_path / "idm_other.json", **shift)
+    assert unc.population_lineage(str(other)) is None, why
+    assert unc.source_population(str(other)) is None, why
+    t = default_space(_cfg(other), kinds=["t_scale"]).parameters[0]
+    assert "no sidecar names another source" in t.source
+
+
+def test_the_shifted_range_agrees_with_transfer_check(
+    population: Path, capacity: Path, tmp_path: Path
+) -> None:
+    from calibration import transfer_check as tc
+
+    shifted = _shift(capacity, tmp_path / "idm_capacity_amax_k0.5.json")
+    pop = tc.population_from_artifact(shifted)
+    sidecars = sorted(tmp_path.glob("*.calibration.json"))
+    reference = tc.measured_source(pop, sidecars)
+    assert reference is not None and reference.sources["idm_calibration"] == tc._rel(population)
+    assert "mean a_max shifted from" in reference.label
+    for key in ("T", "v0", "a_max"):
+        expected = tc.measured_range(pop, key, 1.0, reference)
+        m = unc._measured_range(key, _cfg(shifted), 1.0, "measured")
+        assert (m.lo, m.hi) == (pytest.approx(expected[0]), pytest.approx(expected[1])), key
+    for path in (population, capacity):  # the same verdicts on the rest of the chain
+        assert (tc.measured_source(tc.population_from_artifact(path), sidecars) is None) == (
+            unc.population_lineage(str(path)) is None
+        )
+    other = _shift(capacity, tmp_path / "idm_other.json", by={"a_max": 0.2, "b": 0.3})
+    assert tc.measured_source(tc.population_from_artifact(other), sidecars) is None
+
+
+AMENDMENT_1 = sorted(unc.REPO_ROOT.glob("artifacts/idm_i24_capacity_amax_k*.json"))
+
+
+@pytest.mark.skipif(not AMENDMENT_1, reason="the Amendment-1 populations are not committed")
+@pytest.mark.parametrize("path", AMENDMENT_1, ids=lambda p: p.stem)
+def test_the_committed_amendment_1_populations_resolve_to_idm_i24(path: Path) -> None:
+    """scripts/derive_population.py's artifacts (~0.3 MB each): measured source
+    artifacts/idm_i24.json through artifacts/idm_i24_capacity.json, as their notes record."""
+    base = unc.REPO_ROOT / "artifacts" / "idm_i24_capacity.json"
+    measured = IDMCalibration.load(unc.REPO_ROOT / "artifacts" / "idm_i24.json")
+    lineage = unc.population_lineage(str(path))
+    assert lineage is not None and lineage.scaled
+    assert lineage.source.label.startswith("artifacts/idm_i24.json (sha256 ")
+    assert lineage.sidecar.endswith("artifacts/idm_i24_capacity.calibration.json")
+    ((key, base_text),) = lineage.shifts
+    assert key == "a_max" and "artifacts/idm_i24_capacity.json" in base_text
+    notes = IDMCalibration.load(path).notes
+    assert f"artifacts/idm_i24_capacity.json (sha256 {unc.file_sha256(base)})" in notes
+    sd = math.sqrt(measured.cov[2][2])
+    m = unc._measured_range("a_max", _cfg(path), 1.0, "measured")
+    assert (m.lo, m.hi) == (
+        pytest.approx(measured.mean["a_max"] - sd),
+        pytest.approx(measured.mean["a_max"] + sd),
+    )
+    t = unc._measured_range("T", _cfg(path), 1.0, "measured")
+    assert t.lo == pytest.approx(measured.mean["T"] - math.sqrt(measured.cov[1][1]))
 
 
 # --- driver ranges from the corridor's transfer check (WP-106b) -------------------------------

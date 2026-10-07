@@ -765,11 +765,34 @@ def relocate_crossings(routes_path: Path, cfg: Any, on_name: str, exit_name: str
     return counts
 
 
+def with_fleet(cfg: Any, speed_factor: float | None, fleet_from: Path | None) -> Any:
+    """``cfg`` with its ``fleet`` block replaced by ``fleet_from``'s (a scenario YAML) and/or
+    its speed factor set — how the fixture runs a calibrated corridor's drivers
+    (e.g. ``scenarios/mndot_i94_wb_stpaul_weave_dc.yaml``: the Amendment-1 population and
+    ``lc_keep_right``)."""
+    import yaml
+
+    from flowstate_core.config import ScenarioConfig
+
+    if speed_factor is None and fleet_from is None:
+        return cfg
+    raw = cfg.model_dump(mode="json")
+    if fleet_from is not None:
+        raw["fleet"] = dict(yaml.safe_load(Path(fleet_from).read_text())["fleet"])
+    if speed_factor is not None:
+        raw["fleet"]["speed_factor"] = speed_factor
+    return ScenarioConfig.model_validate(raw)
+
+
 def th52_ceiling(
-    seeds: Sequence[int], work: Path, model: str, speed_factor: float | None, keep: bool
+    seeds: Sequence[int],
+    work: Path,
+    model: str,
+    speed_factor: float | None,
+    keep: bool,
+    fleet_from: Path | None = None,
 ) -> dict[str, Any]:
     """Amendment A2.3: the T.H.52 section test's criteria with no crossing needed."""
-    from flowstate_core.config import ScenarioConfig
     from microsim import run_micro
     from microsim import runner as R
 
@@ -791,11 +814,7 @@ def th52_ceiling(
     R._build_plan_and_routes = build
     try:
         for seed in seeds:
-            cfg = mmt._th52_corridor_config(seed)
-            if speed_factor is not None:
-                raw = cfg.model_dump(mode="json")
-                raw["fleet"]["speed_factor"] = speed_factor
-                cfg = ScenarioConfig.model_validate(raw)
+            cfg = with_fleet(mmt._th52_corridor_config(seed), speed_factor, fleet_from)
             cfg = to_model(cfg, model)
             t0 = time.perf_counter()
             paths = run_micro(cfg, seed, work / f"ceiling_{model}")
@@ -812,6 +831,7 @@ def th52_ceiling(
         "method": "WP-76 realization B at p = 1 (docs/WEAVE_MODEL_PLAN.md), re-implemented",
         "model": model,
         "speed_factor": speed_factor,
+        "fleet_from": None if fleet_from is None else str(fleet_from),
         "rows": rows,
     }
 
@@ -879,6 +899,12 @@ def main(argv: list[str] | None = None) -> None:
         if name in ("th52", "ceiling"):
             p.add_argument("--seeds", default="3-22" if name == "th52" else "3-12")
             p.add_argument("--speed-factor", type=float, default=None)
+            p.add_argument(
+                "--fleet-from",
+                type=Path,
+                default=None,
+                help="replace the fixture's fleet block with this scenario's (e.g. a _dc scenario)",
+            )
         if name == "grid":
             p.add_argument("--only", default="", help="comma-separated fixture names")
     args = ap.parse_args(argv)
@@ -917,7 +943,7 @@ def main(argv: list[str] | None = None) -> None:
                 )
         elif args.cmd == "ceiling":
             result = th52_ceiling(
-                _seeds(args.seeds), work, args.model, args.speed_factor, args.keep
+                _seeds(args.seeds), work, args.model, args.speed_factor, args.keep, args.fleet_from
             )
         elif args.cmd == "grid":
             only = {s for s in args.only.split(",") if s}
@@ -933,17 +959,14 @@ def main(argv: list[str] | None = None) -> None:
                     print(json.dumps(row), flush=True)
             result = {"model": args.model, "rows": rows}
         else:
-            from flowstate_core.config import ScenarioConfig
             from microsim import run_micro
 
             mmt = _load_test_module("test_microsim_merge_managed_meter")
             rows = []
             for seed in _seeds(args.seeds):
-                cfg = mmt._th52_corridor_config(seed)
-                if args.speed_factor is not None:
-                    raw = cfg.model_dump(mode="json")
-                    raw["fleet"]["speed_factor"] = args.speed_factor
-                    cfg = ScenarioConfig.model_validate(raw)
+                cfg = with_fleet(
+                    mmt._th52_corridor_config(seed), args.speed_factor, args.fleet_from
+                )
                 cfg = to_model(cfg, args.model)
                 t0 = time.perf_counter()
                 paths = run_micro(cfg, seed, work / f"th52_{args.model}")
@@ -952,7 +975,12 @@ def main(argv: list[str] | None = None) -> None:
                 if not args.keep:
                     shutil.rmtree(paths.run_dir, ignore_errors=True)
                 print(json.dumps(row), flush=True)
-            result = {"model": args.model, "speed_factor": args.speed_factor, "rows": rows}
+            result = {
+                "model": args.model,
+                "speed_factor": args.speed_factor,
+                "fleet_from": None if args.fleet_from is None else str(args.fleet_from),
+                "rows": rows,
+            }
         if args.out is not None:
             args.out.write_text(json.dumps(result, indent=1, default=float) + "\n")
             print(f"wrote {args.out}")

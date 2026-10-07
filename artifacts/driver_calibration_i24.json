@@ -1,0 +1,1853 @@
+{
+ "schema": "flowstate.driver_calibration/1",
+ "corridor": "i24",
+ "protocol": "docs/FRISCO_PROTOCOL.md Amendment 1 (2026-10-06)",
+ "rule": "docs/FRISCO_PROTOCOL.md Amendment 1: among the pairs whose lane-share RMSE is within 1 percentage point of the grid's minimum, choose the one whose discharge error is smallest; ties go to the smaller change (k, then lc_keep_right nearer its current 0). If no pair improves lane use or discharge against the current setting, the current setting stays and the report says so.",
+ "improves_reading": "a pair improves a target when its error on that target is strictly smaller than the current setting's (k = 0, lc_keep_right = 0), with no noise band \u2014 the amendment fixes none; the current setting stays only when no pair improves either target",
+ "reference": {
+  "scenario": "scenarios/i24_replica_flow_speedcal.yaml",
+  "transform": null,
+  "config_hash": "ae5861a4d906",
+  "current_setting": {
+   "k": 0.0,
+   "lc_keep_right": 0.0
+  }
+ },
+ "grid": {
+  "k": [
+   0.0,
+   0.25,
+   0.5,
+   0.75,
+   1.0
+  ],
+  "lc_keep_right": [
+   0.0,
+   0.1,
+   0.25,
+   0.5,
+   1.0
+  ],
+  "is_amendment_grid": true
+ },
+ "seeds": [
+  6914975401685141156
+ ],
+ "populations": {
+  "0.0": {
+   "k": 0.0,
+   "path": "artifacts/idm_i24_capacity.json",
+   "sha256": "80a7579b72510112e5131f73b02ce9afbb0df13eda3febf3cf8411dfb8296217",
+   "a_max_mean": 1.054909533427964
+  },
+  "0.25": {
+   "k": 0.25,
+   "path": "artifacts/idm_i24_capacity_amax_k0.25.json",
+   "sha256": "3baf93b63cce595a0e7a5420c2e1def10bda5c3a091d7c74d5540ddfaa8ffa2d",
+   "a_max_mean": 1.1620136795064078
+  },
+  "0.5": {
+   "k": 0.5,
+   "path": "artifacts/idm_i24_capacity_amax_k0.5.json",
+   "sha256": "d7530259e114be49b245cfe7df9beacdb451d0816a2b16b78ff6746165c8fe40",
+   "a_max_mean": 1.2691178255848516
+  },
+  "0.75": {
+   "k": 0.75,
+   "path": "artifacts/idm_i24_capacity_amax_k0.75.json",
+   "sha256": "27640a6c76116eb28e4b7867f65d430031cafc43b05221a8372962c02001496e",
+   "a_max_mean": 1.3762219716632957
+  },
+  "1.0": {
+   "k": 1.0,
+   "path": "artifacts/idm_i24_capacity_amax_k1.0.json",
+   "sha256": "c381e35787cedce6c2195684303e45002fae8a20726db88288a9715776a87218",
+   "a_max_mean": 1.4833261177417396
+  }
+ },
+ "measured_population": {
+  "path": "artifacts/idm_i24.json",
+  "sha256": "224a53dc670215da9025b50aa4b017e56429ea8f107d5d56ec35af7681f4d162",
+  "a_max_mean": 1.054909533427964,
+  "a_max_sd": 0.42841658431377566,
+  "formula": "mean a_max = measured mean + k x sqrt(cov[a_max, a_max]) of the measured population"
+ },
+ "targets": {
+  "lane_use": {
+   "observable": "share of vehicle-time by lane (trajectory samples: the recording's 5 Hz, a run's 2 Hz output)",
+   "segment_data_x_m": [
+    0.0,
+    5500.0
+   ],
+   "window": "06:30-08:30 CST (sim t 600-7,800 s)",
+   "lanes": "1-4 numbered from the left (1 = leftmost, 4 = rightmost mainline); the auxiliary lane 5 left out and the four renormalised",
+   "shares": {
+    "1": 0.30326768867264775,
+    "2": 0.24156314092974993,
+    "3": 0.20056721083846568,
+    "4": 0.25460195955913656
+   },
+   "shares_quoted_pct": [
+    30,
+    24,
+    20,
+    26
+   ],
+   "matches_amendment_quote": true,
+   "merge_area_diagnostic": {
+    "segment_data_x_m": [
+     750.0,
+     2000.0
+    ],
+    "shares": {
+     "1": 0.28048302126832336,
+     "2": 0.2340359893745058,
+     "3": 0.18992485750741162,
+     "4": 0.2955561318497592
+    }
+   },
+   "source": {
+    "path": "artifacts/i24_lane_profile.json",
+    "sha256": "0d82f9832e490c4d241e1ad8d1c8577274df9e543f473fb2a8ab53ee6defc59d",
+    "rows": "observed.rows, 250-m bins with x_lo in the segment, share x n"
+   }
+  },
+  "discharge": {
+   "observable": "2-h mean flow across each section: crossings per 5-min window (scripts/i24_build_replica.crossings_per_window, as scripts/i24_validate.py and scripts/i24_merge_experiment.py count them), averaged over the 24 windows",
+   "sections_data_x_m": [
+    2200.0,
+    3200.0
+   ],
+   "window": "06:30-08:30 CST",
+   "flows_veh_h": {
+    "2200": 6626.170833333333,
+    "3200": 6639.020833333333
+   },
+   "matches_amendment_quote": true,
+   "error": "mean over the corridor's discharge sections of |q_sim - q_obs| / q_obs, q the flow over the scored window [veh/h] (seed-mean when several seeds run)",
+   "source": {
+    "path": "artifacts/i24_validation_observed.json",
+    "sha256": "1f6a7d63c86e436491b68e101b8d7eb1427a84a1ea268eb6334bfe4df2d2fb59",
+    "field": "hourly_flows_veh_h_recommended (coverage-corrected)"
+   }
+  }
+ },
+ "pairs": [
+  {
+   "name": "k0.0_kr0.0",
+   "k": 0.0,
+   "lc_keep_right": 0.0,
+   "config_hash": "ae5861a4d906",
+   "population": {
+    "k": 0.0,
+    "path": "artifacts/idm_i24_capacity.json",
+    "sha256": "80a7579b72510112e5131f73b02ce9afbb0df13eda3febf3cf8411dfb8296217",
+    "a_max_mean": 1.054909533427964
+   },
+   "complete": true,
+   "n_seeds_read": 1,
+   "runs": [
+    {
+     "seed": 6914975401685141156,
+     "config_hash": "ae5861a4d906",
+     "n_vehicles_planned": 14688,
+     "n_vehicles_departed": 14446,
+     "departed_share": 0.9835239651416122,
+     "n_collisions": 0,
+     "wall_time_s": 408.298804406,
+     "versions": {
+      "python": "3.12.15",
+      "numpy": "2.5.2",
+      "pandas": "3.0.5",
+      "pyarrow": "25.0.1",
+      "eclipse-sumo": "1.27.1",
+      "libsumo": "1.27.1",
+      "flowstate_core": "2.0.0",
+      "microsim": "2.0.0"
+     }
+    }
+   ],
+   "n_collisions": 0,
+   "departed_share_mean": 0.9835239651416122,
+   "departed_share_min": 0.9835239651416122,
+   "lane_shares": {
+    "1": 0.2886575318994335,
+    "2": 0.21285338079698943,
+    "3": 0.21332507093617992,
+    "4": 0.28516401636739713
+   },
+   "lane_rmse_pp": 2.310037509675296,
+   "merge_area_diagnostic": {
+    "lane_shares": {
+     "1": 0.26696937982475466,
+     "2": 0.19330358636139408,
+     "3": 0.20009564755413173,
+     "4": 0.33963138625971956
+    },
+    "lane_rmse_pp": 3.117619356883181
+   },
+   "discharge_veh_h": {
+    "2200": 5836.5,
+    "3200": 5810.0
+   },
+   "discharge_error": 0.1220227425192821
+  },
+  {
+   "name": "k0.0_kr0.1",
+   "k": 0.0,
+   "lc_keep_right": 0.1,
+   "config_hash": "ca8d36dc5537",
+   "population": {
+    "k": 0.0,
+    "path": "artifacts/idm_i24_capacity.json",
+    "sha256": "80a7579b72510112e5131f73b02ce9afbb0df13eda3febf3cf8411dfb8296217",
+    "a_max_mean": 1.054909533427964
+   },
+   "complete": true,
+   "n_seeds_read": 1,
+   "runs": [
+    {
+     "seed": 6914975401685141156,
+     "config_hash": "ca8d36dc5537",
+     "n_vehicles_planned": 14688,
+     "n_vehicles_departed": 14477,
+     "departed_share": 0.9856345315904139,
+     "n_collisions": 0,
+     "wall_time_s": 374.726883956,
+     "versions": {
+      "python": "3.12.15",
+      "numpy": "2.5.2",
+      "pandas": "3.0.5",
+      "pyarrow": "25.0.1",
+      "eclipse-sumo": "1.27.1",
+      "libsumo": "1.27.1",
+      "flowstate_core": "2.0.0",
+      "microsim": "2.0.0"
+     }
+    }
+   ],
+   "n_collisions": 0,
+   "departed_share_mean": 0.9856345315904139,
+   "departed_share_min": 0.9856345315904139,
+   "lane_shares": {
+    "1": 0.3141668890615332,
+    "2": 0.22006401018469646,
+    "3": 0.1981318040473889,
+    "4": 0.2676372967063814
+   },
+   "lane_rmse_pp": 1.3755511737939354,
+   "merge_area_diagnostic": {
+    "lane_shares": {
+     "1": 0.2899811339758101,
+     "2": 0.18128822972341774,
+     "3": 0.2015457161417054,
+     "4": 0.32718492015906675
+    },
+    "lane_rmse_pp": 3.1654244970170686
+   },
+   "discharge_veh_h": {
+    "2200": 5896.0,
+    "3200": 5879.0
+   },
+   "discharge_error": 0.11233642051611155
+  },
+  {
+   "name": "k0.0_kr0.25",
+   "k": 0.0,
+   "lc_keep_right": 0.25,
+   "config_hash": "46c5be7558d9",
+   "population": {
+    "k": 0.0,
+    "path": "artifacts/idm_i24_capacity.json",
+    "sha256": "80a7579b72510112e5131f73b02ce9afbb0df13eda3febf3cf8411dfb8296217",
+    "a_max_mean": 1.054909533427964
+   },
+   "complete": true,
+   "n_seeds_read": 1,
+   "runs": [
+    {
+     "seed": 6914975401685141156,
+     "config_hash": "46c5be7558d9",
+     "n_vehicles_planned": 14688,
+     "n_vehicles_departed": 14517,
+     "departed_share": 0.9883578431372549,
+     "n_collisions": 0,
+     "wall_time_s": 392.24031858,
+     "versions": {
+      "python": "3.12.15",
+      "numpy": "2.5.2",
+      "pandas": "3.0.5",
+      "pyarrow": "25.0.1",
+      "eclipse-sumo": "1.27.1",
+      "libsumo": "1.27.1",
+      "flowstate_core": "2.0.0",
+      "microsim": "2.0.0"
+     }
+    }
+   ],
+   "n_collisions": 0,
+   "departed_share_mean": 0.9883578431372549,
+   "departed_share_min": 0.9883578431372549,
+   "lane_shares": {
+    "1": 0.29267571967149014,
+    "2": 0.2050035411783156,
+    "3": 0.2221821099493622,
+    "4": 0.2801386292008321
+   },
+   "lane_rmse_pp": 2.5338308454146508,
+   "merge_area_diagnostic": {
+    "lane_shares": {
+     "1": 0.2745278107857083,
+     "2": 0.18419627754931542,
+     "3": 0.21580214017971433,
+     "4": 0.32547377148526196
+    },
+    "lane_rmse_pp": 3.195371780627542
+   },
+   "discharge_veh_h": {
+    "2200": 5833.5,
+    "3200": 5802.5
+   },
+   "discharge_error": 0.12281395993699168
+  },
+  {
+   "name": "k0.0_kr0.5",
+   "k": 0.0,
+   "lc_keep_right": 0.5,
+   "config_hash": "c33ddd3db0bc",
+   "population": {
+    "k": 0.0,
+    "path": "artifacts/idm_i24_capacity.json",
+    "sha256": "80a7579b72510112e5131f73b02ce9afbb0df13eda3febf3cf8411dfb8296217",
+    "a_max_mean": 1.054909533427964
+   },
+   "complete": true,
+   "n_seeds_read": 1,
+   "runs": [
+    {
+     "seed": 6914975401685141156,
+     "config_hash": "c33ddd3db0bc",
+     "n_vehicles_planned": 14688,
+     "n_vehicles_departed": 14534,
+     "departed_share": 0.9895152505446623,
+     "n_collisions": 0,
+     "wall_time_s": 402.76672050499997,
+     "versions": {
+      "python": "3.12.15",
+      "numpy": "2.5.2",
+      "pandas": "3.0.5",
+      "pyarrow": "25.0.1",
+      "eclipse-sumo": "1.27.1",
+      "libsumo": "1.27.1",
+      "flowstate_core": "2.0.0",
+      "microsim": "2.0.0"
+     }
+    }
+   ],
+   "n_collisions": 0,
+   "departed_share_mean": 0.9895152505446623,
+   "departed_share_min": 0.9895152505446623,
+   "lane_shares": {
+    "1": 0.27658998951923014,
+    "2": 0.2076538713025466,
+    "3": 0.218813381928418,
+    "4": 0.29694275724980523
+   },
+   "lane_rmse_pp": 3.1572155878624204,
+   "merge_area_diagnostic": {
+    "lane_shares": {
+     "1": 0.2569178623068385,
+     "2": 0.1865776405999055,
+     "3": 0.21838211398706683,
+     "4": 0.3381223831061892
+    },
+    "lane_rmse_pp": 3.6841935269696613
+   },
+   "discharge_veh_h": {
+    "2200": 5853.5,
+    "3200": 5823.0
+   },
+   "discharge_error": 0.11976089031904964
+  },
+  {
+   "name": "k0.0_kr1.0",
+   "k": 0.0,
+   "lc_keep_right": 1.0,
+   "config_hash": "c4a5722751c1",
+   "population": {
+    "k": 0.0,
+    "path": "artifacts/idm_i24_capacity.json",
+    "sha256": "80a7579b72510112e5131f73b02ce9afbb0df13eda3febf3cf8411dfb8296217",
+    "a_max_mean": 1.054909533427964
+   },
+   "complete": true,
+   "n_seeds_read": 1,
+   "runs": [
+    {
+     "seed": 6914975401685141156,
+     "config_hash": "c4a5722751c1",
+     "n_vehicles_planned": 14688,
+     "n_vehicles_departed": 14585,
+     "departed_share": 0.9929874727668845,
+     "n_collisions": 0,
+     "wall_time_s": 387.566322052,
+     "versions": {
+      "python": "3.12.15",
+      "numpy": "2.5.2",
+      "pandas": "3.0.5",
+      "pyarrow": "25.0.1",
+      "eclipse-sumo": "1.27.1",
+      "libsumo": "1.27.1",
+      "flowstate_core": "2.0.0",
+      "microsim": "2.0.0"
+     }
+    }
+   ],
+   "n_collisions": 0,
+   "departed_share_mean": 0.9929874727668845,
+   "departed_share_min": 0.9929874727668845,
+   "lane_shares": {
+    "1": 0.28027367759867894,
+    "2": 0.22106538975217663,
+    "3": 0.21272499140247514,
+    "4": 0.28593594124666927
+   },
+   "lane_rmse_pp": 2.2795352515615703,
+   "merge_area_diagnostic": {
+    "lane_shares": {
+     "1": 0.2500951168615434,
+     "2": 0.19180363494728914,
+     "3": 0.21466521444177042,
+     "4": 0.3434360337493971
+    },
+    "lane_rmse_pp": 3.745519577395126
+   },
+   "discharge_veh_h": {
+    "2200": 5918.5,
+    "3200": 5893.0
+   },
+   "discharge_error": 0.10958423501199527
+  },
+  {
+   "name": "k0.25_kr0.0",
+   "k": 0.25,
+   "lc_keep_right": 0.0,
+   "config_hash": "0d31f6e2d981",
+   "population": {
+    "k": 0.25,
+    "path": "artifacts/idm_i24_capacity_amax_k0.25.json",
+    "sha256": "3baf93b63cce595a0e7a5420c2e1def10bda5c3a091d7c74d5540ddfaa8ffa2d",
+    "a_max_mean": 1.1620136795064078
+   },
+   "complete": true,
+   "n_seeds_read": 1,
+   "runs": [
+    {
+     "seed": 6914975401685141156,
+     "config_hash": "0d31f6e2d981",
+     "n_vehicles_planned": 14688,
+     "n_vehicles_departed": 14628,
+     "departed_share": 0.9959150326797386,
+     "n_collisions": 0,
+     "wall_time_s": 399.991670435,
+     "versions": {
+      "python": "3.12.15",
+      "numpy": "2.5.2",
+      "pandas": "3.0.5",
+      "pyarrow": "25.0.1",
+      "eclipse-sumo": "1.27.1",
+      "libsumo": "1.27.1",
+      "flowstate_core": "2.0.0",
+      "microsim": "2.0.0"
+     }
+    }
+   ],
+   "n_collisions": 0,
+   "departed_share_mean": 0.9959150326797386,
+   "departed_share_min": 0.9959150326797386,
+   "lane_shares": {
+    "1": 0.27003873902076164,
+    "2": 0.21098270891042079,
+    "3": 0.23136090567409437,
+    "4": 0.2876176463947232
+   },
+   "lane_rmse_pp": 3.1928095528514335,
+   "merge_area_diagnostic": {
+    "lane_shares": {
+     "1": 0.2551400150212488,
+     "2": 0.20288054535217057,
+     "3": 0.2232692115473735,
+     "4": 0.3187102280792072
+    },
+    "lane_rmse_pp": 2.855209176405901
+   },
+   "discharge_veh_h": {
+    "2200": 5934.0,
+    "3200": 5893.5
+   },
+   "discharge_error": 0.1083769742395803
+  },
+  {
+   "name": "k0.25_kr0.1",
+   "k": 0.25,
+   "lc_keep_right": 0.1,
+   "config_hash": "fb601fa48086",
+   "population": {
+    "k": 0.25,
+    "path": "artifacts/idm_i24_capacity_amax_k0.25.json",
+    "sha256": "3baf93b63cce595a0e7a5420c2e1def10bda5c3a091d7c74d5540ddfaa8ffa2d",
+    "a_max_mean": 1.1620136795064078
+   },
+   "complete": true,
+   "n_seeds_read": 1,
+   "runs": [
+    {
+     "seed": 6914975401685141156,
+     "config_hash": "fb601fa48086",
+     "n_vehicles_planned": 14688,
+     "n_vehicles_departed": 14628,
+     "departed_share": 0.9959150326797386,
+     "n_collisions": 0,
+     "wall_time_s": 389.269666123,
+     "versions": {
+      "python": "3.12.15",
+      "numpy": "2.5.2",
+      "pandas": "3.0.5",
+      "pyarrow": "25.0.1",
+      "eclipse-sumo": "1.27.1",
+      "libsumo": "1.27.1",
+      "flowstate_core": "2.0.0",
+      "microsim": "2.0.0"
+     }
+    }
+   ],
+   "n_collisions": 0,
+   "departed_share_mean": 0.9959150326797386,
+   "departed_share_min": 0.9959150326797386,
+   "lane_shares": {
+    "1": 0.27536320006980597,
+    "2": 0.21313515939594943,
+    "3": 0.21918324564225505,
+    "4": 0.2923183948919896
+   },
+   "lane_rmse_pp": 2.896505163255112,
+   "merge_area_diagnostic": {
+    "lane_shares": {
+     "1": 0.25505575457248864,
+     "2": 0.18363435177159163,
+     "3": 0.21230301798311893,
+     "4": 0.3490068756728008
+    },
+    "lane_rmse_pp": 4.04494593480232
+   },
+   "discharge_veh_h": {
+    "2200": 5943.0,
+    "3200": 5892.5
+   },
+   "discharge_error": 0.10777316128880851
+  },
+  {
+   "name": "k0.25_kr0.25",
+   "k": 0.25,
+   "lc_keep_right": 0.25,
+   "config_hash": "c5fdfea36cbb",
+   "population": {
+    "k": 0.25,
+    "path": "artifacts/idm_i24_capacity_amax_k0.25.json",
+    "sha256": "3baf93b63cce595a0e7a5420c2e1def10bda5c3a091d7c74d5540ddfaa8ffa2d",
+    "a_max_mean": 1.1620136795064078
+   },
+   "complete": true,
+   "n_seeds_read": 1,
+   "runs": [
+    {
+     "seed": 6914975401685141156,
+     "config_hash": "c5fdfea36cbb",
+     "n_vehicles_planned": 14688,
+     "n_vehicles_departed": 14627,
+     "departed_share": 0.9958469498910676,
+     "n_collisions": 0,
+     "wall_time_s": 407.95909950099997,
+     "versions": {
+      "python": "3.12.15",
+      "numpy": "2.5.2",
+      "pandas": "3.0.5",
+      "pyarrow": "25.0.1",
+      "eclipse-sumo": "1.27.1",
+      "libsumo": "1.27.1",
+      "flowstate_core": "2.0.0",
+      "microsim": "2.0.0"
+     }
+    }
+   ],
+   "n_collisions": 0,
+   "departed_share_mean": 0.9958469498910676,
+   "departed_share_min": 0.9958469498910676,
+   "lane_shares": {
+    "1": 0.2626536668841313,
+    "2": 0.2100456772461446,
+    "3": 0.22785911913074405,
+    "4": 0.29944153673898005
+   },
+   "lane_rmse_pp": 3.673651188799348,
+   "merge_area_diagnostic": {
+    "lane_shares": {
+     "1": 0.23818255098052138,
+     "2": 0.1944183159032256,
+     "3": 0.22156955707895834,
+     "4": 0.34582957603729464
+    },
+    "lane_rmse_pp": 4.149607222164793
+   },
+   "discharge_veh_h": {
+    "2200": 5951.0,
+    "3200": 5853.0
+   },
+   "discharge_error": 0.11014433066386262
+  },
+  {
+   "name": "k0.25_kr0.5",
+   "k": 0.25,
+   "lc_keep_right": 0.5,
+   "config_hash": "db261798233d",
+   "population": {
+    "k": 0.25,
+    "path": "artifacts/idm_i24_capacity_amax_k0.25.json",
+    "sha256": "3baf93b63cce595a0e7a5420c2e1def10bda5c3a091d7c74d5540ddfaa8ffa2d",
+    "a_max_mean": 1.1620136795064078
+   },
+   "complete": true,
+   "n_seeds_read": 1,
+   "runs": [
+    {
+     "seed": 6914975401685141156,
+     "config_hash": "db261798233d",
+     "n_vehicles_planned": 14688,
+     "n_vehicles_departed": 14625,
+     "departed_share": 0.9957107843137255,
+     "n_collisions": 0,
+     "wall_time_s": 394.242055616,
+     "versions": {
+      "python": "3.12.15",
+      "numpy": "2.5.2",
+      "pandas": "3.0.5",
+      "pyarrow": "25.0.1",
+      "eclipse-sumo": "1.27.1",
+      "libsumo": "1.27.1",
+      "flowstate_core": "2.0.0",
+      "microsim": "2.0.0"
+     }
+    }
+   ],
+   "n_collisions": 0,
+   "departed_share_mean": 0.9957107843137255,
+   "departed_share_min": 0.9957107843137255,
+   "lane_shares": {
+    "1": 0.2638075366221939,
+    "2": 0.2085967982288525,
+    "3": 0.22262461673422448,
+    "4": 0.3049710484147291
+   },
+   "lane_rmse_pp": 3.764125933703196,
+   "merge_area_diagnostic": {
+    "lane_shares": {
+     "1": 0.24675814328374648,
+     "2": 0.18682681645352578,
+     "3": 0.21186961985076383,
+     "4": 0.3545454204119639
+    },
+    "lane_rmse_pp": 4.280006472640799
+   },
+   "discharge_veh_h": {
+    "2200": 5927.5,
+    "3200": 5858.5
+   },
+   "discharge_error": 0.11150338447096636
+  },
+  {
+   "name": "k0.25_kr1.0",
+   "k": 0.25,
+   "lc_keep_right": 1.0,
+   "config_hash": "54e70488d8fd",
+   "population": {
+    "k": 0.25,
+    "path": "artifacts/idm_i24_capacity_amax_k0.25.json",
+    "sha256": "3baf93b63cce595a0e7a5420c2e1def10bda5c3a091d7c74d5540ddfaa8ffa2d",
+    "a_max_mean": 1.1620136795064078
+   },
+   "complete": true,
+   "n_seeds_read": 1,
+   "runs": [
+    {
+     "seed": 6914975401685141156,
+     "config_hash": "54e70488d8fd",
+     "n_vehicles_planned": 14688,
+     "n_vehicles_departed": 14628,
+     "departed_share": 0.9959150326797386,
+     "n_collisions": 0,
+     "wall_time_s": 362.48750216,
+     "versions": {
+      "python": "3.12.15",
+      "numpy": "2.5.2",
+      "pandas": "3.0.5",
+      "pyarrow": "25.0.1",
+      "eclipse-sumo": "1.27.1",
+      "libsumo": "1.27.1",
+      "flowstate_core": "2.0.0",
+      "microsim": "2.0.0"
+     }
+    }
+   ],
+   "n_collisions": 0,
+   "departed_share_mean": 0.9959150326797386,
+   "departed_share_min": 0.9959150326797386,
+   "lane_shares": {
+    "1": 0.26237640872649476,
+    "2": 0.20684591644124284,
+    "3": 0.22372697218670784,
+    "4": 0.30705070264555456
+   },
+   "lane_rmse_pp": 3.9257571399898965,
+   "merge_area_diagnostic": {
+    "lane_shares": {
+     "1": 0.2337002805985265,
+     "2": 0.17488409530166607,
+     "3": 0.23330341119367018,
+     "4": 0.35811221290613726
+    },
+    "lane_rmse_pp": 5.357829223208238
+   },
+   "discharge_veh_h": {
+    "2200": 5978.0,
+    "3200": 5926.5
+   },
+   "discharge_error": 0.1025715000400448
+  },
+  {
+   "name": "k0.5_kr0.0",
+   "k": 0.5,
+   "lc_keep_right": 0.0,
+   "config_hash": "169c72ac1abc",
+   "population": {
+    "k": 0.5,
+    "path": "artifacts/idm_i24_capacity_amax_k0.5.json",
+    "sha256": "d7530259e114be49b245cfe7df9beacdb451d0816a2b16b78ff6746165c8fe40",
+    "a_max_mean": 1.2691178255848516
+   },
+   "complete": true,
+   "n_seeds_read": 1,
+   "runs": [
+    {
+     "seed": 6914975401685141156,
+     "config_hash": "169c72ac1abc",
+     "n_vehicles_planned": 14688,
+     "n_vehicles_departed": 14628,
+     "departed_share": 0.9959150326797386,
+     "n_collisions": 0,
+     "wall_time_s": 384.153299874,
+     "versions": {
+      "python": "3.12.15",
+      "numpy": "2.5.2",
+      "pandas": "3.0.5",
+      "pyarrow": "25.0.1",
+      "eclipse-sumo": "1.27.1",
+      "libsumo": "1.27.1",
+      "flowstate_core": "2.0.0",
+      "microsim": "2.0.0"
+     }
+    }
+   ],
+   "n_collisions": 0,
+   "departed_share_mean": 0.9959150326797386,
+   "departed_share_min": 0.9959150326797386,
+   "lane_shares": {
+    "1": 0.2696230304533721,
+    "2": 0.22081623102889197,
+    "3": 0.22081867430078947,
+    "4": 0.2887420642169464
+   },
+   "lane_rmse_pp": 2.800922087250124,
+   "merge_area_diagnostic": {
+    "lane_shares": {
+     "1": 0.257067615940474,
+     "2": 0.18856429398330068,
+     "3": 0.22254413672167042,
+     "4": 0.33182395335455483
+    },
+    "lane_rmse_pp": 3.5338819100174788
+   },
+   "discharge_veh_h": {
+    "2200": 6027.0,
+    "3200": 5984.0
+   },
+   "discharge_error": 0.09454358241546354
+  },
+  {
+   "name": "k0.5_kr0.1",
+   "k": 0.5,
+   "lc_keep_right": 0.1,
+   "config_hash": "8ae89ebe0829",
+   "population": {
+    "k": 0.5,
+    "path": "artifacts/idm_i24_capacity_amax_k0.5.json",
+    "sha256": "d7530259e114be49b245cfe7df9beacdb451d0816a2b16b78ff6746165c8fe40",
+    "a_max_mean": 1.2691178255848516
+   },
+   "complete": true,
+   "n_seeds_read": 1,
+   "runs": [
+    {
+     "seed": 6914975401685141156,
+     "config_hash": "8ae89ebe0829",
+     "n_vehicles_planned": 14688,
+     "n_vehicles_departed": 14627,
+     "departed_share": 0.9958469498910676,
+     "n_collisions": 0,
+     "wall_time_s": 360.2759745249999,
+     "versions": {
+      "python": "3.12.15",
+      "numpy": "2.5.2",
+      "pandas": "3.0.5",
+      "pyarrow": "25.0.1",
+      "eclipse-sumo": "1.27.1",
+      "libsumo": "1.27.1",
+      "flowstate_core": "2.0.0",
+      "microsim": "2.0.0"
+     }
+    }
+   ],
+   "n_collisions": 0,
+   "departed_share_mean": 0.9958469498910676,
+   "departed_share_min": 0.9958469498910676,
+   "lane_shares": {
+    "1": 0.2580165191550189,
+    "2": 0.2201245653914567,
+    "3": 0.22682229279852972,
+    "4": 0.2950366226549947
+   },
+   "lane_rmse_pp": 3.4754755689795607,
+   "merge_area_diagnostic": {
+    "lane_shares": {
+     "1": 0.2392584160469037,
+     "2": 0.2077922431702353,
+     "3": 0.22036195905597394,
+     "4": 0.33258738172688707
+    },
+    "lane_rmse_pp": 3.422693715714218
+   },
+   "discharge_veh_h": {
+    "2200": 6037.0,
+    "3200": 5965.0
+   },
+   "discharge_error": 0.0952199326955964
+  },
+  {
+   "name": "k0.5_kr0.25",
+   "k": 0.5,
+   "lc_keep_right": 0.25,
+   "config_hash": "afb40214c979",
+   "population": {
+    "k": 0.5,
+    "path": "artifacts/idm_i24_capacity_amax_k0.5.json",
+    "sha256": "d7530259e114be49b245cfe7df9beacdb451d0816a2b16b78ff6746165c8fe40",
+    "a_max_mean": 1.2691178255848516
+   },
+   "complete": true,
+   "n_seeds_read": 1,
+   "runs": [
+    {
+     "seed": 6914975401685141156,
+     "config_hash": "afb40214c979",
+     "n_vehicles_planned": 14688,
+     "n_vehicles_departed": 14625,
+     "departed_share": 0.9957107843137255,
+     "n_collisions": 0,
+     "wall_time_s": 381.404844442,
+     "versions": {
+      "python": "3.12.15",
+      "numpy": "2.5.2",
+      "pandas": "3.0.5",
+      "pyarrow": "25.0.1",
+      "eclipse-sumo": "1.27.1",
+      "libsumo": "1.27.1",
+      "flowstate_core": "2.0.0",
+      "microsim": "2.0.0"
+     }
+    }
+   ],
+   "n_collisions": 0,
+   "departed_share_mean": 0.9957107843137255,
+   "departed_share_min": 0.9957107843137255,
+   "lane_shares": {
+    "1": 0.2544313811395456,
+    "2": 0.22887228743399912,
+    "3": 0.2209105504044125,
+    "4": 0.2957857810220428
+   },
+   "lane_rmse_pp": 3.4117449021366952,
+   "merge_area_diagnostic": {
+    "lane_shares": {
+     "1": 0.2240554348681986,
+     "2": 0.2136015129187673,
+     "3": 0.22792640004870138,
+     "4": 0.33441665216433275
+    },
+    "lane_rmse_pp": 4.048424881852359
+   },
+   "discharge_veh_h": {
+    "2200": 6031.5,
+    "3200": 5984.5
+   },
+   "discharge_error": 0.09416636362933903
+  },
+  {
+   "name": "k0.5_kr0.5",
+   "k": 0.5,
+   "lc_keep_right": 0.5,
+   "config_hash": "2031f936d196",
+   "population": {
+    "k": 0.5,
+    "path": "artifacts/idm_i24_capacity_amax_k0.5.json",
+    "sha256": "d7530259e114be49b245cfe7df9beacdb451d0816a2b16b78ff6746165c8fe40",
+    "a_max_mean": 1.2691178255848516
+   },
+   "complete": true,
+   "n_seeds_read": 1,
+   "runs": [
+    {
+     "seed": 6914975401685141156,
+     "config_hash": "2031f936d196",
+     "n_vehicles_planned": 14688,
+     "n_vehicles_departed": 14622,
+     "departed_share": 0.9955065359477124,
+     "n_collisions": 0,
+     "wall_time_s": 354.32866370400006,
+     "versions": {
+      "python": "3.12.15",
+      "numpy": "2.5.2",
+      "pandas": "3.0.5",
+      "pyarrow": "25.0.1",
+      "eclipse-sumo": "1.27.1",
+      "libsumo": "1.27.1",
+      "flowstate_core": "2.0.0",
+      "microsim": "2.0.0"
+     }
+    }
+   ],
+   "n_collisions": 0,
+   "departed_share_mean": 0.9955065359477124,
+   "departed_share_min": 0.9955065359477124,
+   "lane_shares": {
+    "1": 0.2659730407279734,
+    "2": 0.22726365470514745,
+    "3": 0.22231333192204505,
+    "4": 0.2844499726448341
+   },
+   "lane_rmse_pp": 2.7199098050075423,
+   "merge_area_diagnostic": {
+    "lane_shares": {
+     "1": 0.2294228112236458,
+     "2": 0.19530165742080438,
+     "3": 0.23081648613741967,
+     "4": 0.34445904521813014
+    },
+    "lane_rmse_pp": 4.519710651589053
+   },
+   "discharge_veh_h": {
+    "2200": 6030.0,
+    "3200": 6011.5
+   },
+   "discharge_error": 0.09224611878298206
+  },
+  {
+   "name": "k0.5_kr1.0",
+   "k": 0.5,
+   "lc_keep_right": 1.0,
+   "config_hash": "3e207581dc04",
+   "population": {
+    "k": 0.5,
+    "path": "artifacts/idm_i24_capacity_amax_k0.5.json",
+    "sha256": "d7530259e114be49b245cfe7df9beacdb451d0816a2b16b78ff6746165c8fe40",
+    "a_max_mean": 1.2691178255848516
+   },
+   "complete": true,
+   "n_seeds_read": 1,
+   "runs": [
+    {
+     "seed": 6914975401685141156,
+     "config_hash": "3e207581dc04",
+     "n_vehicles_planned": 14688,
+     "n_vehicles_departed": 14626,
+     "departed_share": 0.9957788671023965,
+     "n_collisions": 0,
+     "wall_time_s": 371.47285542000003,
+     "versions": {
+      "python": "3.12.15",
+      "numpy": "2.5.2",
+      "pandas": "3.0.5",
+      "pyarrow": "25.0.1",
+      "eclipse-sumo": "1.27.1",
+      "libsumo": "1.27.1",
+      "flowstate_core": "2.0.0",
+      "microsim": "2.0.0"
+     }
+    }
+   ],
+   "n_collisions": 0,
+   "departed_share_mean": 0.9957788671023965,
+   "departed_share_min": 0.9957788671023965,
+   "lane_shares": {
+    "1": 0.24974408557085526,
+    "2": 0.21190498106270886,
+    "3": 0.22719958734316156,
+    "4": 0.3111513460232743
+   },
+   "lane_rmse_pp": 4.3736423960628805,
+   "merge_area_diagnostic": {
+    "lane_shares": {
+     "1": 0.20127899034848068,
+     "2": 0.18115426026890635,
+     "3": 0.2404789670846208,
+     "4": 0.37708778229799217
+    },
+    "lane_rmse_pp": 6.758861554860167
+   },
+   "discharge_veh_h": {
+    "2200": 6019.5,
+    "3200": 5962.5
+   },
+   "discharge_error": 0.09672873481426862
+  },
+  {
+   "name": "k0.75_kr0.0",
+   "k": 0.75,
+   "lc_keep_right": 0.0,
+   "config_hash": "d8ccdd497379",
+   "population": {
+    "k": 0.75,
+    "path": "artifacts/idm_i24_capacity_amax_k0.75.json",
+    "sha256": "27640a6c76116eb28e4b7867f65d430031cafc43b05221a8372962c02001496e",
+    "a_max_mean": 1.3762219716632957
+   },
+   "complete": true,
+   "n_seeds_read": 1,
+   "runs": [
+    {
+     "seed": 6914975401685141156,
+     "config_hash": "d8ccdd497379",
+     "n_vehicles_planned": 14688,
+     "n_vehicles_departed": 14617,
+     "departed_share": 0.9951661220043573,
+     "n_collisions": 0,
+     "wall_time_s": 368.31131913499996,
+     "versions": {
+      "python": "3.12.15",
+      "numpy": "2.5.2",
+      "pandas": "3.0.5",
+      "pyarrow": "25.0.1",
+      "eclipse-sumo": "1.27.1",
+      "libsumo": "1.27.1",
+      "flowstate_core": "2.0.0",
+      "microsim": "2.0.0"
+     }
+    }
+   ],
+   "n_collisions": 0,
+   "departed_share_mean": 0.9951661220043573,
+   "departed_share_min": 0.9951661220043573,
+   "lane_shares": {
+    "1": 0.26854690415372445,
+    "2": 0.2408393393816644,
+    "3": 0.2184607493221267,
+    "4": 0.2721530071424844
+   },
+   "lane_rmse_pp": 2.14142169891273,
+   "merge_area_diagnostic": {
+    "lane_shares": {
+     "1": 0.2464518096787312,
+     "2": 0.22193364027188753,
+     "3": 0.22586998199035613,
+     "4": 0.30574456805902517
+    },
+    "lane_rmse_pp": 2.5982909876214286
+   },
+   "discharge_veh_h": {
+    "2200": 6004.0,
+    "3200": 5991.0
+   },
+   "discharge_error": 0.09575193857526436
+  },
+  {
+   "name": "k0.75_kr0.1",
+   "k": 0.75,
+   "lc_keep_right": 0.1,
+   "config_hash": "a10df9c7a2d4",
+   "population": {
+    "k": 0.75,
+    "path": "artifacts/idm_i24_capacity_amax_k0.75.json",
+    "sha256": "27640a6c76116eb28e4b7867f65d430031cafc43b05221a8372962c02001496e",
+    "a_max_mean": 1.3762219716632957
+   },
+   "complete": true,
+   "n_seeds_read": 1,
+   "runs": [
+    {
+     "seed": 6914975401685141156,
+     "config_hash": "a10df9c7a2d4",
+     "n_vehicles_planned": 14688,
+     "n_vehicles_departed": 14617,
+     "departed_share": 0.9951661220043573,
+     "n_collisions": 0,
+     "wall_time_s": 379.07574008899996,
+     "versions": {
+      "python": "3.12.15",
+      "numpy": "2.5.2",
+      "pandas": "3.0.5",
+      "pyarrow": "25.0.1",
+      "eclipse-sumo": "1.27.1",
+      "libsumo": "1.27.1",
+      "flowstate_core": "2.0.0",
+      "microsim": "2.0.0"
+     }
+    }
+   ],
+   "n_collisions": 0,
+   "departed_share_mean": 0.9951661220043573,
+   "departed_share_min": 0.9951661220043573,
+   "lane_shares": {
+    "1": 0.258840644649859,
+    "2": 0.223590899874501,
+    "3": 0.2312791912260655,
+    "4": 0.2862892642495745
+   },
+   "lane_rmse_pp": 3.257328163934266,
+   "merge_area_diagnostic": {
+    "lane_shares": {
+     "1": 0.22660536222472327,
+     "2": 0.18614973629326412,
+     "3": 0.23719506012760694,
+     "4": 0.35004984135440564
+    },
+    "lane_rmse_pp": 5.099002796996258
+   },
+   "discharge_veh_h": {
+    "2200": 6016.0,
+    "3200": 5988.0
+   },
+   "discharge_error": 0.09507237515879963
+  },
+  {
+   "name": "k0.75_kr0.25",
+   "k": 0.75,
+   "lc_keep_right": 0.25,
+   "config_hash": "ec058547a444",
+   "population": {
+    "k": 0.75,
+    "path": "artifacts/idm_i24_capacity_amax_k0.75.json",
+    "sha256": "27640a6c76116eb28e4b7867f65d430031cafc43b05221a8372962c02001496e",
+    "a_max_mean": 1.3762219716632957
+   },
+   "complete": true,
+   "n_seeds_read": 1,
+   "runs": [
+    {
+     "seed": 6914975401685141156,
+     "config_hash": "ec058547a444",
+     "n_vehicles_planned": 14688,
+     "n_vehicles_departed": 14617,
+     "departed_share": 0.9951661220043573,
+     "n_collisions": 0,
+     "wall_time_s": 395.053938794,
+     "versions": {
+      "python": "3.12.15",
+      "numpy": "2.5.2",
+      "pandas": "3.0.5",
+      "pyarrow": "25.0.1",
+      "eclipse-sumo": "1.27.1",
+      "libsumo": "1.27.1",
+      "flowstate_core": "2.0.0",
+      "microsim": "2.0.0"
+     }
+    }
+   ],
+   "n_collisions": 0,
+   "departed_share_mean": 0.9951661220043573,
+   "departed_share_min": 0.9951661220043573,
+   "lane_shares": {
+    "1": 0.24132413488247983,
+    "2": 0.21694833337821348,
+    "3": 0.23761372311693052,
+    "4": 0.30411380862237614
+   },
+   "lane_rmse_pp": 4.546086194908227,
+   "merge_area_diagnostic": {
+    "lane_shares": {
+     "1": 0.19223469956206404,
+     "2": 0.20458346771721544,
+     "3": 0.24518250441800896,
+     "4": 0.3579993283027116
+    },
+    "lane_rmse_pp": 6.246554578586272
+   },
+   "discharge_veh_h": {
+    "2200": 5999.0,
+    "3200": 5955.0
+   },
+   "discharge_error": 0.09884047357380396
+  },
+  {
+   "name": "k0.75_kr0.5",
+   "k": 0.75,
+   "lc_keep_right": 0.5,
+   "config_hash": "f40de2d5866b",
+   "population": {
+    "k": 0.75,
+    "path": "artifacts/idm_i24_capacity_amax_k0.75.json",
+    "sha256": "27640a6c76116eb28e4b7867f65d430031cafc43b05221a8372962c02001496e",
+    "a_max_mean": 1.3762219716632957
+   },
+   "complete": true,
+   "n_seeds_read": 1,
+   "runs": [
+    {
+     "seed": 6914975401685141156,
+     "config_hash": "f40de2d5866b",
+     "n_vehicles_planned": 14688,
+     "n_vehicles_departed": 14620,
+     "departed_share": 0.9953703703703703,
+     "n_collisions": 0,
+     "wall_time_s": 363.638433209,
+     "versions": {
+      "python": "3.12.15",
+      "numpy": "2.5.2",
+      "pandas": "3.0.5",
+      "pyarrow": "25.0.1",
+      "eclipse-sumo": "1.27.1",
+      "libsumo": "1.27.1",
+      "flowstate_core": "2.0.0",
+      "microsim": "2.0.0"
+     }
+    }
+   ],
+   "n_collisions": 0,
+   "departed_share_mean": 0.9953703703703703,
+   "departed_share_min": 0.9953703703703703,
+   "lane_shares": {
+    "1": 0.24162908047517245,
+    "2": 0.2189295732018431,
+    "3": 0.23332241031354142,
+    "4": 0.306118936009443
+   },
+   "lane_rmse_pp": 4.482883660058849,
+   "merge_area_diagnostic": {
+    "lane_shares": {
+     "1": 0.16634852594800353,
+     "2": 0.19193931884397708,
+     "3": 0.2507156172807022,
+     "4": 0.3909965379273172
+    },
+    "lane_rmse_pp": 8.307105434181494
+   },
+   "discharge_veh_h": {
+    "2200": 5991.0,
+    "3200": 5979.0
+   },
+   "discharge_error": 0.09763664501519806
+  },
+  {
+   "name": "k0.75_kr1.0",
+   "k": 0.75,
+   "lc_keep_right": 1.0,
+   "config_hash": "01d64260c4eb",
+   "population": {
+    "k": 0.75,
+    "path": "artifacts/idm_i24_capacity_amax_k0.75.json",
+    "sha256": "27640a6c76116eb28e4b7867f65d430031cafc43b05221a8372962c02001496e",
+    "a_max_mean": 1.3762219716632957
+   },
+   "complete": true,
+   "n_seeds_read": 1,
+   "runs": [
+    {
+     "seed": 6914975401685141156,
+     "config_hash": "01d64260c4eb",
+     "n_vehicles_planned": 14688,
+     "n_vehicles_departed": 14617,
+     "departed_share": 0.9951661220043573,
+     "n_collisions": 0,
+     "wall_time_s": 347.523756318,
+     "versions": {
+      "python": "3.12.15",
+      "numpy": "2.5.2",
+      "pandas": "3.0.5",
+      "pyarrow": "25.0.1",
+      "eclipse-sumo": "1.27.1",
+      "libsumo": "1.27.1",
+      "flowstate_core": "2.0.0",
+      "microsim": "2.0.0"
+     }
+    }
+   ],
+   "n_collisions": 0,
+   "departed_share_mean": 0.9951661220043573,
+   "departed_share_min": 0.9951661220043573,
+   "lane_shares": {
+    "1": 0.24859297725357032,
+    "2": 0.2190039392763472,
+    "3": 0.2224640172365968,
+    "4": 0.30993906623348566
+   },
+   "lane_rmse_pp": 4.195207728326397,
+   "merge_area_diagnostic": {
+    "lane_shares": {
+     "1": 0.1779591076669409,
+     "2": 0.18040439469747768,
+     "3": 0.24999103890165786,
+     "4": 0.3916454587339236
+    },
+    "lane_rmse_pp": 8.09762398733157
+   },
+   "discharge_veh_h": {
+    "2200": 6007.0,
+    "3200": 5989.5
+   },
+   "discharge_error": 0.09563853195420212
+  },
+  {
+   "name": "k1.0_kr0.0",
+   "k": 1.0,
+   "lc_keep_right": 0.0,
+   "config_hash": "9f65ad0eaa6e",
+   "population": {
+    "k": 1.0,
+    "path": "artifacts/idm_i24_capacity_amax_k1.0.json",
+    "sha256": "c381e35787cedce6c2195684303e45002fae8a20726db88288a9715776a87218",
+    "a_max_mean": 1.4833261177417396
+   },
+   "complete": true,
+   "n_seeds_read": 1,
+   "runs": [
+    {
+     "seed": 6914975401685141156,
+     "config_hash": "9f65ad0eaa6e",
+     "n_vehicles_planned": 14688,
+     "n_vehicles_departed": 14616,
+     "departed_share": 0.9950980392156863,
+     "n_collisions": 0,
+     "wall_time_s": 352.93561623399995,
+     "versions": {
+      "python": "3.12.15",
+      "numpy": "2.5.2",
+      "pandas": "3.0.5",
+      "pyarrow": "25.0.1",
+      "eclipse-sumo": "1.27.1",
+      "libsumo": "1.27.1",
+      "flowstate_core": "2.0.0",
+      "microsim": "2.0.0"
+     }
+    }
+   ],
+   "n_collisions": 0,
+   "departed_share_mean": 0.9950980392156863,
+   "departed_share_min": 0.9950980392156863,
+   "lane_shares": {
+    "1": 0.2683411598579434,
+    "2": 0.23435203788302048,
+    "3": 0.21963572455537997,
+    "4": 0.2776710777036562
+   },
+   "lane_rmse_pp": 2.327904019463044,
+   "merge_area_diagnostic": {
+    "lane_shares": {
+     "1": 0.2356906505488724,
+     "2": 0.20964595473050818,
+     "3": 0.22356862925322613,
+     "4": 0.3310947654673933
+    },
+    "lane_rmse_pp": 3.534164724972872
+   },
+   "discharge_veh_h": {
+    "2200": 6021.0,
+    "3200": 5995.0
+   },
+   "discharge_error": 0.09416789717167925
+  },
+  {
+   "name": "k1.0_kr0.1",
+   "k": 1.0,
+   "lc_keep_right": 0.1,
+   "config_hash": "fce9785c6c0e",
+   "population": {
+    "k": 1.0,
+    "path": "artifacts/idm_i24_capacity_amax_k1.0.json",
+    "sha256": "c381e35787cedce6c2195684303e45002fae8a20726db88288a9715776a87218",
+    "a_max_mean": 1.4833261177417396
+   },
+   "complete": true,
+   "n_seeds_read": 1,
+   "runs": [
+    {
+     "seed": 6914975401685141156,
+     "config_hash": "fce9785c6c0e",
+     "n_vehicles_planned": 14688,
+     "n_vehicles_departed": 14615,
+     "departed_share": 0.9950299564270153,
+     "n_collisions": 0,
+     "wall_time_s": 350.01094264200003,
+     "versions": {
+      "python": "3.12.15",
+      "numpy": "2.5.2",
+      "pandas": "3.0.5",
+      "pyarrow": "25.0.1",
+      "eclipse-sumo": "1.27.1",
+      "libsumo": "1.27.1",
+      "flowstate_core": "2.0.0",
+      "microsim": "2.0.0"
+     }
+    }
+   ],
+   "n_collisions": 0,
+   "departed_share_mean": 0.9950299564270153,
+   "departed_share_min": 0.9950299564270153,
+   "lane_shares": {
+    "1": 0.26751488120681277,
+    "2": 0.23054435902452308,
+    "3": 0.22167760467310904,
+    "4": 0.2802631550955551
+   },
+   "lane_rmse_pp": 2.501910510278133,
+   "merge_area_diagnostic": {
+    "lane_shares": {
+     "1": 0.2361500723303178,
+     "2": 0.202920709181834,
+     "3": 0.23299771146631215,
+     "4": 0.32793150702153606
+    },
+    "lane_rmse_pp": 3.820015277680955
+   },
+   "discharge_veh_h": {
+    "2200": 6029.0,
+    "3200": 6000.5
+   },
+   "discharge_error": 0.09315001256349664
+  },
+  {
+   "name": "k1.0_kr0.25",
+   "k": 1.0,
+   "lc_keep_right": 0.25,
+   "config_hash": "16677e9113d9",
+   "population": {
+    "k": 1.0,
+    "path": "artifacts/idm_i24_capacity_amax_k1.0.json",
+    "sha256": "c381e35787cedce6c2195684303e45002fae8a20726db88288a9715776a87218",
+    "a_max_mean": 1.4833261177417396
+   },
+   "complete": true,
+   "n_seeds_read": 1,
+   "runs": [
+    {
+     "seed": 6914975401685141156,
+     "config_hash": "16677e9113d9",
+     "n_vehicles_planned": 14688,
+     "n_vehicles_departed": 14617,
+     "departed_share": 0.9951661220043573,
+     "n_collisions": 0,
+     "wall_time_s": 309.46282479700005,
+     "versions": {
+      "python": "3.12.15",
+      "numpy": "2.5.2",
+      "pandas": "3.0.5",
+      "pyarrow": "25.0.1",
+      "eclipse-sumo": "1.27.1",
+      "libsumo": "1.27.1",
+      "flowstate_core": "2.0.0",
+      "microsim": "2.0.0"
+     }
+    }
+   ],
+   "n_collisions": 0,
+   "departed_share_mean": 0.9951661220043573,
+   "departed_share_min": 0.9951661220043573,
+   "lane_shares": {
+    "1": 0.2663458670423882,
+    "2": 0.22544885220897595,
+    "3": 0.21760529731498632,
+    "4": 0.2905999834336495
+   },
+   "lane_rmse_pp": 2.832421811420645,
+   "merge_area_diagnostic": {
+    "lane_shares": {
+     "1": 0.19867300485563347,
+     "2": 0.18290701248296118,
+     "3": 0.24308994522308855,
+     "4": 0.37533003743831683
+    },
+    "lane_rmse_pp": 6.800267205795743
+   },
+   "discharge_veh_h": {
+    "2200": 6005.0,
+    "3200": 5996.0
+   },
+   "discharge_error": 0.09529991865918135
+  },
+  {
+   "name": "k1.0_kr0.5",
+   "k": 1.0,
+   "lc_keep_right": 0.5,
+   "config_hash": "1ac0fcacc42b",
+   "population": {
+    "k": 1.0,
+    "path": "artifacts/idm_i24_capacity_amax_k1.0.json",
+    "sha256": "c381e35787cedce6c2195684303e45002fae8a20726db88288a9715776a87218",
+    "a_max_mean": 1.4833261177417396
+   },
+   "complete": true,
+   "n_seeds_read": 1,
+   "runs": [
+    {
+     "seed": 6914975401685141156,
+     "config_hash": "1ac0fcacc42b",
+     "n_vehicles_planned": 14688,
+     "n_vehicles_departed": 14610,
+     "departed_share": 0.9946895424836601,
+     "n_collisions": 0,
+     "wall_time_s": 339.27218355,
+     "versions": {
+      "python": "3.12.15",
+      "numpy": "2.5.2",
+      "pandas": "3.0.5",
+      "pyarrow": "25.0.1",
+      "eclipse-sumo": "1.27.1",
+      "libsumo": "1.27.1",
+      "flowstate_core": "2.0.0",
+      "microsim": "2.0.0"
+     }
+    }
+   ],
+   "n_collisions": 0,
+   "departed_share_mean": 0.9946895424836601,
+   "departed_share_min": 0.9946895424836601,
+   "lane_shares": {
+    "1": 0.25139556150721426,
+    "2": 0.2185457253864236,
+    "3": 0.22998427896996854,
+    "4": 0.30007443413639356
+   },
+   "lane_rmse_pp": 3.9222534455953473,
+   "merge_area_diagnostic": {
+    "lane_shares": {
+     "1": 0.19178778312799935,
+     "2": 0.17500650428426046,
+     "3": 0.2532572147955896,
+     "4": 0.37994849779215056
+    },
+    "lane_rmse_pp": 7.497396929571658
+   },
+   "discharge_veh_h": {
+    "2200": 6009.0,
+    "3200": 5988.0
+   },
+   "discharge_error": 0.09560058369552993
+  },
+  {
+   "name": "k1.0_kr1.0",
+   "k": 1.0,
+   "lc_keep_right": 1.0,
+   "config_hash": "27bef10cfcd2",
+   "population": {
+    "k": 1.0,
+    "path": "artifacts/idm_i24_capacity_amax_k1.0.json",
+    "sha256": "c381e35787cedce6c2195684303e45002fae8a20726db88288a9715776a87218",
+    "a_max_mean": 1.4833261177417396
+   },
+   "complete": true,
+   "n_seeds_read": 1,
+   "runs": [
+    {
+     "seed": 6914975401685141156,
+     "config_hash": "27bef10cfcd2",
+     "n_vehicles_planned": 14688,
+     "n_vehicles_departed": 14612,
+     "departed_share": 0.9948257080610022,
+     "n_collisions": 0,
+     "wall_time_s": 300.9095813050001,
+     "versions": {
+      "python": "3.12.15",
+      "numpy": "2.5.2",
+      "pandas": "3.0.5",
+      "pyarrow": "25.0.1",
+      "eclipse-sumo": "1.27.1",
+      "libsumo": "1.27.1",
+      "flowstate_core": "2.0.0",
+      "microsim": "2.0.0"
+     }
+    }
+   ],
+   "n_collisions": 0,
+   "departed_share_mean": 0.9948257080610022,
+   "departed_share_min": 0.9948257080610022,
+   "lane_shares": {
+    "1": 0.25514912762201375,
+    "2": 0.22055533328372656,
+    "3": 0.22633838495491715,
+    "4": 0.2979571541393425
+   },
+   "lane_rmse_pp": 3.6402438833489863,
+   "merge_area_diagnostic": {
+    "lane_shares": {
+     "1": 0.15732693386595822,
+     "2": 0.16624268106707488,
+     "3": 0.25824193302730536,
+     "4": 0.41818845203966154
+    },
+    "lane_rmse_pp": 9.933436373968851
+   },
+   "discharge_veh_h": {
+    "2200": 6026.0,
+    "3200": 6014.0
+   },
+   "discharge_error": 0.09235967145569575
+  }
+ ],
+ "complete": true,
+ "selection": {
+  "rule": "docs/FRISCO_PROTOCOL.md Amendment 1: among the pairs whose lane-share RMSE is within 1 percentage point of the grid's minimum, choose the one whose discharge error is smallest; ties go to the smaller change (k, then lc_keep_right nearer its current 0). If no pair improves lane use or discharge against the current setting, the current setting stays and the report says so.",
+  "improves_reading": "a pair improves a target when its error on that target is strictly smaller than the current setting's (k = 0, lc_keep_right = 0), with no noise band \u2014 the amendment fixes none; the current setting stays only when no pair improves either target",
+  "chosen": {
+   "k": 1.0,
+   "lc_keep_right": 0.0
+  },
+  "current": {
+   "k": 0.0,
+   "lc_keep_right": 0.0
+  },
+  "current_stays": false,
+  "outcome": "rule_chose_other",
+  "min_lane_rmse_pp": 1.3755511737939354,
+  "band_upper_pp": 2.3755511737939354,
+  "candidates": [
+   {
+    "k": 0.0,
+    "lc_keep_right": 0.0
+   },
+   {
+    "k": 0.0,
+    "lc_keep_right": 0.1
+   },
+   {
+    "k": 0.0,
+    "lc_keep_right": 1.0
+   },
+   {
+    "k": 0.75,
+    "lc_keep_right": 0.0
+   },
+   {
+    "k": 1.0,
+    "lc_keep_right": 0.0
+   }
+  ],
+  "best_discharge_error": 0.09416789717167925,
+  "tied": [
+   {
+    "k": 1.0,
+    "lc_keep_right": 0.0
+   }
+  ],
+  "improvers": [
+   {
+    "k": 0.0,
+    "lc_keep_right": 0.1,
+    "improves": [
+     "lane_use",
+     "discharge"
+    ]
+   },
+   {
+    "k": 0.0,
+    "lc_keep_right": 0.5,
+    "improves": [
+     "discharge"
+    ]
+   },
+   {
+    "k": 0.0,
+    "lc_keep_right": 1.0,
+    "improves": [
+     "lane_use",
+     "discharge"
+    ]
+   },
+   {
+    "k": 0.25,
+    "lc_keep_right": 0.0,
+    "improves": [
+     "discharge"
+    ]
+   },
+   {
+    "k": 0.25,
+    "lc_keep_right": 0.1,
+    "improves": [
+     "discharge"
+    ]
+   },
+   {
+    "k": 0.25,
+    "lc_keep_right": 0.25,
+    "improves": [
+     "discharge"
+    ]
+   },
+   {
+    "k": 0.25,
+    "lc_keep_right": 0.5,
+    "improves": [
+     "discharge"
+    ]
+   },
+   {
+    "k": 0.25,
+    "lc_keep_right": 1.0,
+    "improves": [
+     "discharge"
+    ]
+   },
+   {
+    "k": 0.5,
+    "lc_keep_right": 0.0,
+    "improves": [
+     "discharge"
+    ]
+   },
+   {
+    "k": 0.5,
+    "lc_keep_right": 0.1,
+    "improves": [
+     "discharge"
+    ]
+   },
+   {
+    "k": 0.5,
+    "lc_keep_right": 0.25,
+    "improves": [
+     "discharge"
+    ]
+   },
+   {
+    "k": 0.5,
+    "lc_keep_right": 0.5,
+    "improves": [
+     "discharge"
+    ]
+   },
+   {
+    "k": 0.5,
+    "lc_keep_right": 1.0,
+    "improves": [
+     "discharge"
+    ]
+   },
+   {
+    "k": 0.75,
+    "lc_keep_right": 0.0,
+    "improves": [
+     "lane_use",
+     "discharge"
+    ]
+   },
+   {
+    "k": 0.75,
+    "lc_keep_right": 0.1,
+    "improves": [
+     "discharge"
+    ]
+   },
+   {
+    "k": 0.75,
+    "lc_keep_right": 0.25,
+    "improves": [
+     "discharge"
+    ]
+   },
+   {
+    "k": 0.75,
+    "lc_keep_right": 0.5,
+    "improves": [
+     "discharge"
+    ]
+   },
+   {
+    "k": 0.75,
+    "lc_keep_right": 1.0,
+    "improves": [
+     "discharge"
+    ]
+   },
+   {
+    "k": 1.0,
+    "lc_keep_right": 0.0,
+    "improves": [
+     "discharge"
+    ]
+   },
+   {
+    "k": 1.0,
+    "lc_keep_right": 0.1,
+    "improves": [
+     "discharge"
+    ]
+   },
+   {
+    "k": 1.0,
+    "lc_keep_right": 0.25,
+    "improves": [
+     "discharge"
+    ]
+   },
+   {
+    "k": 1.0,
+    "lc_keep_right": 0.5,
+    "improves": [
+     "discharge"
+    ]
+   },
+   {
+    "k": 1.0,
+    "lc_keep_right": 1.0,
+    "improves": [
+     "discharge"
+    ]
+   }
+  ],
+  "unscored": [],
+  "explanation": "Grid minimum lane-share RMSE 1.376 pp; 5 pair(s) within 1 pp of it (<= 2.376 pp); smallest discharge error among them 0.0942: k = 1, lc_keep_right = 0 (lane RMSE 2.328 pp, discharge error 0.0942; current setting 2.310 pp, 0.1220)."
+ },
+ "notes": [
+  "I-24 calibrates on its one recorded morning (I-24 MOTION, 30 Nov 2022, 06:30-08:30 CST), which has no holdout: the chosen pair is not validated on other data (docs/FRISCO_PROTOCOL.md Amendment 1).",
+  "Lane-use segment: data x 0-5,500 m (the measured span), the segment whose observed vehicle-time shares are the amendment's 30/24/20/26 % (the 2026-09 calibration's measurement); the Old Hickory merge area alone (750-2,000 m) gives 28.0/23.4/19.0/29.6 % and is reported as a diagnostic, not scored.",
+  "One seed per pair (the amendment's design): differences between pairs include seed-level noise the grid does not estimate."
+ ],
+ "provenance": {
+  "script": "scripts/calibrate_driver_grid.py",
+  "created_at": "2026-10-07T05:06:48Z",
+  "code": "b3efdfaf36aed70bb1bedb38bdadc562f527fab5 snapshot 571b9e4eaa77a1bda129988ebd74152dc240745b",
+  "code_dirty": false,
+  "argv": [
+   "--corridor",
+   "i24",
+   "--procs",
+   "12",
+   "--out",
+   "runs/p3/grid_i24",
+   "--artifact",
+   "artifacts/driver_calibration_i24.json"
+  ],
+  "run_root": "runs/p3/grid_i24",
+  "manifest_sha256": "fd1a59bbc38997d5ff297c000ba7917dfc11f1c57bf16e161538938a01bcd01c",
+  "lanes_sha256": "3a483b1a6e5a8d2f9b035a7400836a601aae4be5868da74d5cb00f9896aa205f",
+  "run_versions": [
+   "{\"eclipse-sumo\": \"1.27.1\", \"flowstate_core\": \"2.0.0\", \"libsumo\": \"1.27.1\", \"microsim\": \"2.0.0\", \"numpy\": \"2.5.2\", \"pandas\": \"3.0.5\", \"pyarrow\": \"25.0.1\", \"python\": \"3.12.15\"}"
+  ]
+ }
+}

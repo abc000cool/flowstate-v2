@@ -91,4 +91,73 @@ count (at least 25 m from a lane-count change), 07:05–07:35 on the five
 calibration days, quality-masked (IRIS lane n = SUMO lane n − 1, both from the
 right); discharge S97 against 4,490.5 veh/h.
 
-**Results:** to be added.
+**Results (grid run 2026-10-07, VM flowstate-p3, code 571b9e4; artifacts
+`artifacts/driver_calibration_i24.json`, `artifacts/driver_calibration_i94.json`,
+per-run readings and manifests in `artifacts/p3_driver_grid_2026-10-07/`).**
+75 runs (I-24 25 × 1 seed, I-94 25 × 2 seeds), 0 failed, 0 collisions.
+
+| corridor | pair (k, keep-right) | lane RMSE pp | discharge veh/h | target | error | departed |
+|---|---|---|---|---|---|---|
+| I-24 | current (0, 0) | 2.31 | 5,837 / 5,810 | 6,626 / 6,639 | 12.2 % | 0.984 |
+| I-24 | (0.5, 0) | 2.80 | 6,027 / 5,984 | | 9.5 % | 0.996 |
+| I-24 | **chosen (1.0, 0)** | 2.33 | 6,021 / 5,995 | | **9.4 %** | 0.995 |
+| I-94 | current (0, 0) | 8.24 | 3,321 (S97) | 4,490.5 | 26.0 % | 0.971 |
+| I-94 | (1.0, 0) | 7.64 | 3,680 | | 18.0 % | 0.977 |
+| I-94 | **chosen (1.0, 0.1)** | 8.40 | 3,764 | | **16.2 %** | 0.977 |
+
+The rule chose k = 1 (mean `a_max` 1.4833 m/s², the top of the measured
+range) on both corridors, `lc_keep_right` 0 on I-24 (5 pairs inside the 1 pp
+lane band) and 0.1 on I-94 (16 pairs inside it). Applied by
+`scripts/apply_driver_calibration.py` to `scenarios/i24_replica_flow_speedcal_dc.yaml`
+(hash 8976a1773674) and `scenarios/mndot_i94_wb_stpaul_weave_dc.yaml`
+(hash db9fbab5fc6e).
+
+What the grid says, beyond the rule's pick:
+
+- **I-24: `a_max` closes about a quarter of the gap, then plateaus.** The
+  discharge error falls from 12.2 % to about 9.4 % by k = 0.5 and does not
+  move from k = 0.5 to 1.0 (5,984–6,030 veh/h at every keep-right). The
+  departed share rises from 0.984 to 0.995–0.996 at k ≥ 0.25: with the
+  stronger drivers almost every planned vehicle enters, so the 2-h section
+  flow is then bounded by the demand the scenario supplies, and that demand
+  (scale s = 0.800, docs/I24_VALIDATION.md) was fitted under the old drivers.
+  The plateau is therefore read as demand-limited, not as a second discharge
+  limit, until a demand refit under the calibrated drivers says otherwise
+  (step 3 runs it: pipeline stage `p4_i24_refit`). The fixture projection of
+  6,480–6,640 veh/h at +1 sd was not reached.
+- **I-94: the gain is real but the gap stays large.** S97 rises from 3,321 to
+  3,680–3,764 veh/h (target 4,490.5); the remaining shortfall is the T.H.52
+  weave (§1), which `a_max` was not expected to fix. The seed-to-seed spread at
+  one pair (up to 264 veh/h) is larger than the difference between keep-right
+  0 and 0.1 at k = 1 (84 veh/h): the rule's choice of 0.1 over 0 is inside the
+  noise of two seeds, as the rule allows (it fixes no noise band).
+- **Lane use barely responds.** On I-24 every pair lies within 1.4–4.5 pp of
+  the observed shares with no trend in keep-right (one seed per pair); on
+  I-94 every pair is 7.6–9.9 pp off the detector shares, and raising
+  keep-right makes it worse. The I-94 lane-share gap is not a keep-right
+  problem.
+- **No collisions** in any of the 75 runs.
+
+**T.H.52 fixture checks with the calibrated I-94 drivers (2026-10-07, local,
+macOS; `scripts/merge_model_selfcheck.py ... --fleet-from
+scenarios/mndot_i94_wb_stpaul_weave_dc.yaml`; JSON in
+`artifacts/p3_driver_grid_2026-10-07/th52_*.json`).** Fixture tables are macOS
+records (docs/LESSONS.md); the corridor rounds on Linux decide.
+
+| check | drivers | seeds | exit-end flow veh/h (mean ± sd) | GEH < 5 | min station speed ≥ 20 m/s | collisions |
+|---|---|---|---|---|---|---|
+| ceiling (nothing to cross, A2.3) | calibrated (k 1, keep-right 0.1) | 3–12 | 4,826 ± 22 | 10 / 10 | 10 / 10 | 0 |
+| ceiling (A3 record) | current (k 0, keep-right 0) | 3–12 | 4,770–4,863 | 10 / 10 | 7 / 10 | 0 |
+| locked section test, `weave` | calibrated | 3–22 | 4,361 ± 83 | 1 / 20 | 0 / 20 | 0 |
+| locked section test, `weave` | current | 3–22 | 3,873 ± 106 | 0 / 20 | 0 / 20 | 0 |
+
+The ceiling now passes at every seed, including seed 3, the locked test's: the
+slow drivers that held the left lanes at keep-right 0 (A3) no longer pull the
+station speed under 20 m/s, so the locked test is passable in principle again.
+With crossing, the calibrated drivers carry about 490 veh/h (13 %) more through
+the weave than the current ones (observed inflow 4,877), but the test still
+fails at 20 of 20 seeds: the weave itself, not discharge or lane holding, is
+what is left.
+
+Step 3 (the 20-seed batteries on the calibrated scenarios) decides whether the
+change improves the criteria; until then nothing here is a validation claim.

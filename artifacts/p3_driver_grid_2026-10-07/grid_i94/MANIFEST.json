@@ -1,0 +1,276 @@
+{
+ "schema": "flowstate.driver_grid_manifest/1",
+ "corridor": "i94",
+ "spec": {
+  "key": "i94",
+  "base_scenario": "scenarios/mndot_i94_wb_stpaul_weave_slice.yaml",
+  "transform": "xlsfg",
+  "n_seeds": 2,
+  "mem_gb": 4.0,
+  "mode": "detectors",
+  "guard_small_machine": true,
+  "population_base": "artifacts/idm_i24_capacity.json",
+  "population_dir": "artifacts",
+  "population_stem": "idm_i24_capacity_amax",
+  "measured_population": "artifacts/idm_i24.json",
+  "observations": "artifacts/p1_rehearsal_2026-10-04/observations_calibration.json",
+  "clock_offset_s": 5400.0,
+  "discharge_stations": [
+   "S97"
+  ],
+  "discharge_upstream": [
+   [
+    "S97",
+    "S790"
+   ]
+  ],
+  "observed_lanes": "artifacts/driver_calibration_i94_observed_lanes.json",
+  "min_clearance_m": 25.0,
+  "notes": [
+   "I-94 calibrates on the five calibration days of the committed split (artifacts/p1_rehearsal_2026-10-04/day_split.json); the 35-minute slice (07:00-07:35 local, scored 07:05-07:35) is scored, the validation days are not used.",
+   "Lane use: per-lane detector shares of crossings at the selected mainline stations; IRIS lane 1 is the rightmost lane (SUMO lane 0). Stations whose simulated cross-section has another lane count (netconvert's guessed ramp lanes) or whose observed cross-section is incomplete are not compared and are listed with the reason.",
+   "Two seeds per pair (the amendment's design): differences between pairs include seed-level noise the grid does not estimate."
+  ]
+ },
+ "reference_scenario": "scenarios/mndot_i94_wb_stpaul_weave_slice.yaml",
+ "reference_transform": "xlsfg",
+ "reference_config_hash": "1dc4729644dd",
+ "grid": {
+  "k": [
+   0.0,
+   0.25,
+   0.5,
+   0.75,
+   1.0
+  ],
+  "lc_keep_right": [
+   0.0,
+   0.1,
+   0.25,
+   0.5,
+   1.0
+  ],
+  "is_amendment_grid": true
+ },
+ "pairs": [
+  {
+   "name": "k0.0_kr0.0",
+   "k": 0.0,
+   "lc_keep_right": 0.0,
+   "config_hash": "1dc4729644dd",
+   "population": "artifacts/idm_i24_capacity.json"
+  },
+  {
+   "name": "k0.0_kr0.1",
+   "k": 0.0,
+   "lc_keep_right": 0.1,
+   "config_hash": "af1c439e2b74",
+   "population": "artifacts/idm_i24_capacity.json"
+  },
+  {
+   "name": "k0.0_kr0.25",
+   "k": 0.0,
+   "lc_keep_right": 0.25,
+   "config_hash": "0581e9a6aa8a",
+   "population": "artifacts/idm_i24_capacity.json"
+  },
+  {
+   "name": "k0.0_kr0.5",
+   "k": 0.0,
+   "lc_keep_right": 0.5,
+   "config_hash": "66afaf030c17",
+   "population": "artifacts/idm_i24_capacity.json"
+  },
+  {
+   "name": "k0.0_kr1.0",
+   "k": 0.0,
+   "lc_keep_right": 1.0,
+   "config_hash": "df8c8cf0fd67",
+   "population": "artifacts/idm_i24_capacity.json"
+  },
+  {
+   "name": "k0.25_kr0.0",
+   "k": 0.25,
+   "lc_keep_right": 0.0,
+   "config_hash": "4f925e169ed3",
+   "population": "artifacts/idm_i24_capacity_amax_k0.25.json"
+  },
+  {
+   "name": "k0.25_kr0.1",
+   "k": 0.25,
+   "lc_keep_right": 0.1,
+   "config_hash": "f0b90c981b18",
+   "population": "artifacts/idm_i24_capacity_amax_k0.25.json"
+  },
+  {
+   "name": "k0.25_kr0.25",
+   "k": 0.25,
+   "lc_keep_right": 0.25,
+   "config_hash": "64358f410bc4",
+   "population": "artifacts/idm_i24_capacity_amax_k0.25.json"
+  },
+  {
+   "name": "k0.25_kr0.5",
+   "k": 0.25,
+   "lc_keep_right": 0.5,
+   "config_hash": "bb35b8f759a8",
+   "population": "artifacts/idm_i24_capacity_amax_k0.25.json"
+  },
+  {
+   "name": "k0.25_kr1.0",
+   "k": 0.25,
+   "lc_keep_right": 1.0,
+   "config_hash": "e0681c265d9c",
+   "population": "artifacts/idm_i24_capacity_amax_k0.25.json"
+  },
+  {
+   "name": "k0.5_kr0.0",
+   "k": 0.5,
+   "lc_keep_right": 0.0,
+   "config_hash": "eb97c213e60e",
+   "population": "artifacts/idm_i24_capacity_amax_k0.5.json"
+  },
+  {
+   "name": "k0.5_kr0.1",
+   "k": 0.5,
+   "lc_keep_right": 0.1,
+   "config_hash": "7418085b1e72",
+   "population": "artifacts/idm_i24_capacity_amax_k0.5.json"
+  },
+  {
+   "name": "k0.5_kr0.25",
+   "k": 0.5,
+   "lc_keep_right": 0.25,
+   "config_hash": "d58b70ebd503",
+   "population": "artifacts/idm_i24_capacity_amax_k0.5.json"
+  },
+  {
+   "name": "k0.5_kr0.5",
+   "k": 0.5,
+   "lc_keep_right": 0.5,
+   "config_hash": "43af755de3c0",
+   "population": "artifacts/idm_i24_capacity_amax_k0.5.json"
+  },
+  {
+   "name": "k0.5_kr1.0",
+   "k": 0.5,
+   "lc_keep_right": 1.0,
+   "config_hash": "2ec2598bc9cb",
+   "population": "artifacts/idm_i24_capacity_amax_k0.5.json"
+  },
+  {
+   "name": "k0.75_kr0.0",
+   "k": 0.75,
+   "lc_keep_right": 0.0,
+   "config_hash": "4e1222c35b47",
+   "population": "artifacts/idm_i24_capacity_amax_k0.75.json"
+  },
+  {
+   "name": "k0.75_kr0.1",
+   "k": 0.75,
+   "lc_keep_right": 0.1,
+   "config_hash": "912a57053bf1",
+   "population": "artifacts/idm_i24_capacity_amax_k0.75.json"
+  },
+  {
+   "name": "k0.75_kr0.25",
+   "k": 0.75,
+   "lc_keep_right": 0.25,
+   "config_hash": "f0daff8e0343",
+   "population": "artifacts/idm_i24_capacity_amax_k0.75.json"
+  },
+  {
+   "name": "k0.75_kr0.5",
+   "k": 0.75,
+   "lc_keep_right": 0.5,
+   "config_hash": "b805bef46bb3",
+   "population": "artifacts/idm_i24_capacity_amax_k0.75.json"
+  },
+  {
+   "name": "k0.75_kr1.0",
+   "k": 0.75,
+   "lc_keep_right": 1.0,
+   "config_hash": "c45d2ebb4b0f",
+   "population": "artifacts/idm_i24_capacity_amax_k0.75.json"
+  },
+  {
+   "name": "k1.0_kr0.0",
+   "k": 1.0,
+   "lc_keep_right": 0.0,
+   "config_hash": "d59d0c9514d9",
+   "population": "artifacts/idm_i24_capacity_amax_k1.0.json"
+  },
+  {
+   "name": "k1.0_kr0.1",
+   "k": 1.0,
+   "lc_keep_right": 0.1,
+   "config_hash": "faa4ab5b219c",
+   "population": "artifacts/idm_i24_capacity_amax_k1.0.json"
+  },
+  {
+   "name": "k1.0_kr0.25",
+   "k": 1.0,
+   "lc_keep_right": 0.25,
+   "config_hash": "204d98b560a9",
+   "population": "artifacts/idm_i24_capacity_amax_k1.0.json"
+  },
+  {
+   "name": "k1.0_kr0.5",
+   "k": 1.0,
+   "lc_keep_right": 0.5,
+   "config_hash": "f535b0010c40",
+   "population": "artifacts/idm_i24_capacity_amax_k1.0.json"
+  },
+  {
+   "name": "k1.0_kr1.0",
+   "k": 1.0,
+   "lc_keep_right": 1.0,
+   "config_hash": "dfbf074056de",
+   "population": "artifacts/idm_i24_capacity_amax_k1.0.json"
+  }
+ ],
+ "seeds": [
+  6914975401685141156,
+  134183728835869882
+ ],
+ "populations": {
+  "0.0": {
+   "k": 0.0,
+   "path": "artifacts/idm_i24_capacity.json",
+   "sha256": "80a7579b72510112e5131f73b02ce9afbb0df13eda3febf3cf8411dfb8296217",
+   "a_max_mean": 1.054909533427964
+  },
+  "0.25": {
+   "k": 0.25,
+   "path": "artifacts/idm_i24_capacity_amax_k0.25.json",
+   "sha256": "3baf93b63cce595a0e7a5420c2e1def10bda5c3a091d7c74d5540ddfaa8ffa2d",
+   "a_max_mean": 1.1620136795064078
+  },
+  "0.5": {
+   "k": 0.5,
+   "path": "artifacts/idm_i24_capacity_amax_k0.5.json",
+   "sha256": "d7530259e114be49b245cfe7df9beacdb451d0816a2b16b78ff6746165c8fe40",
+   "a_max_mean": 1.2691178255848516
+  },
+  "0.75": {
+   "k": 0.75,
+   "path": "artifacts/idm_i24_capacity_amax_k0.75.json",
+   "sha256": "27640a6c76116eb28e4b7867f65d430031cafc43b05221a8372962c02001496e",
+   "a_max_mean": 1.3762219716632957
+  },
+  "1.0": {
+   "k": 1.0,
+   "path": "artifacts/idm_i24_capacity_amax_k1.0.json",
+   "sha256": "c381e35787cedce6c2195684303e45002fae8a20726db88288a9715776a87218",
+   "a_max_mean": 1.4833261177417396
+  }
+ },
+ "measured_population": {
+  "path": "artifacts/idm_i24.json",
+  "sha256": "224a53dc670215da9025b50aa4b017e56429ea8f107d5d56ec35af7681f4d162",
+  "a_max_mean": 1.054909533427964,
+  "a_max_sd": 0.42841658431377566,
+  "formula": "mean a_max = measured mean + k x sqrt(cov[a_max, a_max]) of the measured population"
+ },
+ "created_at": "2026-10-07T05:09:24Z"
+}

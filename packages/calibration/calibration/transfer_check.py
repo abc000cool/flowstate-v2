@@ -2256,6 +2256,134 @@ def discover_sidecars(directory: str | Path | None = None) -> list[Path]:
     return sorted(base.glob("*.calibration.json")) if base.is_dir() else []
 
 
+# ---------------------------------------------------------------------------
+# The measured source of a derived population (the §7.2 measured range)
+# ---------------------------------------------------------------------------
+
+SIDECAR_SUFFIX: Final[str] = ".calibration.json"
+
+#: Means a sidecar-recorded derivation may scale (scripts/calibrate_capacity.py;
+#: validation.uncertainty.derived_population).
+SCALED_MEANS: Final[tuple[str, ...]] = ("T", "v0")
+
+
+def _differs_only_in_means(pop: IDMCalibration, src: IDMCalibration, keys: Sequence[str]) -> bool:
+    """``pop`` is ``src`` with only the means of ``keys`` changed."""
+    if tuple(pop.param_names) != tuple(src.param_names):
+        return False
+    if not np.allclose(np.asarray(pop.cov), np.asarray(src.cov), rtol=1e-9, atol=1e-12):
+        return False
+    return all(
+        math.isclose(pop.mean[k], src.mean[k], rel_tol=1e-9, abs_tol=1e-12)
+        for k in pop.param_names
+        if k not in keys
+    )
+
+
+def _shifted_mean(pop: IDMCalibration, base: IDMCalibration) -> str | None:
+    """The one mean ``pop`` moves from ``base`` (``scripts/derive_population.py``:
+    covariance, the other means, ``source`` and ``data_hash`` equal), else None."""
+    if (pop.source, pop.data_hash) != (base.source, base.data_hash):
+        return None
+    if tuple(pop.param_names) != tuple(base.param_names):
+        return None
+    moved = [
+        k
+        for k in pop.param_names
+        if not math.isclose(pop.mean[k], base.mean[k], rel_tol=1e-9, abs_tol=1e-12)
+    ]
+    if len(moved) != 1 or not _differs_only_in_means(pop, base, moved):
+        return None
+    return moved[0]
+
+
+def _sidecar_sources(
+    resolved: Path, paths: Sequence[Path]
+) -> list[tuple[Path, Path, IDMCalibration]]:
+    """``(sidecar, its source's path, the source)`` of each readable sidecar,
+    ``resolved``'s own (``<stem>.calibration.json`` beside it) first."""
+    own = (resolved.parent / f"{resolved.stem}{SIDECAR_SUFFIX}").resolve()
+    ordered = sorted(paths, key=lambda p: (Path(p).resolve() != own, str(p)))
+    found: list[tuple[Path, Path, IDMCalibration]] = []
+    for sidecar in ordered:
+        try:
+            raw = json.loads(Path(sidecar).read_text())
+            src_text = raw.get("source") if isinstance(raw, dict) else None
+            if not isinstance(src_text, str):
+                continue
+            src_path = resolve_repo_path(src_text)
+            found.append((Path(sidecar), src_path, IDMCalibration.load(src_path)))
+        except (OSError, ValueError):
+            continue
+    return found
+
+
+def _lineage(
+    resolved: Path, pop: IDMCalibration, paths: Sequence[Path], seen: frozenset[Path]
+) -> tuple[Path, str] | None:
+    me = resolved.resolve()
+    sources = _sidecar_sources(resolved, paths)
+    for sidecar, src_path, src in sources:
+        if src_path.resolve() != me and _differs_only_in_means(pop, src, SCALED_MEANS):
+            return src_path, f"mean T / v0 scaled from the source (sidecar {_rel(sidecar)})"
+    if (resolved.parent / f"{resolved.stem}{SIDECAR_SUFFIX}").is_file():
+        return None  # a calibrate_capacity population whose sidecar does not verify
+    if any(src_path.resolve() == me for _, src_path, _ in sources):
+        return None  # a sidecar names this population as a source: it is measured
+    for sidecar, src_path, src in sources:
+        derived = sidecar.with_name(sidecar.name[: -len(SIDECAR_SUFFIX)] + ".json")
+        for base_path, is_source in ((derived, False), (src_path, True)):
+            b = base_path.resolve()
+            if b == me or b in seen or not base_path.is_file():
+                continue
+            try:
+                base = src if is_source else IDMCalibration.load(base_path)
+            except (OSError, ValueError):
+                continue
+            key = _shifted_mean(pop, base)
+            if key is None:
+                continue
+            step = (
+                f"mean {key} shifted from {_rel(base_path)} (sha256 {_sha256(base_path)[:12]}; "
+                "scripts/derive_population.py, no sidecar)"
+            )
+            if is_source:
+                return src_path, f"{step}, the source itself (named by sidecar {_rel(sidecar)})"
+            inner = _lineage(base_path, base, paths, seen | {me})
+            if inner is not None:
+                return inner[0], f"{step}; that base: {inner[1]}"
+    return None
+
+
+def measured_source(
+    population: Population, sidecars: Sequence[str | Path] | None = None
+) -> Population | None:
+    """The measured population ``population`` derives from, for its §7.2 range.
+
+    The rules of ``validation.uncertainty.population_lineage``, over
+    ``sidecars`` (default: discovered in ``artifacts/``): the source a sidecar
+    names when the population is it with only mean T / v0 scaled; else, for a
+    population with no sidecar of its own (``<stem>.calibration.json`` beside
+    it) that no sidecar names as a source, a copy of a base with one mean
+    shifted (``scripts/derive_population.py``, which writes no sidecar) — the
+    base one of the sidecars' populations or sources, resolved in turn. Used
+    when no capacity sidecar is accepted (an accepted one names the source).
+
+    Returns:
+        The source (labelled with the derivation), or None when the population
+        is not an artifact or no sidecar records a verified source.
+    """
+    if population.calibration is None or not population.sources.get("idm_calibration"):
+        return None
+    paths = [Path(p) for p in (sidecars if sidecars is not None else discover_sidecars())]
+    resolved = resolve_repo_path(population.sources["idm_calibration"])
+    found = _lineage(resolved, population.calibration, paths, frozenset())
+    if found is None:
+        return None
+    src = population_from_artifact(found[0])
+    return replace(src, label=f"{src.label} (source of {_rel(resolved)}: {found[1]})")
+
+
 def _interp(x: float, xs: np.ndarray, ys: np.ndarray) -> float:
     ok = np.isfinite(ys)
     if not ok.any():
@@ -2962,7 +3090,9 @@ def measured_range(
     """``mean ± sigmas·sd`` of the measured reference ∩ CLAUDE.md §3.1 range.
 
     The reference is the measured population this one derives from (a
-    T-scaled capacity population's source) when known, else itself.
+    T-scaled capacity population's source, also through a single-mean shift
+    of ``scripts/derive_population.py``: :func:`measured_source`) when known,
+    else itself.
     """
     ref = reference or population
     mean = ref.passenger_means()[parameter]
@@ -3477,7 +3607,7 @@ def check_transfer(
     recs: list[Recommendation] = []
     state = Adjustments()
     sigmas = th.measured_range_sigmas
-    reference = sidecar.source if sidecar is not None else None
+    reference = sidecar.source if sidecar is not None else measured_source(population, sidecars)
     by_q = {c.quantity: c for c in comparisons}
 
     # truck share

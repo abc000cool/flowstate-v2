@@ -71,8 +71,10 @@ each changes in a :class:`~flowstate_core.config.ScenarioConfig`
     and it makes nearly every result uncertain for reasons unrelated to what
     is not known. The source of a derived population (a capacity-calibrated
     T scaling) is the one its ``*.calibration.json`` sidecar names, used
-    only when the two differ in nothing but mean T / v0
-    (:func:`source_population`); otherwise the configured artifact is its own
+    only when the two differ in nothing but mean T / v0; a population with
+    one more mean shifted from such a base (``scripts/derive_population.py``,
+    Amendment 1's mean ``a_max``, no sidecar) has the base's source
+    (:func:`population_lineage`); otherwise the configured artifact is its own
     source, and the configured mean need not sit in the middle (I-24's
     capacity population has mean T 1.32 s in a measured range of
     0.99–2.03 s). ``centre="configured"`` narrows the measured range to the
@@ -601,27 +603,83 @@ def _differs_only_in_means(pop: IDMCalibration, src: IDMCalibration, keys: Seque
     )
 
 
-def source_population(path_text: str) -> tuple[PopulationStats, str] | None:
-    """The measured population a configured artifact was derived from.
+SCALED_MEANS: Final[tuple[str, ...]] = ("T", "v0")
+"""Means a sidecar-recorded derivation may scale (``scripts/calibrate_capacity.py``,
+:func:`derived_population`)."""
 
-    The ``source`` named by a capacity-calibration sidecar: first
-    ``<stem>.calibration.json`` beside the artifact, else any
-    ``*.calibration.json`` in its directory whose source this artifact equals
-    with only mean T and/or v0 scaled (:func:`_differs_only_in_means`). A
-    sidecar whose source differs in anything else is not used.
 
-    Args:
-        path_text: ``fleet.idm_calibration`` as the scenario gives it.
+def _shifted_mean(pop: IDMCalibration, base: IDMCalibration) -> str | None:
+    """The one mean ``pop`` moves from ``base``, under the convention of
+    ``scripts/derive_population.py`` (Amendment 1): a copy of the base with a
+    single mean changed — covariance, every other mean, ``source`` and
+    ``data_hash`` equal. None for anything else (no mean moved, two or more
+    moved, or another covariance or data source)."""
+    if (pop.source, pop.data_hash) != (base.source, base.data_hash):
+        return None
+    if tuple(pop.param_names) != tuple(base.param_names):
+        return None
+    moved = [
+        k
+        for k in pop.param_names
+        if not math.isclose(pop.mean[k], base.mean[k], rel_tol=1e-9, abs_tol=1e-12)
+    ]
+    if len(moved) != 1 or not _differs_only_in_means(pop, base, moved):
+        return None
+    return moved[0]
 
-    Returns:
-        ``(stats of the source, the sidecar's path)``, or None when no sidecar
-        names a verified source (the artifact is then its own measured
-        population).
+
+@dataclass(frozen=True)
+class PopulationLineage:
+    """How a configured population derives from its measured source.
+
+    Attributes:
+        source: The measured source population.
+        sidecar: The capacity-calibration sidecar that names the source.
+        shifts: ``(mean, base)`` for each single-mean shift on the way, from
+            the configured population inwards (``scripts/derive_population.py``,
+            which writes no sidecar); ``base`` is the shifted-from artifact's
+            path and sha256. Empty for a population the sidecar's derivation
+            produced directly.
+        scaled: The innermost step is the sidecar's derivation (mean T / v0
+            scaled from the source); False when the innermost shift was taken
+            from the source itself.
     """
-    resolved = resolve_repo_path(path_text)
-    pop = IDMCalibration.load(resolved)
+
+    source: PopulationStats
+    sidecar: str
+    shifts: tuple[tuple[str, str], ...] = ()
+    scaled: bool = True
+
+    def words(self) -> str:
+        """The derivation in words, from the configured population to the source."""
+        if not self.shifts:
+            return f"sidecar {self.sidecar}; covariance shared, mean T / v0 scaled"
+        steps = [
+            f"mean {key} shifted from {base} (scripts/derive_population.py, no sidecar)"
+            for key, base in self.shifts
+        ]
+        steps.append(
+            f"that base is the source with mean T / v0 scaled (sidecar {self.sidecar})"
+            if self.scaled
+            else f"that base is the source itself, named by sidecar {self.sidecar}"
+        )
+        return "; ".join(steps) + "; covariance shared"
+
+
+@dataclass(frozen=True)
+class _SidecarSource:
+    sidecar: Path
+    text: str
+    path: Path
+    cal: IDMCalibration
+
+
+def _sidecar_sources(resolved: Path) -> list[_SidecarSource]:
+    """The readable sidecars beside ``resolved`` (its own first, then the
+    rest by name) with their loaded ``source`` populations."""
     own = resolved.parent / f"{resolved.stem}{SIDECAR_SUFFIX}"
     others = sorted(p for p in resolved.parent.glob(f"*{SIDECAR_SUFFIX}") if p != own)
+    found: list[_SidecarSource] = []
     for sidecar in ([own] if own.is_file() else []) + others:
         try:
             raw = json.loads(sidecar.read_text())
@@ -635,11 +693,101 @@ def source_population(path_text: str) -> tuple[PopulationStats, str] | None:
             src = IDMCalibration.load(src_path)
         except (FileNotFoundError, ValueError):
             continue
-        if src_path.resolve() == resolved.resolve():
-            continue
-        if _differs_only_in_means(pop, src, ("T", "v0")):
-            return _artifact_stats(src_text, src_path, src), str(sidecar)
+        found.append(_SidecarSource(sidecar, src_text, src_path, src))
+    return found
+
+
+def _path_text(path: Path) -> str:
+    """Repo-relative text when inside the repository, else as given."""
+    try:
+        return str(path.resolve().relative_to(REPO_ROOT))
+    except ValueError:
+        return str(path)
+
+
+def _lineage(
+    resolved: Path, pop: IDMCalibration, seen: frozenset[Path]
+) -> PopulationLineage | None:
+    me = resolved.resolve()
+    sources = _sidecar_sources(resolved)
+    for s in sources:
+        if s.path.resolve() != me and _differs_only_in_means(pop, s.cal, SCALED_MEANS):
+            return PopulationLineage(_artifact_stats(s.text, s.path, s.cal), str(s.sidecar))
+    if (resolved.parent / f"{resolved.stem}{SIDECAR_SUFFIX}").is_file():
+        return None  # a calibrate_capacity population whose sidecar does not verify
+    if any(s.path.resolve() == me for s in sources):
+        return None  # a sidecar names this population as a source: it is measured
+    for s in sources:
+        derived = s.sidecar.with_name(s.sidecar.name[: -len(SIDECAR_SUFFIX)] + ".json")
+        for base_path, is_source in ((derived, False), (s.path, True)):
+            b = base_path.resolve()
+            if b == me or b in seen or not base_path.is_file():
+                continue
+            try:
+                base = s.cal if is_source else IDMCalibration.load(base_path)
+            except (OSError, ValueError):
+                continue
+            key = _shifted_mean(pop, base)
+            if key is None:
+                continue
+            if is_source:
+                stats = _artifact_stats(s.text, s.path, s.cal)
+                return PopulationLineage(stats, str(s.sidecar), ((key, stats.label),), False)
+            inner = _lineage(base_path, base, seen | {me})
+            if inner is not None:
+                label = f"{_path_text(base_path)} (sha256 {file_sha256(base_path)[:12]})"
+                return PopulationLineage(
+                    inner.source, inner.sidecar, ((key, label), *inner.shifts), inner.scaled
+                )
     return None
+
+
+def population_lineage(path_text: str) -> PopulationLineage | None:
+    """The measured population a configured artifact was derived from, and how.
+
+    1. The ``source`` named by a capacity-calibration sidecar: first
+       ``<stem>.calibration.json`` beside the artifact, else any
+       ``*.calibration.json`` in its directory whose source this artifact
+       equals with only mean T and/or v0 scaled (:func:`_differs_only_in_means`).
+       A sidecar whose source differs in anything else is not used.
+    2. Else, for an artifact with no sidecar of its own that no sidecar names
+       as a source (it is then measured), a population derived by
+       ``scripts/derive_population.py`` (docs/FRISCO_PROTOCOL.md Amendment 1),
+       which records its provenance only in ``notes`` and writes no sidecar:
+       a copy of a *base* with one mean shifted (:func:`_shifted_mean`:
+       covariance, the other means, ``source`` and ``data_hash`` equal). The
+       base is looked for among the populations whose lineage the sidecars
+       record — each sidecar's own population (``<stem>.json``) and its
+       source — and resolved in turn by these rules; the measured source is
+       the base's. Mirrored by ``calibration.transfer_check.measured_source``.
+
+    Args:
+        path_text: ``fleet.idm_calibration`` as the scenario gives it.
+
+    Returns:
+        The lineage, or None when no sidecar records a verified one (the
+        artifact is then its own measured population).
+    """
+    resolved = resolve_repo_path(path_text)
+    return _lineage(resolved, IDMCalibration.load(resolved), frozenset())
+
+
+def source_population(path_text: str) -> tuple[PopulationStats, str] | None:
+    """The measured population a configured artifact was derived from.
+
+    :func:`population_lineage`'s source, through a single sidecar derivation
+    (mean T / v0 scaled) or a chain of single-mean shifts down to one.
+
+    Args:
+        path_text: ``fleet.idm_calibration`` as the scenario gives it.
+
+    Returns:
+        ``(stats of the source, the path of the sidecar that names it)``, or
+        None when no sidecar records a verified source (the artifact is then
+        its own measured population).
+    """
+    found = population_lineage(path_text)
+    return None if found is None else (found.source, found.sidecar)
 
 
 @dataclass(frozen=True)
@@ -673,15 +821,15 @@ def _measured_range(
         return _MeasuredRange(lo, hi, mean, text, scalar=True)
     resolved = resolve_repo_path(fleet.idm_calibration)
     configured = _artifact_stats(fleet.idm_calibration, resolved, IDMCalibration.load(resolved))
-    found = source_population(fleet.idm_calibration)
-    ref, via = found if found is not None else (configured, None)
+    found = population_lineage(fleet.idm_calibration)
+    ref = found.source if found is not None else configured
     mean = configured.means[idm_key]
     r_mean, r_sd = ref.means[idm_key], ref.sds[idm_key]
     lo, hi = max(r_mean - sigmas * r_sd, cal_lo), min(r_mean + sigmas * r_sd, cal_hi)
     lineage = (
         f"the measured population {ref.label}, source of the configured "
-        f"{configured.label} (sidecar {via}; covariance shared, mean T / v0 scaled)"
-        if via is not None
+        f"{configured.label} ({found.words()})"
+        if found is not None
         else f"the measured population {configured.label} (no sidecar names another source)"
     )
     text = (
@@ -2136,12 +2284,14 @@ __all__ = [
     "PROTOCOL_MIN_SEEDS",
     "RANGE_BASES",
     "ROBUST_SIGN_SHARE",
+    "SCALED_MEANS",
     "SCHEMA",
     "TRANSFER_QUANTITY",
     "TRANSFER_SCHEMA",
     "EffectSummary",
     "NestedSummary",
     "ParameterSpace",
+    "PopulationLineage",
     "RunRecord",
     "Sample",
     "SampleValue",
@@ -2154,6 +2304,7 @@ __all__ = [
     "derived_population",
     "latin_hypercube",
     "nested_summary",
+    "population_lineage",
     "robustness",
     "run_seeds",
     "sample_hashes",
