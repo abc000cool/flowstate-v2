@@ -1,20 +1,99 @@
 # Emergent stop-and-go waves and sparse-vehicle smoothing on a calibrated I-24 replica: what a trajectory instrument can and cannot validate
 
-> **Unsubmitted first draft, 2026-09-25 (roadmap item B1).** This draft has
-> not been submitted or circulated. Whether and when it goes to arXiv
-> (roadmap item B2) is the owner's decision. It follows
+> **Unsubmitted first draft, 2026-09-25 (roadmap item B1); revised
+> 2026-10-07.** This draft has not been submitted or circulated. Whether and
+> when it goes to arXiv (roadmap item B2) is the owner's decision. It follows
 > [PAPER_OUTLINE.md](PAPER_OUTLINE.md), updated with the record since
 > 2026-09-03. It adds no new claims and no simulation was run for it: every
 > number carries a bracketed pointer to the committed document section or
 > artifact it comes from, and Appendix A lists the headline numbers with
 > their seeds and sources. Appendix C lists places where the source
-> documents disagreed and how each was settled on 2026-09-25 against the
-> artifacts; none remains open.
+> documents disagreed; items 1–18 were settled on 2026-09-25 against the
+> artifacts, and items 19–22, found during the 2026-10-07 revision, are
+> recorded and left open. The 2026-10-07 revision is listed in the
+> Revision notes below; it ran no simulation either.
 
 **Authors:** Ansh Pathak, Sujan Sannidhi, Venkata Shashish Vasireddi
 **Affiliation:** FlowState
 **Contact:** [to be completed by the owner]
 **Target:** arXiv, eess.SY with a cs.MA cross-list [PAPER_OUTLINE.md]
+
+## Revision notes (2026-10-07)
+
+What changed in this draft on 2026-10-07, and why, for the authors' review of
+the diff. The new material comes from documents and artifacts committed on
+2026-10-06 and 2026-10-07, through commit `9bf6cc6` (which landed during the
+revision and adds the insertion re-analysis quoted in §4.2 and §5.7).
+Uncommitted work in the tree that day (docs/I24_DISCHARGE_DIAGNOSIS.md and
+its artifacts) is not used. **None of the new results is a passing
+validation.** Each is labelled where it appears as a *calibration* (fitted
+and scored on the same data), a *rehearsal* (the corridor-study protocol's
+gate run on I-94, which fails) or a *diagnostic* (fixtures, probes and
+re-readings of committed runs).
+
+1. **Abstract, §1.4, §1.5.** Sentences added for the driver calibration, the
+   I-94 protocol rehearsal and the weave's unmeasured input. §1.5 states that
+   nothing added on 2026-10-07 is validation.
+2. **§2.2.** The string-stability criterion applied to the calibrated
+   populations: the mean driver is unstable from 28.2 veh/km at the measured
+   mean acceleration (capacity density 29.2) and only from 39.8 veh/km at
+   +1 sd. Why: CLAUDE.md §3.1 requires instability near capacity, and the
+   calibrated drivers weaken it.
+3. **§2.4, §2.5, §4.2.** New paragraphs on the corridor-study protocol (day
+   split, checks C1–C6, baseline gate, change control) and its Amendments
+   1–2. A note in §4.2 that the speed-only demand objective does not see
+   insertion.
+4. **§2.7 (new).** The merge and weave models, the three opt-in weave keys of
+   2026-10-07 and lock detection. Why: results now depend on which model and
+   which keys ran.
+5. **§4.4, §4.6 (new).** The Amendment-1 grid: mean `a_max` + 1 sd chosen on
+   both corridors, keep-right 0 kept on I-24 and 0.1 chosen on I-94; lane use
+   barely responds. §4.6 also gives the fixture diagnosis that motivated it.
+6. **§5.5 corrected; §5.7 (new).** §5.5 said no further car-following
+   calibration would move the failing rows. The mean maximum acceleration,
+   never calibrated, moves the merge discharge about a quarter of the way
+   (5,850 → 6,031 veh/h over 20 seeds, against 6,630 recorded) and the GEH
+   row from 21.5% to 25.0%, and loses the wave criterion; Amendment 2's
+   smaller shifts keep the waves but hold 7–8% of the demand off the network.
+   Not adopted on I-24. §5.7 records that the shortfall is a merge/discharge
+   shortfall, not a demand limit; the source first read it as demand-limited
+   and corrected itself the same day. No earlier sentence of this draft had
+   called it demand-limited. §5's closing sentence no longer blames the
+   lane-change model alone.
+7. **§7.3 amended; §7.4–7.7 (new).** The protocol's baseline gate with the
+   calibrated I-94 drivers (rehearsal: GEH < 5 on 61.8% / 60.0% of
+   station-hours, 15-min RMSPE 33.9% / 38.8%; the gate fails); the
+   validation-day leak and the rebuilt calibration-day inputs (not yet run);
+   the lane-share measurement and map defects, with the netfix probe's
+   discharge gain withdrawn (it came from one collapsed run); the residual
+   decomposition; the T.H.52 weave's 465 veh/h fixture loss, its anticipation
+   reach measured on I-24 (125 m, the model's 120 m) and its unmeasured
+   ramp-to-ramp share, on which the flow verdict flips; W1 and W1b; locks in
+   3 of 20 calibrated four-hour replicates.
+8. **§7 closing sentence corrected.** It said no controller or strategy sweep
+   was run on I-94. Strategy rehearsals were run on 2026-10-04; they state no
+   verdict, and the gate a strategy result needs fails.
+9. **§8.2 corrected.** It placed the I-24 shortfall in the merging process
+   rather than car following, placed the I-94 loss in SUMO's lane-change
+   model and our weave rules, and named a merge model built on the measured
+   gaps as the next step. That model was built and its pre-registered
+   go/no-go criteria read NO-GO (no capacity gain wherever measured; −52
+   veh/h [−96, −9] on the T.H.52 section); part of the I-24 shortfall is in
+   the drivers' acceleration; and the I-94 fixture loss is in no single rule
+   and turns on an unmeasured crossing share. §8.1 and §8.3 updated; §8.7
+   (new) on locks.
+10. **§8.6 corrected.** It repeated the false premise that US freeways have no
+    keep-right rule; Tennessee, Minnesota and Texas require slower traffic to
+    keep right. §4.4 had been corrected on 2026-10-06; §8.6 had not. §8.6
+    also lists the three corrections of 2026-10-07.
+11. **§9.** Item 3 now says every I-24 calibration uses the one recorded
+    morning with no holdout. Items 1 and 9 extended. New items 15–20: the
+    I-94 validation-day leak, unmeasured ramp-to-ramp shares, string
+    stability under the calibrated drivers, locks, the unmeasured episode-fit
+    cost of the shifted acceleration, and fixture platform limits.
+12. **§10, References, Appendices A and C.** Code commits and scripts for the
+    new results; seven new reference entries and the HCM entry extended;
+    claims-ledger rows 53–70; Appendix C items 19–22.
 
 ---
 
@@ -49,7 +128,9 @@ slant-stack estimator (15.7–15.9 km/h simulated, 19.9 km/h observed) and
 would fail with a standard 40 km/h threshold detector (8–10 km/h). The two
 failing rows trace to one on-ramp merge, which the simulator discharges at
 about 5,880 veh/h where the recording sustains 6,630. The corridor is not
-validated.
+validated. Calibrating the drivers' mean maximum acceleration, by a rule fixed
+before any run, raises that discharge to about 6,030 veh/h and no further, and
+costs the emergent-wave criterion; it is not adopted.
 
 On this unvalidated replica, FollowerStopper at its literature constants
 smooths traffic and costs capacity at every penetration and compliance level
@@ -64,7 +145,14 @@ link from those changes to the fuel is only an association; and that the
 discrete Delle Monache–Goatin flux cap tracks microscopic
 ground truth better than a reduced-capacity variant. A second corridor, I-94
 westbound in St. Paul built from public loop-detector data, was not
-reproduced.
+reproduced. In a rehearsal of a pre-registered corridor-study protocol on it,
+the calibrated drivers raise the share of station-hours within GEH 5 from
+15.5% to 61.8% on the calibration days, and the protocol's gate still fails.
+Its weaving section's
+capacity loss on a test fixture turns on an unmeasured input, the share of
+entering vehicles bound for the next exit; the other candidate, how far ahead
+entrants line up their merge, was measured on I-24 (125 m) and rounds to the
+model's constant (120 m).
 
 ---
 
@@ -123,14 +211,19 @@ publish with the code [LESSONS.md].
 4. **A full criteria battery on the I-24 replica.** Five of seven rows pass
    on each congested arm; both rows that compare flows and speeds with the
    recording fail. The residual is located at one merge, and six rounds of
-   candidate causes are excluded with an artifact each (§5).
+   candidate causes are excluded with an artifact each (§5). A later
+   calibration of the drivers' acceleration closes about a quarter of it and
+   costs the wave row (§5.7).
 5. **Controller results with 95% confidence intervals**: the capacity cost of
    gap-keeping smoothing on a corridor near capacity; detection latency and
    deferred commitment in Jam-Absorption Driving; the lane-change mechanism
    behind a fuel penalty on a multi-lane site; and a comparison of two
    moving-bottleneck constraints in the macroscopic tier (§6).
 6. **A second corridor that was not reproduced**, from public loop data, and
-   what its weaving sections say about merge modelling in the simulator (§7).
+   what its weaving sections say about merge modelling in the simulator (§7):
+   a rehearsal of a pre-registered study protocol on it, a decomposition of
+   its residuals, the dependence of its weave on an unmeasured input, and a
+   permanent-lock failure mode that a battery's means hide (§7.4–7.7).
 
 ### 1.5 What this paper does not claim
 
@@ -144,6 +237,15 @@ run is `seeded=False`, and measured boundary conditions and ramp demands are
 calibration inputs, not shocks [M3_RESULTS.md §1; M3_US101_VALIDATION.md
 header; I24_VALIDATION.md header]. Single-seed probes are reported as such
 and never as results.
+
+Nothing added on 2026-10-07 is validation either. The I-24 driver
+calibration (§4.6, §5.7) is fitted and scored on the one recorded morning,
+with no holdout [FRISCO_PROTOCOL.md, Amendment 1]. The I-94 gate results
+(§7.4) are a rehearsal of the corridor-study protocol and fail it, and their
+validation days are not a clean holdout (§7.5). The weave, anticipation and
+lock results (§7.6–7.7) are diagnostics on fixtures, probes and re-read
+replicates. Fixture results are macOS records; the corridor runs on Linux
+decide [WEAVE_LOSS_DIAGNOSIS.md §1].
 
 ---
 
@@ -177,6 +279,19 @@ For a car-following law `a = f(s, v, Δv)` the platoon is string-stable when
 `f_v²/2 − f_v·f_Δv − f_s ≥ 0` at equilibrium [CLAUDE.md §3.1]. The criterion
 is implemented in closed form for IDM. For the IDM population fitted to NGSIM
 US-101 it marks 31.8–141.5 veh/km as unstable [WAVE_SPEED_DIAGNOSIS.md].
+
+CLAUDE.md §3.1 makes instability near capacity a requirement of a calibrated
+fleet, not a defect. For the capacity-scaled I-24 population (§4.1), which
+both the I-24 and the I-94 fleets run, the mean driver is unstable from
+28.2 veh/km, just below its capacity density of 29.2 veh/km, as required.
+Raising the population's mean maximum acceleration by half and by one
+standard deviation (§4.6) moves that onset to 32.5 and 39.8 veh/km: at +1 sd
+the mean driver is stable at capacity density, and the share of unstable
+drivers at 30 veh/km falls from 0.43 to 0.22 [DISCHARGE_CALIBRATION.md §1,
+§4; population mean drivers, 5 m vehicles, `validation.string_stability`].
+The heterogeneous fleet still forms waves, but the instability near capacity
+is weaker, and on I-24 the wave criterion is lost (§5.7). No artifact holds
+these onsets; they are recorded in the source document only.
 
 The ring benchmark is a permanent CI test. It runs 22 vehicles on a 230 m
 ring for 600 simulated seconds. Emergence requires the across-vehicle speed
@@ -259,6 +374,25 @@ outside the measured span [M3_US101_VALIDATION.md §2]. Two SUMO lane-change
 parameters on I-24 were set from independent observables before any
 criterion was evaluated (§4.4).
 
+**Driver acceleration and keep-right (added 2026-10-06).** No step above
+calibrates the population's mean maximum acceleration `a_max`. A fixture
+diagnosis found that it, rather than the size of the capacity drop, sets the
+level at which a merge discharges (§4.6). Amendment 1 of the corridor-study
+protocol (§2.5), written before any run that uses it, lets calibration shift
+the mean `a_max` inside the measured mean ± 1 sd (1.055 ± 0.43 m/s²,
+`artifacts/idm_i24.json`) on the grid mean + k·sd, k ∈ {0, 0.25, 0.5, 0.75,
+1}, with the covariance and the other means unchanged, and set SUMO's
+`lc_keep_right` on {0, 0.1, 0.25, 0.5, 1}. The rule: among the pairs whose
+lane-share RMSE is within 1 point of the grid's minimum, take the one with
+the smallest discharge error; ties go to the smaller change
+[FRISCO_PROTOCOL.md, Amendment 1 and its clarifications]. Amendment 2,
+proposed and not adopted, constrains the shift on I-24 only: an arm qualifies
+only if its 20-seed battery keeps the wave criterion and does no worse on GEH
+and RMSPE than the reference arm. A clarification written before its results
+adds that the arm must realise at least 0.977 of its planned demand, so that
+no arm can win by holding vehicles off the network [FRISCO_PROTOCOL.md,
+Amendment 2 and its clarification].
+
 ### 2.5 Validation criteria and statistics
 
 The criteria are data, not prose, and each profile carries its source
@@ -300,6 +434,32 @@ intervals. An effect is "resolved" when its paired interval excludes zero
 expected to resolve by chance; we say so where it matters [M3_RESULTS.md
 §4.4].
 
+**The corridor-study protocol (2026-10-04).** Later corridor work runs under
+a protocol committed before any client data. It fixes the detectors, a
+seeded, volume-stratified split of the candidate days into calibration and
+validation days, the checks, and what calibration may change
+[FRISCO_PROTOCOL.md, header, §3, §7]. The checks are:
+
+- C1, GEH < 5 on at least 85% of station-hours;
+- C2, the Texas rule of GEH < 3 on every station-hour, reported only;
+- C3, station-speed RMSPE ≤ 15% at 15-minute aggregation, fixed in advance
+  because 5-minute speeds carry their own noise floor (§5.5);
+- C4, the `stack` detector's backward wave speed in 14–22 km/h, with a front
+  in at least 80% of replicates;
+- C5, zero collisions;
+- C6, every observed active bottleneck reproduced in location, timing and
+  queue reach, with no phantom bottleneck in more than half of the
+  replicates (after Chen, Skabardonis & Varaiya 2004)
+  [FRISCO_PROTOCOL.md §4–5].
+
+The baseline gate passes only if C1, C3, C5 and C6 pass on the calibration
+days and C1, C3 and C6 on the validation days, with C4 passing or not
+applicable. A model that fails it may not be used for strategy
+recommendations [FRISCO_PROTOCOL.md §6]. A change made after data arrive is
+a dated amendment, and results are then reported under both rules
+[FRISCO_PROTOCOL.md, change control]. The I-94 runs of §7.4 are a rehearsal
+of this protocol on public data, not a client study.
+
 ### 2.6 Reproducibility as method
 
 Every run writes a `meta.json` with its seed, package versions, calibration
@@ -325,6 +485,56 @@ experiments (§6.1–6.4) predate the fix. Their metrics include a 120 s
 warm-up that is identical across cells under common random numbers, so
 paired contrasts are unaffected and absolute levels include the transient
 [M3_RESULTS.md §5 item 5].
+
+### 2.7 Merge and weave models, and lock detection
+
+Where traffic joins or crosses, four models are in use, and every result
+names the one that ran.
+
+| Model | What it does | Where it runs | Source |
+|---|---|---|---|
+| `lane_change` | SUMO's own lane-change model at an acceleration lane | the I-24 arms | [I24_VALIDATION.md §1] |
+| Scripted merge | a runner-driven late merge for ramp vehicles; its forced change is allowed only when the gap exceeds the follower's braking distance (§7.2) | two I-94 on-ramps | [ONBOARDING_MNDOT.md §11, VM AG] |
+| `weave` | our rules for a weaving section (below) | the I-94 T.H.52 and Ruth St weaves | [MERGE_ANTICIPATION.md §1; WEAVE_LOSS_DIAGNOSIS.md §3.11] |
+| `measured` | built on 2026-10-05 from three measured principles together: gap acceptance from the I-24 critical gaps, a speed ceiling toward the target lane's speed, and a temporary headway after the crossing; opt-in and not adopted (§8.2) | fixtures and gates only | [MERGE_MODEL.md §1; MERGE_MODEL_READINESS.md §2–3] |
+
+In the weave, an entrant starts choosing a gap in the target lane
+`lookahead_m` (120 m, an engineering constant) before the section; the chosen
+gap's follower is slowed to open it, and the entrant eases toward the gap's
+leader [MERGE_ANTICIPATION.md §1]. An exiter halted within 5 m of the exit
+gore gives up its exit [I94_COLLAPSE_DIAGNOSIS.md §0]. Who crosses is set by
+drawing every vehicle's exit with the same probability, whether it came from
+the mainline or the ramp: the Highway Capacity Manual's proportional split,
+an assumption where no origin–destination count exists
+[WEAVE_LOSS_DIAGNOSIS.md §3.11; TH52_CROSSING_SHARE.md §0].
+
+Three opt-in weave settings were added on 2026-10-07. Each is off by default,
+and with it off 37 fixture and golden runs are byte-identical to the code
+before it; no committed scenario sets any of them.
+
+- `entrant_giveup_m` (amendment W1): an entrant halted at the end of the
+  auxiliary lane, still owing its change and with no change to request,
+  takes the paired exit [WEAVE_LOSS_DIAGNOSIS.md §6.2, §8.1–8.2].
+- `entrant_giveup_dwell_s` (amendment W1b): the same, but only after an
+  unbroken stand of that length, registered at 60 s
+  [WEAVE_LOSS_DIAGNOSIS.md §10.2–10.3, §10.8].
+- `WeaveSpec.ramp_to_ramp_share`: the share of a weave's entrants that take the paired
+  exit, set by swapping destinations within each 300-s window, so that every
+  leg's and every exit's volume is unchanged [TH52_CROSSING_SHARE.md
+  §10.1–10.2].
+
+**Lock detection (2026-10-07).** A run locks when vehicles stand with zero
+discharge past a point for at least 10 minutes while a queue builds
+upstream. Two readers find it in files every replicate already writes. A
+space-time reader takes the 15 s × 100 m Edie bins: a cell stands at
+≥ 20 veh/km and ≤ 18 veh/h, and ten minutes standing is a lock. A run-end
+reader takes each vehicle's last position: a front vehicle with an empty road
+ahead and a queue behind. Each lock records its onset, duration, head
+position and the weave, merge or diverge it stands at, and every run set now
+carries a `no_locks` criteria row (PASS / FAIL / NOT RECORDED)
+[I94_COLLAPSE_DIAGNOSIS.md §10; CHANGELOG, 2026-10-07]. The detector only
+reports: no runner, configuration hash or golden changed. Run sets scored
+before it carry no lock record (§7.7, §9 item 18).
 
 ---
 
@@ -773,6 +983,19 @@ the fit; this is the `speedcal` arm. A single level on the tracked profile
 is worse on both hours, the signature of a coverage that varies in time
 [I24_CAPACITY.md §5].
 
+*Note 2026-10-07.* The fitter's objective is segment speed, and it does not
+see insertion. Re-run under stronger drivers, it chose levels whose 20-seed
+batteries realised only 0.918–0.930 of the planned demand (§5.7)
+[DISCHARGE_CALIBRATION.md §4; FRISCO_PROTOCOL.md, Result of Amendment 2]. At
+the published level 0.85 the
+single-seed fit above inserts 0.945 of the demand, and the fitted arm's
+battery realises 95.5% (§5.3). Whether part of that arm's speed fit also
+comes from vehicles held off the network was not tested. The fitter now has
+an opt-in insertion constraint (`--min-inserted`), off by default and
+byte-identical when off; no published arm has been refitted with it
+[FRISCO_PROTOCOL.md, insertion re-analysis of the Amendment 2 refits;
+CHANGELOG, 2026-10-07].
+
 At `s` = 0.85 the replica is within 4% of the recording from 2.2 km on. The
 first kilometre, the Old Hickory merge, runs a third too slow and the
 kilometre after it a third too fast [I24_CAPACITY.md §5]. With the Old
@@ -819,6 +1042,13 @@ preferred high gap acceptance, which the speed-based joint fit had rejected;
 the two objectives disagree, so nothing from that grid was adopted
 [I24_CAPACITY.md §8].
 
+*Recalibrated 2026-10-07 under Amendment 1 (§2.4, §4.6).* On I-24 five grid
+pairs lie inside the rule's 1-point lane-share band, and the rule keeps
+`lc_keep_right` = 0; on I-94 it chooses 0.1. Lane use barely responds: every
+I-24 pair lies 1.4–4.5 points from the observed shares with no trend in
+keep-right (one seed per pair), and on I-94 raising keep-right makes the fit
+worse [DISCHARGE_CALIBRATION.md §3].
+
 ### 4.5 The same procedure on US-101, without retuning
 
 The same two steps were run on the US-101 replica through corridor-agnostic
@@ -844,6 +1074,68 @@ never carried: seven of nine flow bins fail, and the reversed speed gradient
 at the missing on-ramp merge remains [US101_CALIBRATED.md §4]. On both
 corridors the demand step converged on the missing bottleneck, a merge
 [US101_CALIBRATED.md §5]. A demand level cannot stand in for a merge.
+
+### 4.6 Driver acceleration and keep-right (Amendment 1, 2026-10-06 and 2026-10-07)
+
+**The diagnosis.** On bottleneck fixtures driven by each corridor's own fleet
+(20 seeds), the model's capacity drop is inside the observed and published
+range. After a lane drop it discharges 0.90 of the pre-breakdown flow with
+the I-24 fleet and 0.83 with the I-94 fleet, against up to about 10% below
+the pre-queue flow in Cassidy & Bertini (1999); on I-94's own detectors no
+drop is resolvable (discharge ÷ pre-breakdown flow 1.10 [0.98, 1.23], on 8
+of 9 days). What is low is the level. An on-ramp merge fixture with the I-24
+fleet discharges 1,460 ± 20 veh/h per lane; four lanes of that reproduce the
+replica's peak sections, against 1,657 per lane recorded (coverage-corrected,
+possibly high). The setting that moves it is the population's mean maximum
+acceleration, which no step had calibrated: +1 sd raises the fixture to
+1,632 per lane and leaves straight-road capacity and free-flow speed
+unchanged. Mean `T` cannot reach that level inside its range without
+inflating pre-breakdown capacity to 1,917–1,929 per lane, and `b`, `s0`,
+EIDM's extra parameters and the speed factor each move it by about 3% or
+less [DISCHARGE_CALIBRATION.md §1]. These are fixture readings recorded in
+the source document; no artifact holds them.
+
+**The grid.** The rule of §2.4 was applied on each corridor's calibration
+data. On I-24 that is its one recorded morning, with no holdout, one seed per
+pair, on the flow family's fitted arm (`i24_replica_flow_speedcal`;
+[I24_VALIDATION.md §0.10]). On I-94 it is the 35-minute slice, two seeds per
+pair, against per-lane detector shares and S97's discharge on the five
+calibration days. 75 runs, none failed, no collision [DISCHARGE_CALIBRATION.md
+§3].
+
+| Corridor | Pair (k, keep-right) | Lane-share RMSE [points] | Discharge [veh/h] | Target [veh/h] | Discharge error | Departed share |
+|---|---|---|---|---|---|---|
+| I-24 | current (0, 0) | 2.31 | 5,837 / 5,810 | 6,626 / 6,639 | 12.2% | 0.984 |
+| I-24 | (0.5, 0) | 2.80 | 6,027 / 5,984 | | 9.5% | 0.996 |
+| I-24 | chosen (1.0, 0) | 2.33 | 6,021 / 5,995 | | 9.4% | 0.995 |
+| I-94 | current (0, 0) | 8.24 | 3,321 (S97) | 4,490.5 | 26.0% | 0.971 |
+| I-94 | (1.0, 0) | 7.64 | 3,680 | | 18.0% | 0.977 |
+| I-94 | chosen (1.0, 0.1) | 8.40 | 3,764 | | 16.2% | 0.977 |
+
+*Source: [DISCHARGE_CALIBRATION.md §3, results; artifacts/driver_calibration_i24.json;
+artifacts/driver_calibration_i94.json; per-run readings in
+artifacts/p3_driver_grid_2026-10-07/]. I-24 discharge at data x = 2,200 /
+3,200 m. A calibration grid: one seed per pair on I-24, two on I-94.* The
+rule chose k = 1 on both corridors, a mean `a_max` of 1.4833 m/s², the top of
+the measured range.
+
+- On I-24 the discharge error falls by about a quarter and then plateaus:
+  5,955–6,037 veh/h across the pairs from k = 0.5 to 1. The fixture's
+  projection of 6,480–6,640 veh/h at +1 sd was not reached
+  [DISCHARGE_CALIBRATION.md §1, §3].
+- On I-94, S97 rises by about 440 veh/h and stays 16% short; the rest is the
+  T.H.52 weave (§7.6), which `a_max` was not expected to fix. The choice of
+  keep-right 0.1 over 0 is inside two seeds' noise (84 veh/h between them,
+  against up to 264 veh/h between seeds at one pair), which the rule allows
+  [DISCHARGE_CALIBRATION.md §3].
+- Lane use barely responds to keep-right on either corridor (§4.4). The
+  largest single part of I-94's lane-share error is a detector defect, and a
+  map defect adds to it (§7.5).
+- The I-94 grid ran on demand inputs that include the validation days, though
+  its targets did not (§7.5) [I94_CALIBRATION_DAYS.md §1.3, §2].
+
+Whether the choice survives full batteries is §5.7 for I-24 and §7.4 for
+I-94. It is not adopted on I-24, and it is recommended, not adopted, on I-94.
 
 ---
 
@@ -1070,7 +1362,7 @@ merge discharges about 5,880 veh/h where the recording sustains 6,630, and
 the queue that shortfall builds is the whole of the two failing rows
 [I24_VALIDATION.md §0.11].
 
-**The car-following population is not where the capacity is missing.** A
+**The car-following headways are not where the capacity is missing.** A
 population refitted only on the 4,193 episodes inside the merge zone keeps a
 4.6% longer headway and a 5% larger minimum gap than the corridor as a whole,
 with a better holdout fit:
@@ -1093,6 +1385,20 @@ and cooperation during the lane change. We record the merge as a model-form
 limitation of the simulator as configured. No further car-following
 calibration will move the two failing rows [I24_VALIDATION.md §0.12].
 
+*Corrected 2026-10-07.* This paragraph's heading read "the car-following
+population", and its last sentence ruled out any further car-following
+calibration. That holds for the headway parameters, `T` and `s0`, which the
+merge-zone refit examined. It does not hold for the population's mean maximum
+acceleration, which no step had calibrated. Raised by one standard deviation
+under a rule fixed in advance, it lifts the peak sections from 5,850 / 5,821
+to 6,031 / 6,025 veh/h over 20 seeds, about a quarter of the way to the
+recording, and the GEH row from 21.5% to 25.0% on the flow family's fitted
+arm. Neither failing row passes, and the wave row is lost (§5.7). A merge
+model built on the measured gap acceptance did not recover the rest either
+(§8.2). What remains, about 600 veh/h, is a merge and discharge shortfall
+whose mechanism is not established [DISCHARGE_CALIBRATION.md §1, §4;
+MERGE_MODEL_READINESS.md §2, §5].
+
 ### 5.6 Variants that do not change the record
 
 | Arm (20 seeds) | GEH < 5 | 5-min RMSPE | Stack wave [km/h] | Rows | Source |
@@ -1111,11 +1417,91 @@ section]. The zipper
 heavy arm finds no stack peak and scores 4 / 3 [I24_VALIDATION.md §0.6].
 The canonical family remains the published record [I24_VALIDATION.md §0.10].
 
+### 5.7 Driver acceleration on I-24: a calibration on the one recorded morning (2026-10-07)
+
+*Calibration, not validation. The I-24 recording is one morning, and every
+arm below is fitted and scored on it, with no holdout* [FRISCO_PROTOCOL.md,
+Amendment 1].
+
+The Amendment-1 choice (k = 1, keep-right 0; §4.6) was run as 20-seed
+batteries on the flow family's fitted arm, the arm the grid used. The
+reference arm, run on the same code, reproduces that arm's committed battery
+exactly (GEH 21.5%, RMSPE 37.2%, stack wave 15.9 km/h; [I24_VALIDATION.md
+§0.10]). Every run recorded zero collisions, and the ring rows passed at 20
+of 20 seeds in every battery [DISCHARGE_CALIBRATION.md §4].
+
+| Arm (20 seeds) | Demand scale | GEH < 5 | Segment-speed RMSPE (5 min) | Wave row (`stack`) | Backward waves per replicate | Peak sections [veh/h] | Realised demand (mean, lowest) | Mean travel time [s] |
+|---|---|---|---|---|---|---|---|---|
+| Reference, measured-mean drivers (k = 0) | 0.800 | 21.5% | 37.2% | 15.9 km/h PASS | 9.05 | 5,850 / 5,821 | 0.987, 0.977 | 574 |
+| k = 1, old demand | 0.800 | 25.0% | 78.4% | no qualifying peak, FAIL | 13.65 | 6,031 / 6,025 | 0.996, 0.994 | 536 |
+| k = 1, demand refit | 0.925 | 25.7% | 33.3% | no qualifying peak, FAIL | 6.65 | 6,047 / 5,983 | 0.921, 0.912 | 669 |
+| k = 0.25, demand refit (Amendment 2) | 0.900 | 16.0% | 34.1% | 15.7 km/h PASS | — | 5,871 / 5,820 | 0.918, 0.908 | — |
+| k = 0.5, demand refit (Amendment 2) | 0.900 | 24.3% | 33.9% | 15.1 km/h PASS | — | 5,953 / 5,899 | 0.930, 0.916 | — |
+
+*Source: [DISCHARGE_CALIBRATION.md §4; FRISCO_PROTOCOL.md, Result of
+Amendment 2; MERGE_MODEL_READINESS.md §5 (peak sections of the first three
+arms); artifacts/i24_validation_flow_speedcal_ref.json;
+artifacts/i24_validation_dc.json; artifacts/i24_validation_dc_refit.json;
+artifacts/i24_validation_dck025_refit.json;
+artifacts/i24_validation_dck05_refit.json;
+artifacts/demand_scale_i24_flow_dc.json;
+artifacts/demand_scale_i24_flow_dck{025,05}.json]. Peak sections at data
+x = 2,200 / 3,200 m, against 6,626 / 6,639 veh/h recorded and 6,225 / 6,238
+needed for GEH 5. "—": not quoted in the source documents.*
+
+- **More demand did not raise the peak flow.** The demand fitter of §4.2, run
+  again under the stronger drivers, raised the demand by 15.6%. The peak
+  sections did not move (6,031 / 6,025 → 6,047 / 5,983 veh/h). The extra
+  demand built a backlog instead: the realised share fell from 0.996 to
+  0.921, and mean travel time rose from 536 to 669 s. The plateau is
+  therefore a merge and discharge shortfall at about 6,030 veh/h against the
+  recording's 6,630, not a demand limit. The source first read the grid's
+  plateau as demand-limited; the refit reversed that reading the same day
+  [DISCHARGE_CALIBRATION.md §3, correction, and §4; MERGE_MODEL_READINESS.md
+  §5].
+- **Part of the refit's better speed fit comes from vehicles held off the
+  network.** Its GEH and RMSPE are slightly better than the reference's, but
+  not as an improvement of the model [DISCHARGE_CALIBRATION.md §4]. The
+  fitter's objective does not see insertion, and in all three refits under
+  stronger drivers it built a backlog (§4.2) [FRISCO_PROTOCOL.md, Result of
+  Amendment 2]. A later re-analysis of the three refits on their single fit
+  seed finds that most of their speed advantage was the backlog. Constrained
+  to insert at least 0.97–0.98 of the demand, the fitter picks scales 0.05–0.10
+  lower, and the k = 1 refit is then worse than the reference's fit on both
+  hours (RMSPE 38.3 / 51.0% against 32.7 / 46.0%). That is one seed, and no
+  battery has run at the constrained scales [FRISCO_PROTOCOL.md, insertion
+  re-analysis of the Amendment 2 refits].
+- **The wave criterion is lost at k = 1.** In both k = 1 arms the stack
+  detector finds no peak at the required contrast. With the refit, the
+  replicates carry 6.65 backward waves against 9.05, and only the secondary
+  detectors still read speeds near the band (stripe 14.3, standard 9.3
+  km/h). This is the risk recorded before any run: a higher mean `a_max`
+  makes the drivers more string-stable (§2.2) [DISCHARGE_CALIBRATION.md §1,
+  §4].
+- **Smaller shifts keep the waves but not the demand.** Under Amendment 2's
+  rule, k = 0.25 and k = 0.5 both keep the wave row, and k = 0.5 is no worse
+  than the reference on GEH and RMSPE. Both refits hold 7–8% of the planned
+  vehicles off the network, below the 0.977 floor fixed before the results.
+  No arm qualifies, and k = 0 stays on I-24 [FRISCO_PROTOCOL.md, Result of
+  Amendment 2].
+
+The calibrated drivers are therefore not adopted on I-24. The flow family's
+fitted arm with the measured-mean drivers stays the reference for this work,
+and the k = 1 refit is kept as a documented alternative
+[DISCHARGE_CALIBRATION.md §4]; the published record of §5.3 is unchanged
+(Appendix C, item 19). The same driver shift is the largest single
+improvement the I-94 model has had (§7.4) and costs I-24 its emergent waves,
+so one calibration recipe does not serve both corridors
+[DISCHARGE_CALIBRATION.md §4].
+
 **The corridor is not validated.** The replica reproduces the recording's
 stop-and-go pattern and its wave-speed band under the criterion's detector.
 It does not reproduce its flows or its segment speeds, and the reason is
-one merge that the simulator's lane-change model does not discharge at the
-observed rate.
+one merge that the simulator does not discharge at the observed rate: not
+with SUMO's lane-change model (§5.5), not with the drivers' acceleration at
+the top of its measured range (this section), and not with a merge model
+built on the measured gaps (§8.2). *(Revised 2026-10-07: this sentence had
+attributed the shortfall to the lane-change model alone.)*
 
 ---
 
@@ -1561,7 +1947,10 @@ per-lane counts through the section show it saturating at about 4,000 veh/h
 over four lanes, about 1,000 veh/h per lane or 60% of the fleet's
 straight-road capacity, and congesting first at its downstream end. The real
 section carried 5,137 veh/h at 25.9 m/s at 05:40 and 6,275 veh/h at 06:25
-[ONBOARDING_MNDOT.md §11, WP-59 and VM O].
+[ONBOARDING_MNDOT.md §11, WP-59 and VM O]. With the calibrated drivers of
+§4.6, S790 carries 3,780–4,010 veh/h in 06:30–07:30 in every seed of a 20-seed
+battery, against 4,911 observed and 4,567 needed for GEH 5 [I94_RESIDUALS.md
+§0; MERGE_MODEL_READINESS.md §5].
 
 The weaving-section model was derived and re-derived on fixtures that
 reproduce the section [WEAVE_MODEL_PLAN.md]. Where that work stands
@@ -1571,7 +1960,13 @@ reproduce the section [WEAVE_MODEL_PLAN.md]. Where that work stands
   compiles it, at the observed early-morning demand. The Highway Capacity
   Manual (edition 7.1, chapter 13) puts that demand at a demand-to-capacity
   ratio of 0.59–0.70; the real section carried it at 26 m/s. The test does
-  not pass.
+  not pass. With the calibrated drivers of §4.6 the section's no-crossing
+  ceiling passes at 10 of 10 seeds, so the test is passable in principle,
+  and the section carries 4,361 ± 83 veh/h against 3,873 ± 106 with the old
+  drivers; the test still fails at 20 of 20 seeds (macOS)
+  [DISCHARGE_CALIBRATION.md §3; artifacts/p3_driver_grid_2026-10-07/th52_ceiling_dc.json;
+  artifacts/p3_driver_grid_2026-10-07/th52_section_dc_weave.json]. Where the
+  loss sits is §7.6.
 - Fifteen derivations of the weave's conflict rules moved the conflict,
   locked the section or read worse. Attribution found no family of the
   model's commands that sets the rate at the entry or at the exit end.
@@ -1648,8 +2043,336 @@ values.*
 The fixture results are macOS records; two threshold-sensitive tests land
 differently on Linux [WEAVE_MODEL_PLAN.md, WP-85].
 
-**The I-94 corridor is not reproduced, and no controller or strategy sweep
-was run on it** [ONBOARDING_MNDOT.md §6, §11].
+### 7.4 The protocol's baseline gate with calibrated drivers (rehearsal, 2026-10-07)
+
+*A rehearsal of the corridor-study protocol (§2.5) on public data. The gate
+fails, and nothing in this section is validation.*
+
+The protocol's seeded day split put five of the nine mornings in calibration
+(2, 3, 8, 15 and 16 September 2026) and four in validation (1, 9, 10 and 17
+September) [artifacts/baseline_gate_mndot_dc.json, `split`]. The four-hour
+weave scenario in the reference configuration was run with the Amendment-1
+drivers (k = 1, keep-right 0.1; config `db9fbab5fc6e`), 20 seeds, and scored
+by the gate. The comparison is the phase-1 reference battery (k = 0, the
+reference configuration with the scripted-merge guard of §7.2, config
+`b550b46fe751`) on the same day sets [DISCHARGE_CALIBRATION.md §4;
+PHASE1_REHEARSAL.md §1].
+
+| Check | Day set | Reference (k = 0) | Calibrated drivers (k = 1) | Target |
+|---|---|---|---|---|
+| C1 GEH < 5, share of station-hours | calibration | 15.5% | 61.8% [56.5, 67.0] | ≥ 85% |
+| C1 | validation | 14.5% | 60.0% [54.0, 66.0] | ≥ 85% |
+| C2 GEH < 3 (reported, not gating) | calibration / validation | 12.3% / 11.4% | 45.8% / 42.5% | 100% |
+| C3 station-speed RMSPE, 15 min | calibration | 49.7% | 33.9% [31.3, 36.5] | ≤ 15% |
+| C3 | validation | 48.7% | 38.8% [34.2, 43.4] | ≤ 15% |
+| C4 backward wave speed (`stack`) | calibration | 6.6 km/h | 4.9 km/h (front in 19 of 20) | 14–22 km/h |
+| C5 collisions | all | 0 | 0 | 0 |
+| C6 bottlenecks | calibration / validation | fail (phantom) / pass | fail (phantom) / pass | — |
+| **Gate** | | fail | **fail** | |
+
+*Source: [DISCHARGE_CALIBRATION.md §4; artifacts/baseline_gate_mndot_dc.json;
+artifacts/baseline_gate_mndot_i94_wb_stpaul_p1.json;
+artifacts/validation_mndot_i94_wb_stpaul_weave_xlsfg_dc{,_gated}.json];
+brackets: 95% intervals over the 20 replicates.* The gate scores
+station-hours and 15-minute station speeds against day-set targets. The
+table of §7.2 used the battery's own scoring against the nine-day mean, so
+the two tables are not directly comparable.
+
+The calibrated drivers are the largest single improvement the I-94 model has
+had: four times the share of station-hours inside GEH 5 on both day sets,
+about a third less speed error on the calibration days and a fifth less on
+the validation days [DISCHARGE_CALIBRATION.md §4]. The gate still fails on
+C1, C3, C4 and C6. The wave speed moved the wrong way, and §7.6 shows that
+the check reads the growth of the queue's tail on this corridor. About 4% of
+the planned vehicles never departed, 10–11% in two seeds, and 2.1% of the
+exiters at the Ruth St weave gave up, above the 2% threshold
+[DISCHARGE_CALIBRATION.md §4; I94_COLLAPSE_DIAGNOSIS.md §5]. Those two seeds
+are locks (§7.7). The validation-day column is not a clean holdout (§7.5).
+
+The drivers are recommended as the I-94 reference, not adopted. At k = 1 the
+mean driver is string-stable at capacity density (§2.2), which CLAUDE.md
+§3.1 treats as a requirement; adoption is the owner's decision, with that
+trade-off stated [DISCHARGE_CALIBRATION.md §4].
+
+### 7.5 Inputs: a validation-day leak, lane shares and a map defect
+
+**The leak.** The scenario's mainline inflow, all 17 ramp profiles and the
+downstream speed schedule were built on 2026-09-24 from the mean of all nine
+mornings, ten days before the protocol split them. The driver check that
+recommends a passenger speed factor read all nine days too
+[I94_CALIBRATION_DAYS.md §0, §1.1]. The validation-day scores of §7.4 (C1
+60.0%, C3 38.8%), and the phase-1 reference's (14.5%, 48.7%), therefore score
+a model whose inputs include the validation days' own counts at 4/9 weight.
+They are not a clean holdout, and the leak is expected to make validation
+look closer to calibration than a clean holdout would. Both gates fail on
+both day sets by wide margins, so no verdict changes [I94_CALIBRATION_DAYS.md
+§2]. The two input sets differ by about 0.5–3% in hourly means
+[I94_CALIBRATION_DAYS.md §1.4; I94_RESIDUALS.md §7]. The Amendment-1 grid and
+the netfix probe below ran on the same nine-day inputs, against
+calibration-day targets [I94_CALIBRATION_DAYS.md §1.2–1.3].
+
+**The correction, built and not yet run.** The inputs were rebuilt from the
+five calibration days. Each ramp without a usable detector now takes only its
+own segment's mainline difference, as protocol §2.3 says; the earlier method
+passed each segment's unexplained remainder on to the next ramp. In the 06:30
+hour the Mounds Blvd exit falls from 1,542 to 946 veh/h (observed check 854)
+and the Mounds/Kittson entrance from 876 to 451 (its loop 593). Re-run on the
+calibration days over the study period, the driver check recommends a
+passenger speed factor of 1.3026, inside the measured range 1.094–1.542
+[CHANGELOG, 2026-10-07; I94_CALIBRATION_DAYS.md §0, §4–5]. Three scenarios
+carry the rebuild: `_dc_cal`, `_dc_cal_sf` with the speed factor, and
+`_dc_cal_netfix` with the map fix below. Their 20-seed batteries and gates
+(stage `p8_i94_cal`) have not run, and no `_dc_cal*` artifact is committed
+[I94_CALIBRATION_DAYS.md §6, §9; I94_COLLAPSE_DIAGNOSIS.md §5]. Two further
+input rules, the T.H.61 NB ramp from the mainline difference and S792 taken
+out of the balance, would change the recorded detector choice after results
+were seen; they need a protocol amendment and are not applied
+[I94_CALIBRATION_DAYS.md §7].
+
+**Lane shares.** The grid of §4.6 left I-94's per-lane detector shares
+7.6–9.9 points off at every pair, against 1.4–4.5 on I-24. The largest part
+is a measurement defect: station S791's lanes are numbered in reverse in the
+agency's inventory, by three independent signatures, and S791 holds 57–62%
+of the pooled squared error. With its order corrected the grid reads
+5.0–8.2 points, and the rule's choice is unchanged. A second part is a map
+defect: `netconvert`'s ramp guessing turned an option lane at the 6th Street
+left exit into an exit-only lane, shifting the through lanes one place left.
+The rest is behaviour that no single keep-right value fits, because stations
+pull in opposite directions [I94_LANE_SHARES.md, Verdict]. The two numbers
+are not directly comparable: I-24's pools four vehicle-time shares over
+5.5 km and two hours, while I-94's are 23 station-lane values read at points
+[I94_LANE_SHARES.md, Verdict item 5]. The data-quality report now checks
+lane order against neighbouring stations: it marks S791 reversed on whole
+days and only uncertain on the morning span. Correcting S791's target is the
+owner's decision [I94_LANE_SHARES.md, Fixes].
+
+**The map fix, probed.** A 16-run probe of the 35-minute slice (4 seeds)
+measured the 6th Street fix. With the calibrated drivers it lowers the
+lane-share error from 8.22 to 7.26 points (5.60 to 4.57 with S791 reversed),
+with no collision, and the as-built runs reproduce the committed grid exactly
+[I94_LANE_SHARES.md, Netfix probe; artifacts/i94_netfix_probe.json].
+*Corrected the same day:* the probe's mean S97 discharge rose from 3,028 to
+3,760 veh/h, which was first read as a gain. At three of the four seeds the
+two networks are level (3,746 against 3,740 veh/h). The whole difference
+comes from one as-built run that collapsed (S97 876 veh/h, realised demand
+0.857; §7.7). The map fix shows no resolved discharge effect; it stays
+justified as the correction of an input defect [I94_LANE_SHARES.md, Netfix
+probe, correction; I94_COLLAPSE_DIAGNOSIS.md §5].
+
+### 7.6 The residuals, and where the weaving section loses its capacity
+
+*Diagnostics: a re-reading of the committed battery, fixture runs (macOS) and
+one measurement on I-24 MOTION. Nothing in this section is validation.*
+
+**What drives the gate's residuals** [I94_RESIDUALS.md §0, §2–5]. Two causes
+split C1's failing station-hours about equally.
+
+- The T.H.52 weave carries too little in the first peak hour: 47% of the
+  failing station-hours on calibration days, 54% on validation days. The
+  real road pushes about 6,150 veh/h into the weave from 06:30 to 07:30; the
+  model's S790 holds 3,780–4,010.
+- Ramp inputs do not balance: 48% and 41%. Chiefly, an inflated Mounds Blvd
+  exit makes the queued section upstream of it carry too much flow; the
+  rebuild of §7.5 addresses it.
+
+About one fifth of C3's error is speed outside any queue: the model drives
+82–87 km/h where people drive 103–115 km/h. The rest is the queue, which
+reaches too far upstream, is too slow inside and clears at the wrong times.
+C4's 4.9 km/h is the speed at which the queue's tail grows upstream, and on
+that quantity the model agrees with the detectors (observed 4.6–5.7 km/h).
+The observed 19.1 km/h comes from a different estimator, which measures
+oscillations inside the queue. Read from one seed's speed contour, the
+model's waves inside the queue run at about 14.5–14.8 km/h, at the band's
+lower edge and about a quarter slower than observed. That is one seed read
+off a figure; twenty could land on either side of 14 km/h. C6's phantom is
+the real T.H.52 bottleneck: it is active for at least 30 minutes on 4 of the
+5 calibration days, the five-day mean blurs it, and the model makes it
+stronger. The cause shares come from the battery's committed 06:30-anchored
+hours, not the gate's 06:00 anchoring, and the speeds from one digitised
+contour [I94_RESIDUALS.md §1, §8]. By the source's estimates, the allowed
+calibration (consistent ramp inputs, the speed factor) cannot pass the gate;
+only more T.H.52 throughput at the peak can, and no calibration knob reaches
+it [I94_RESIDUALS.md §6].
+
+**The weave's loss on a fixture.** On the T.H.52 section test with the
+calibrated drivers (seeds 3–22), the weave carries 4,361 ± 83 veh/h. The same
+section with nothing to cross carries 4,826 ± 19: a paired loss of 465 veh/h
+[427, 504], against an observed inflow of 4,877 and 4,535 needed for GEH 5.
+The gore breaks down 3–5 simulated minutes in and then discharges about
+4,430 veh/h [WEAVE_LOSS_DIAGNOSIS.md §0, §2, §3.12;
+artifacts/weave_loss_2026-10-07/arms/]. No single rule causes it. Removing,
+one at a time, a blind spot in the gap choice, the entrant stranded at the end
+of the auxiliary lane, the missing post-crossing relaxation, and SUMO's
+lane-change eagerness and keep-right recovers at most 32 veh/h [+8, +57].
+Each removal was pre-registered, and three predicted gains failed
+[WEAVE_LOSS_DIAGNOSIS.md §4–5]. The loss is the crossing itself: about 1,900
+crossings an hour in 305 m, each braking the target lane into a full
+car-following gap [WEAVE_LOSS_DIAGNOSIS.md §5]. Two inputs move it, and
+neither had been measured:
+
+- **The anticipation reach**, the weave's `lookahead_m` of 120 m: at 200 m
+  the section carries +98 [+55, +141] veh/h, at 300 m +177 [+134, +219]
+  [WEAVE_LOSS_DIAGNOSIS.md §4].
+- **The crossing volume**, set by the proportional split (§2.7): with a
+  quarter fewer crossers the flow criterion passes at 18 of 20 seeds
+  [WEAVE_LOSS_DIAGNOSIS.md §3.11].
+
+Choosing either value because it passes the test is the tuning the protocol
+forbids, so each was to be measured or bounded first
+[WEAVE_LOSS_DIAGNOSIS.md §6.1, §6.3].
+
+**The anticipation reach, measured.** For each entering lane change in the
+I-24 MOTION recording, the distance the entrant drove beside the gap it
+finally entered was read back from the change, censored where tracks end,
+and summarised by a Kaplan–Meier median with bootstrap intervals. The rule
+for adopting a value was registered before the measurement ran
+[MERGE_ANTICIPATION.md §0, §8]. The primary stratum, the Hickory
+Hollow–Bell Road weave at 20 m/s or more, reads 82 m on 233 changes but fails
+the interval-width check (67–154 m). The fallback, the weave and the Old
+Hickory acceleration lane pooled, reads **125 m [107, 154]** on 858 entering
+changes, 67% censored, and passes every check. Rounded to 10 m it is 120 m,
+the model's constant, which stays [MERGE_ANTICIPATION.md, Result;
+artifacts/merge_anticipation_i24.json]. I-24's entrants do not support a
+reach of 200–300 m. Under half coverage the reach is expected to read long
+(§3.4), so the true value is, if anything, shorter. That route to the weave's
+capacity is closed [MERGE_ANTICIPATION.md, Result; WEAVE_LOSS_DIAGNOSIS.md
+§9].
+
+**The crossing share, bounded.** The movement is US 52 northbound entering
+I-94 westbound and leaving 305 m later at exit 242B. No count, published
+figure or agency figure gives the share of entrants that do so. MnDOT's
+2022–2024 study of this interchange names the weave as a key problem, but
+its final report is available only on request [TH52_CROSSING_SHARE.md §0,
+§3]. The proportional split gives 0.29 in the fixture's window and 0.18 in
+the peak hour. An exploratory reading of the corridor's own counts, after a
+1999 MnDOT method (Kwon 1999), leans above it: 0.58 [0.44, 0.71] in its
+least-biased form. But it moves with the specification from 0.26 to 0.96, is
+biased upward by count error and was not pre-registered, so it is not a
+measurement [TH52_CROSSING_SHARE.md §4]. The working range is from the
+proportional split to 0.70, an assumed bound [TH52_CROSSING_SHARE.md §5].
+The section test was run across it with the key of §2.7:
+
+| Ramp-to-ramp share | Planned crossers [veh/h] | Exit-end flow [veh/h] | vs proportional, paired [95%] | GEH < 5 | Station speed > 20 m/s | Whole test |
+|---|---|---|---|---|---|---|
+| proportional (0.295 realised) | 1,916 | 4,361 ± 83 | — | 1 / 20 | 0 / 20 | 0 / 20 |
+| 0.40 | 1,657 | 4,527 ± 106 | +166 [+113, +220] | 9 / 20 | 0 / 20 | 0 / 20 |
+| 0.50 | 1,411 | 4,713 ± 87 | +353 [+301, +404] | 20 / 20 | 1 / 20 | 1 / 20 |
+| 0.60 | 1,171 | 4,791 ± 66 | +430 [+389, +472] | 20 / 20 | 2 / 20 | 2 / 20 |
+| 0.70 | 925 | 4,819 ± 34 | +458 [+417, +499] | 20 / 20 | 6 / 20 | 6 / 20 |
+
+*Source: [TH52_CROSSING_SHARE.md §10.3;
+artifacts/th52_crossing_share_2026-10-07/summary.json and its per-share
+files]; calibrated I-94 drivers, seeds 3–22, macOS; no collision or lock at
+any share.* The flow verdict flips between 0.40 and 0.50, inside the bounded
+range. The test as a whole fails at every share, because station speed lags
+flow. This is a sensitivity, not a calibration: no share is chosen from it,
+and the model keeps the proportional split. Until the share is measured, the
+T.H.52 shortfall cannot be read as a merge-model finding
+[TH52_CROSSING_SHARE.md §10.4–10.5]. Protocol Amendment 3, proposed and not
+adopted, would carry the share as an uncertain input over this range, judge
+the gate at the proportional split and report the range beside it. Its
+routes to a calibrated share are MnDOT's report, a pre-registered count
+estimate, or a count at the gore [FRISCO_PROTOCOL.md, Amendment 3]. The Ruth
+St weave's split has not been bounded at all [FRISCO_PROTOCOL.md,
+Amendment 3, item 3].
+
+**W1, a give-up for a stranded entrant.** One physical fix was
+pre-registered with fixture criteria: an entrant halted at the end of the
+auxiliary lane, with no change to request, takes the exit, the mirror of the
+existing exit give-up. It does what it was built for: stranded-entrant time
+falls from 18.9 to 3.8 s per run and the flow rises by 29.0 veh/h [9.7,
+48.3], with no collision. It recovers about 6% of the loss, as expected of a
+fidelity fix. It fails two of its five criteria, both on how often it fires
+on small entrances: 1.04% of departures at one seed against a 1% cap, and
+above 1% in 8 of 37 grid runs, all at Ruth St. By its rule it stays off
+[WEAVE_LOSS_DIAGNOSIS.md §8.3–8.5; artifacts/weave_loss_2026-10-07/w1/].
+
+### 7.7 Locks: a failure the batteries did not report
+
+*Diagnostics: the run-end files of committed batteries re-read, and fixture
+runs. No simulation was run for the reading.*
+
+Three of the 20 four-hour replicates with the calibrated drivers (§7.4) end
+in a permanent standstill at a weaving section's exit gore: one at T.H.52 and
+two at Ruth St, all late in the run. At the front of each, an entrant bound
+through stands within 0.1 m of the end of the auxiliary lane, which leads
+only to the exit. The exit-bound vehicle at the front of each through lane
+cannot get into that stopped lane, and the road past the gore is empty.
+Nothing releases any of them: the weave's exit give-up acts only on an
+exiter within 5 m of the gore, W1 is off, the network's lane-end give-up
+skips weaving sections, and teleporting is off [I94_COLLAPSE_DIAGNOSIS.md §0,
+§2–3]. The netfix probe's collapsed slice (§7.5) is very probably the same
+state at T.H.52; that is inferred from its counters, because its vehicle
+table was not archived [I94_COLLAPSE_DIAGNOSIS.md §0, §8].
+
+| Set | Locked | 95% interval (Clopper–Pearson) |
+|---|---|---|
+| Four hours, calibrated drivers (k = 1), 20 seeds | 3 of 20 | 3–38% |
+| Four hours, phase-1 reference (k = 0), same seeds and map | 0 of 20 | 0–17% |
+| 35-minute probe slices, k = 1 | 1 of 8 | 0.3–53% |
+| 35-minute probe slices, k = 0 | 0 of 8 | 0–37% |
+
+*Source: [I94_COLLAPSE_DIAGNOSIS.md §5, §10]; read from the batteries'
+per-replicate run files, which are in the stage archives and not committed.*
+The difference suggests that the drivers matter, but it is not resolved
+(Fisher p = 0.23 on the four-hour runs). Whether the 6th Street map defect
+plays a part is not known: two of the three locks are 4 km upstream of it
+[I94_COLLAPSE_DIAGNOSIS.md §0].
+
+**The batteries did not name them.** The battery's summary read "backlog: 4%
+of planned vehicles never departed", flagged no starved ramp and recorded
+zero collisions. The protocol's own no-lock rule (no seed's departed share
+below 0.8 of the median) passes every lock seen, because a lock that forms
+late costs only 0–7 points of departed share. Plain mean travel time is
+blind to a lock and can even improve, since trapped vehicles never finish:
+one locked replicate has the lowest mean travel time of the 20. The three
+locked replicates are the battery's three worst for failed station-hours,
+and they widen its intervals more than they move its means
+[I94_COLLAPSE_DIAGNOSIS.md §5]. They stay in every criterion; dropping them
+would break CLAUDE.md §0.6.
+
+**Detection.** The detector of §2.7, run on the step-3 replicates, finds
+exactly these three locks and no other (3 of 20, 15%; Clopper–Pearson
+3.2–37.9%). On 25 local I-24 runs it flags exactly the three sublane-model
+probes recorded as locking (§5.5) and none of the other 22
+[I94_COLLAPSE_DIAGNOSIS.md §10; CHANGELOG, 2026-10-07]. Neither of its
+readers has yet run on an I-94 battery that kept its space-time bins
+[I94_COLLAPSE_DIAGNOSIS.md §10, limits].
+
+**W1b, a release after a dwell.** W1 removes the vehicle at the front of
+every lock seen, but it also fired on ordinary stands. W1b, registered before
+any code or run, fires only after an unbroken 60-s stand at the lane's end.
+Sixty seconds is the smallest whole minute above every ordinary stand of the
+T.H.52 section test's reference (longest 50.5 s); a lock stands for hours
+[WEAVE_LOSS_DIAGNOSIS.md §10.1–10.3]. On 132 paired fixture runs it passes all
+seven registered criteria. It waits exactly 60 s before each of its 7
+releases; each of the 126 runs in which it never fires is byte-identical to
+its reference; T.H.52 flow is unchanged; releases are 0.09–0.14% of entrance
+departures pooled per section; and there is no collision and no new lock.
+One fixture locked in exactly the corridor's state: Ruth St, seed 15,
+calibrated drivers, the entrant standing 971.5 s to the run's end, zero
+discharge from minute 12. W1b released it after 60 s, and the run then
+departed 1,014 of 1,014 vehicles against 673 [WEAVE_LOSS_DIAGNOSIS.md
+§10.9–10.10; artifacts/weave_loss_2026-10-07/w1b/criteria.json;
+artifacts/weave_loss_2026-10-07/w1b/releases.json].
+
+Three cautions. The pass rests on one lock in 132 runs, so it shows the
+mechanism, not a rate. The other five releases ended ordinary Ruth St stands
+of 61.5–68.5 s that would have cleared by themselves, so 60 s does not
+separate ordinary waits from locks at Ruth St. And whether drivers in the
+field take the exit after a minute at the end of an exit-only lane is not
+measured; the rule releases a model state that has no field counterpart
+[WEAVE_LOSS_DIAGNOSIS.md §10.9, §10.12]. The key stays off. Its corridor round
+(stage `p9_i94_w1b`, about $1.9) has not been launched, and adoption is the
+owner's decision [WEAVE_LOSS_DIAGNOSIS.md §10.11; CHANGELOG, 2026-10-07].
+
+**The I-94 corridor is not reproduced, and no controller or strategy result
+is reported for it** [ONBOARDING_MNDOT.md §6, §11]. *(Corrected 2026-10-07:
+this sentence said no controller or strategy sweep was run on it. Strategy
+runs were made on 2026-10-04 to rehearse the protocol's tools; they are
+labelled rehearsals and state no verdict [I94_CALIBRATION_DAYS.md §1.3, §2].
+The protocol's gate, which a strategy result needs, fails (§7.4)
+[FRISCO_PROTOCOL.md §6].)*
 
 ---
 
@@ -1662,12 +2385,17 @@ was run on it** [ONBOARDING_MNDOT.md §6, §11].
 | Ring, 22 vehicles on 230 m | emergence and single-vehicle dampening, 20 of 20 seeds | — |
 | US-101, 640 m, with measured boundary | congestion propagating from an imposed downstream state; backward waves in 20 of 20 replicates (standard detector; none with the criterion's stack detector) | flows, speeds, wave speed (1 PASS / 5 FAIL) |
 | I-24, 3.4 miles, four demand arms | the stop-and-go pattern from 2.2 km on; wave speed in band under the criterion's detector | link flows (17–20% of link-hours under GEH 5); segment speeds (34–36% RMSPE) |
+| I-24, drivers' acceleration calibrated (calibration, one morning) | merge discharge about a quarter closer (about 6,030 of 6,630 veh/h) | link flows (25.0–25.7%); the wave row is lost; a refit holds 8% of the demand off the network (§5.7) |
 | I-94 WB, St. Paul | — | the corridor (departed 0.884, RMSPE 0.691, GEH 16%, reference configuration) |
+| I-94 WB, protocol gate, calibrated drivers (rehearsal) | the queue tail's growth speed (a diagnostic reading: 4.9 against 4.6–5.7 km/h observed; §7.6) | the gate: GEH < 5 on 61.8% / 60.0% of station-hours, 15-min RMSPE 33.9% / 38.8%, wave speed, bottleneck timing (§7.4) |
 
 *Sources: §5, §7.* The failures are informative because each has a stated
-cause and an artifact behind it. On I-24 the residual is one merge. On I-94
-it is a weaving section. On US-101 it is a missing on-ramp and a site
-shorter than a wave.
+cause and an artifact behind it. On I-24 the residual is one merge, which
+neither calibrated drivers nor a measured merge model discharges at the
+recorded rate. On I-94 it is a weaving section, whose fixture loss turns on
+an unmeasured crossing share (§7.6), and three of its 20 calibrated
+replicates end in a permanent lock at a weaving gore (§7.7). On US-101 it is
+a missing on-ramp and a site shorter than a wave.
 
 ### 8.2 Merging is where the simulator falls short
 
@@ -1675,20 +2403,56 @@ On I-24 the capacity-scaled population passes 83% of its straight-road
 capacity through the Old Hickory merge (5,880 of 7,100 veh/h), where the
 recording sustains 6,630 veh/h, 93% of the same figure
 [I24_VALIDATION.md §0.12]. A population refitted on the merge zone alone is
-more conservative, not less, so the missing discharge is not in car
-following. It is in the merging process: gap acceptance and cooperation
-during the lane change, which single-lane car-following episodes cannot carry
-into a population [I24_VALIDATION.md §0.12]. On I-94 a weaving section runs
-at about 60% of straight-road lane capacity [ONBOARDING_MNDOT.md §11]. There
-the loss sits in SUMO's lane-change model together with our own weave rules
-(§7.3). The measured gap-acceptance data from I-24 now exist
-[artifacts/i24_critical_gaps.json], and the next step, if merges are to be
-reproduced, is a merge model built on them; that is research outside the
-product's current scope [I24_VALIDATION.md §0.12]. Two cautions carry over
-from §3.9 and §7.3. Under the instrument's coverage, I-24's gaps and refusal
-shares are one-sided and the direction of its critical gaps is
-undetermined; the relative speeds at a crossing are values. And the model's
-crossings differ from real ones in speed as well as in gap.
+more conservative, not less [I24_VALIDATION.md §0.12]. From that we
+concluded that the missing discharge is not in car following but in the
+merging process: gap acceptance and cooperation during the lane change. We
+placed the I-94 weave's loss in SUMO's lane-change model together with our
+own weave rules (§7.3), and named a merge model built on the measured gaps
+as the next step [I24_VALIDATION.md §0.12].
+
+*Corrected 2026-10-07.* Each of those readings was too strong.
+
+- **Part of the I-24 shortfall is in car following.** A fixture diagnosis
+  found the model's capacity drop normal and its merge discharge level low,
+  set by the population's mean maximum acceleration, which no step had
+  calibrated. Raising it to the top of its measured range closes about a
+  quarter of the I-24 gap and then plateaus near 6,030 veh/h, and a demand
+  refit shows the plateau is a discharge shortfall, not a demand limit
+  (§4.6, §5.7) [DISCHARGE_CALIBRATION.md §1, §4]. The headway parameters
+  remain ruled out (§5.5).
+- **A merge model built on the measured gaps did not supply the rest.** The
+  `measured` model (§2.7) was built on the I-24 critical gaps, speed matching
+  and post-crossing relaxation. It fails its own self-check against the
+  measurements at every amendment with the old drivers; the self-check has
+  not been run with the calibrated ones. On I-24, with the old drivers, it
+  moved the merge by +46 / +54 veh/h on one seed, inside one seed-to-seed
+  standard deviation, and on the
+  T.H.52 section with the calibrated drivers it carries 52 veh/h less than
+  the weave [−96, −9]. Its pre-registered go/no-go criteria read NO-GO. The
+  recorded cause is structural: SUMO brakes an entrant for the end of its
+  lane and the runner can only lower speeds, so an entrant cannot be brought
+  up to the target lane's speed before it changes [MERGE_MODEL_READINESS.md
+  §0, §2–3; artifacts/i24_merge_experiment_measured.json;
+  artifacts/p3_driver_grid_2026-10-07/th52_section_dc_measured.json;
+  artifacts/p3_driver_grid_2026-10-07/th52_section_dc_weave.json].
+- **The I-94 weave's fixture loss is in no single rule.** On I-94 a weaving
+  section runs at about 60% of straight-road lane capacity in the reference
+  configuration [ONBOARDING_MNDOT.md §11]. On the section fixture with the
+  calibrated drivers, removing the suspected rules one at a time recovers at
+  most 32 of the 465 veh/h lost. The loss is set by the crossing itself, and
+  the flow verdict flips inside the bounded range of an unmeasured input, the
+  ramp-to-ramp share (§7.6). Until that share is measured, the T.H.52
+  shortfall cannot be attributed to the merge model. The other candidate
+  input, the anticipation reach, was measured on I-24 and rounds to the
+  model's constant [WEAVE_LOSS_DIAGNOSIS.md §5; TH52_CROSSING_SHARE.md §10.4;
+  MERGE_ANTICIPATION.md, Result].
+
+What remains on I-24, about 600 veh/h, has no established mechanism.
+
+Two cautions carry over from §3.9 and §7.3. Under the instrument's coverage,
+I-24's gaps and refusal shares are one-sided and the direction of its
+critical gaps is undetermined; the relative speeds at a crossing are values.
+And the model's crossings differ from real ones in speed as well as in gap.
 
 ### 8.3 Behaviour parameters set on independent observables are not tuning
 
@@ -1705,6 +2469,24 @@ sixth round each had a pre-registered threshold [I24_VALIDATION.md §0.9,
 not adopted [I24_CAPACITY.md §8]. The one decision that changed a verdict,
 naming the stack detector, was made on a synthetic benchmark and is reported
 next to the standard-detector reading (§5.4).
+
+The 2026-10-07 work kept the same rule. Every new setting was registered
+with its range, targets and selection rule before it ran: the drivers'
+acceleration and keep-right (Amendment 1); the wave and backlog constraints
+of Amendment 2, whose backlog clause was written before its results; the
+anticipation reach, adopted only from a measurement by a rule fixed in
+advance; and W1 and W1b, each with fixture criteria, of which W1 failed two
+and stays off (§2.4, §7.6–7.7). Values that would have helped were refused:
+an anticipation reach of 200–300 m, and any ramp-to-ramp share chosen from
+its sensitivity [WEAVE_LOSS_DIAGNOSIS.md §6.1; TH52_CROSSING_SHARE.md
+§10.5]. Two lessons came with it. A fit objective can improve without the
+model improving: a speed-only demand refit lowered RMSPE by holding vehicles
+off the network (§5.7). And one calibration recipe does not serve every
+corridor: the same driver shift is the largest single improvement the I-94
+model has had and costs I-24 its emergent waves. On both corridors the shift
+is held back, at least in part, by a requirement that no fit objective sees:
+CLAUDE.md §3.1's instability near capacity (§2.2) [DISCHARGE_CALIBRATION.md
+§4].
 
 ### 8.4 Coverage in camera-trajectory instruments
 
@@ -1741,27 +2523,61 @@ Most corrections in the project's ledger came from reading the primary source
 or the raw file instead of a summary of it: the PI specification, the I-24
 schema, the fragment structure. The rest came from refusing a number that
 violated physics: an LWR model dissipating waves it cannot form, fragment
-counts too low for the observed speeds, a lane crawling behind a keep-right
-rule US freeways do not have [LESSONS.md, closing paragraph]. Two defects in
-the metrics themselves were found by audit; the I-24 and US-101 artifacts
-were re-simulated with their original seeds; the synthetic-corridor
-experiments, whose paired contrasts the warm-up defect does not affect, were
-not (§2.6). We report these because they are the evidence that the remaining
-numbers were checked.
+counts too low for the observed speeds, a lane crawling behind SUMO's
+keep-right obligation [LESSONS.md, closing paragraph]. *(Corrected
+2026-10-07: this sentence said US freeways have no keep-right rule. They do:
+Tennessee (Code §55-8-115), Minnesota (Stat. §169.18 subd. 10(b)) and Texas
+(Transp. Code §545.051(b)) require slower traffic to keep right. The
+lane-share fix stands; its stated reason was wrong, and the setting has since
+been recalibrated (§4.4) [DISCHARGE_CALIBRATION.md §2; LESSONS.md row 10].)*
+Two defects in the metrics themselves were found by audit; the I-24 and
+US-101 artifacts were re-simulated with their original seeds; the
+synthetic-corridor experiments, whose paired contrasts the warm-up defect
+does not affect, were not (§2.6). We report these because they are the
+evidence that the remaining numbers were checked.
+
+The work of 2026-10-07 added three corrections, each found by a review of the
+same day's results and each recorded beside the text it corrects: a plateau
+read as demand-limited that a demand refit showed was a discharge shortfall
+(§5.7); a discharge gain from a map fix that came entirely from one collapsed
+run (§7.5); and I-94 inputs built partly from the validation days (§7.5)
+[DISCHARGE_CALIBRATION.md §3–4; I94_LANE_SHARES.md, Netfix probe;
+I94_CALIBRATION_DAYS.md §0].
+
+### 8.7 What a battery's means can hide
+
+A battery summarises 20 replicates by means and intervals. On I-94, three of
+the 20 calibrated replicates ended in a permanent lock, and nothing in the
+battery named them (§7.7). A lock that forms late moves the mean departed
+share by a few points, leaves the mean travel time unchanged or better, and
+shows up mainly as wider intervals [I94_COLLAPSE_DIAGNOSIS.md §5]. The remedy
+is reporting, not removal: every run set now carries a lock row beside its
+criteria, and every replicate stays in every criterion
+[I94_COLLAPSE_DIAGNOSIS.md §7, §10]. We would add a standstill detector to
+any microsimulation battery whose merge or weave logic is driven by its own
+rules, because in every lock seen here the vehicle at the front was an
+entrant under the weave's control, and no rule, the weave's or SUMO's,
+released it (§7.7) [I94_COLLAPSE_DIAGNOSIS.md §0].
 
 ---
 
 ## 9. Limitations
 
 1. **No corridor is validated.** I-24 fails link-flow GEH and segment-speed
-   RMSPE; US-101 scores 1 PASS / 5 FAIL; I-94 is not reproduced (§5, §7).
+   RMSPE; US-101 scores 1 PASS / 5 FAIL; I-94 is not reproduced, and with
+   the calibrated drivers it fails the protocol's baseline gate in rehearsal
+   (§5, §7).
 2. **Coverage.** Every I-24 count, flow and density is a lower bound. The
    corrected demand arms rest on coverage estimates, not on counts (§3.4).
    I-24's lane-change gaps and refusal shares are one-sided, and the size of
    their bias is transferred from one thinned dataset, US-101 (§3.9).
 3. **One day, one direction, two hours on I-24.** 30 November 2022,
    westbound, 06:30–08:30; no weather or incident metadata used
-   [I24_DATA.md §7; I24_VALIDATION.md §6].
+   [I24_DATA.md §7; I24_VALIDATION.md §6]. Every I-24 calibration, the
+   driver calibration of §4.6 and §5.7 included, is fitted and scored on that
+   one morning; there is no holdout day, so I-24 results are calibration, not
+   validation [FRISCO_PROTOCOL.md, Amendment 1]. The held-out second hour of
+   §4.2–4.3 is a holdout in time on the same morning, not a different day.
 4. **3.4 of 4 miles.** The span ends at the Bell Road collector road; the Bell
    Road on-ramp is not modelled and enters only through the observed boundary
    speed [I24_VALIDATION.md §6].
@@ -1777,9 +2593,13 @@ numbers were checked.
 8. **The wave-speed pass is detector-dependent** and rests on a stack peak in
    7–12 of 20 replicates per arm (§5.4).
 9. **Model form.** SUMO's lane-discrete lane-change model under-discharges the
-   I-24 merge; the I-94 weave depends on rules of our own that do not yet
-   reach observed capacity (§5.5, §7.3). EIDM and IDM differ in capacity by
-   about 11% on the same population [ONBOARDING_MNDOT.md §10].
+   I-24 merge; with the drivers' acceleration at the top of its measured
+   range the merge is still about 600 veh/h short, and a merge model built on
+   the measured gaps did not close it (§5.5, §5.7, §8.2). The I-94 weave is
+   our own rule set; it does not reach observed capacity, and on the fixture
+   its loss turns on an unmeasured input rather than on any single rule
+   (§7.3, §7.6). EIDM and IDM differ in capacity by about 11% on the same
+   population [ONBOARDING_MNDOT.md §10].
 10. **Controllers at default constants.** No controller was tuned for any
     corridor; the results rank default configurations
     [CONTROLLER_COMPARISON.md, Limitations].
@@ -1795,6 +2615,39 @@ numbers were checked.
     ROADMAP.md §5 D3; I24_STRATEGIES.md].
 14. **Transferred population on I-94.** No Minnesota trajectories exist; the
     driver population is the I-24 fit [ONBOARDING_MNDOT.md §5].
+15. **I-94's validation days are not a clean holdout.** The demand, ramp and
+    boundary inputs of the phase-1 and step-3 batteries averaged all nine
+    mornings, four of them validation days, and the Amendment-1 grid ran on
+    those inputs. The rebuilt calibration-day inputs exist but have not been run
+    (§7.5) [I94_CALIBRATION_DAYS.md §2, §6].
+16. **Unmeasured ramp-to-ramp shares.** At the T.H.52 weave the share of
+    entrants bound for the next exit is an assumed proportional split. No
+    count or published figure exists, and the fixture's flow verdict flips
+    inside its bounded range. The Ruth St weave's split has not been bounded
+    at all (§7.6) [TH52_CROSSING_SHARE.md §10.4; FRISCO_PROTOCOL.md,
+    Amendment 3].
+17. **String stability under the calibrated drivers.** At mean `a_max`
+    + 1 sd the mean driver is stable at capacity density (unstable only from
+    39.8 veh/km, against 28.2 at the measured mean), which CLAUDE.md §3.1
+    treats as a requirement. Any I-94 result on those drivers carries weaker
+    instability near capacity; on I-24 the wave criterion was lost and the
+    drivers were not adopted (§2.2, §5.7, §7.4) [DISCHARGE_CALIBRATION.md §4].
+    The onsets are recorded in the source document; no artifact holds them.
+18. **Locks.** Run sets scored before 2026-10-07 carry no lock record. The
+    detector has been reported on step 3's I-94 replicates and on 25 local
+    I-24 runs, not on the published I-24 batteries of §5.3. On I-94, 3 of 20
+    calibrated four-hour replicates locked (3–38%), from run files that are
+    not committed (§7.7) [I94_COLLAPSE_DIAGNOSIS.md §5, §10].
+19. **The shifted acceleration's cost in car following is unmeasured.** The
+    episode-fit gap RMSE of the population with mean `a_max` + 1 sd was not
+    computed, because the episodes are cloud-only data
+    [DISCHARGE_CALIBRATION.md §1].
+20. **Fixtures and platform.** The weave, crossing-share, W1 and W1b results
+    come from one 20-minute fixture of one section at its early-morning
+    demand, and from short fixtures at Ruth St, run on macOS. Fixture records
+    can differ by platform (two earlier threshold-sensitive tests landed
+    differently on Linux, §7.3), and the corridor runs on Linux decide
+    [WEAVE_LOSS_DIAGNOSIS.md §1, §7, §10.12; WEAVE_MODEL_PLAN.md, WP-85].
 
 ---
 
@@ -1810,6 +2663,17 @@ artifacts record `code_dirty: true`; that flag is a known false positive,
 and the code was the clean snapshot of `2946afc` [WEAVE_MODEL_PLAN.md,
 VM AE, provenance]. A release tag for submission, and the public repository
 URL, are for the owner to set: [repository URL and tag to be inserted].
+
+The results added on 2026-10-07 (§2.7, §4.6, §5.7, §7.4–7.7) are recorded in
+documents committed through `9bf6cc6`, each of which names the code tree it
+ran: the Amendment-1 grid at `571b9e4`, the step-3 batteries at `6de4e21`,
+the weave-loss diagnosis on a snapshot of `6de4e21`, W1's identity runs
+against `daf8826`, W1b's against `84a272e`, and the crossing-share
+sensitivity against `9bd17ff` [DISCHARGE_CALIBRATION.md §3–4;
+WEAVE_LOSS_DIAGNOSIS.md §1, §8.2, §10.8; TH52_CROSSING_SHARE.md §10.2]. The
+fixture results are macOS records. The lock counts and the residual
+decomposition were read from per-replicate files in the stage archives, which
+are not committed [I94_COLLAPSE_DIAGNOSIS.md, header; I94_RESIDUALS.md §1].
 
 **Software.** Eclipse SUMO and libsumo 1.27.1, pinned because goldens are
 per SUMO version [CLAUDE.md §9]; Python 3.12 [M3_RESULTS.md §1]. Commands
@@ -1842,6 +2706,11 @@ every criteria value to the digit [I24_VALIDATION.md §0.1, §0.12].
 | Ring wave speed vs density | `scripts/wave_speed_sitelength.py` | `artifacts/wave_speed_sitelength.json`, `artifacts/wave_speed_sitelength_i24.json` |
 | MnDOT onboarding and batteries | `scripts/mndot_fetch.py`, `onboard_corridor.py`, `corridor_demand.py`, `corridor_battery.py` | `artifacts/mndot_rounds/` [ONBOARDING_MNDOT.md §3] |
 | Lane-change measures and coverage thinning | `scripts/i24_lane_change_gaps.py`, `i24_critical_gaps.py`, `lane_change_relaxation.py`, `coverage_thinning.py` | `artifacts/i24_lane_change_gaps.json`, `artifacts/i24_critical_gaps.json`, `artifacts/lane_change_relaxation_{i24,us101}.json`, `artifacts/coverage_thinning_us101.json` |
+| Driver calibration (Amendments 1–2) and its batteries | `scripts/derive_population.py`, `calibrate_driver_grid.py`, `apply_driver_calibration.py`, `i24_fit_demand_scale.py`, `i24_validate.py`, `corridor_battery.py`, `baseline_gate.py` | `artifacts/idm_i24_capacity_amax_k{0.25,0.5,0.75,1.0}.json`, `artifacts/driver_calibration_{i24,i94}.json`, `artifacts/p3_driver_grid_2026-10-07/`, `artifacts/i24_validation_{flow_speedcal_ref,dc,dc_refit,dck025_refit,dck05_refit}.json`, `artifacts/baseline_gate_mndot_dc.json`, `artifacts/validation_mndot_i94_wb_stpaul_weave_xlsfg_dc{,_gated}.json` |
+| T.H.52 fixtures: weave loss, W1, W1b, crossing share, measured model | `scripts/merge_model_selfcheck.py` and the harnesses committed beside the artifacts | `artifacts/weave_loss_2026-10-07/`, `artifacts/th52_crossing_share_2026-10-07/`, `artifacts/p3_driver_grid_2026-10-07/th52_*.json` |
+| Merge anticipation reach | `scripts/measure_merge_anticipation.py` (`calibration.merge_anticipation`) | `artifacts/merge_anticipation_i24.json` |
+| I-94 netfix probe; calibration-day inputs | `scripts/i94_netfix_probe.py`, `i94_calibration_days.py` | `artifacts/i94_netfix_probe.json`, `artifacts/demand_mndot_i94_wb_stpaul_cal.json`, `scenarios/mndot_i94_wb_stpaul_weave_dc_cal{,_sf,_netfix}.yaml` |
+| Lock detection; string stability | `validation.locks`, `validation.string_stability` | `per_seed[i].locks` and `zero_locks` in battery artifacts written after 2026-10-07; no committed artifact carries them yet; the string-stability onsets of §2.2 are in DISCHARGE_CALIBRATION.md §4 only |
 
 **Compute.** The large batteries and sweeps ran on self-deleting cloud
 machines (n2-standard-32); for example, the re-run of the 500-run sweep
@@ -1867,8 +2736,17 @@ Every entry is cited in the text and appears in the project's reference list
 authors, years, venues and identifiers, not titles; titles and missing
 details are marked "[to complete]" and must be checked before submission.
 
+- Cassidy & Bertini (1999). Freeway bottleneck discharge below the pre-queue
+  flow. *Transportation Research Part B* 33(1) [DISCHARGE_CALIBRATION.md §1;
+  FRISCO_PROTOCOL.md, Amendment 1]. [title to complete]
+- Chen, Skabardonis & Varaiya (2004). Active-bottleneck identification.
+  *Transportation Research Record* 1867, as summarised in NCDOT report
+  2016-10 [FRISCO_PROTOCOL.md §5]. [title to complete; the 5-of-7
+  persistence rule is to be checked against the original]
 - CIRCLES MegaVanderTest, I-24, November 2022 (BAIR blog, 2025-03-25)
   [CLAUDE.md §13]. [to complete]
+- Clopper–Pearson exact binomial interval, used for lock rates
+  [I94_COLLAPSE_DIAGNOSIS.md §5]. [to complete]
 - Daganzo (1994, 1995). The cell transmission model; supply–demand
   flux [CLAUDE.md §13]. [to complete]
 - Delle Monache & Goatin (2014). Moving flux constraint. *Journal
@@ -1886,13 +2764,25 @@ details are marked "[to complete]" and must be checked before submission.
   *Transportation Research Part B* [CLAUDE.md §13; jad_derivation.md].
   [to complete]
 - Highway Capacity Manual, Edition 7.1, Chapter 13 [WEAVE_MODEL_PLAN.md,
-  WP-76]. [to complete]
+  WP-76]. Its simple weaving-volume estimate (Equations 13-2 to 13-6) is the
+  proportional split of §2.7 [TH52_CROSSING_SHARE.md §3, E8]. [to complete]
 - Ji et al. (2024). Virtual-trajectory tools for I-24 MOTION.
   arXiv:2311.10888 [I24_DATA.md §2; CLAUDE.md §13]. [title to complete]
+- Kaplan–Meier product-limit estimator, used for the censored anticipation
+  reach [MERGE_ANTICIPATION.md §0, §4]. [to complete]
+- Keep-right statutes: Tennessee Code §55-8-115; Minnesota Statutes §169.18
+  subd. 10(b); Texas Transportation Code §545.051(b)
+  [DISCHARGE_CALIBRATION.md §2].
 - Kesting & Treiber (2008). Car-following calibration methodology
   [CLAUDE.md §13]. [to complete]
+- Kwon (1999). *Estimation of the Capacity in Freeway Weaving Areas for
+  Traffic Management and Operations*. MnDOT report MN/RC-1999-40
+  [TH52_CROSSING_SHARE.md §3, E7].
 - Lighthill & Whitham (1955); Richards (1956). The LWR
   model [CLAUDE.md §13]. [to complete]
+- MnDOT. *Hwy 52 Lafayette Bridge, I-94 and I-35E in St. Paul*, study
+  January 2022 – October 2024; final report available on request
+  [TH52_CROSSING_SHARE.md §3, E1].
 - Montanino & Punzo. Reconstructed NGSIM trajectories [CLAUDE.md §13;
   ROADMAP.md §6]. [to complete]
 - Newell. First-order car-following theory; wave speed `(s0 + L)/T`
@@ -1977,6 +2867,24 @@ Single-seed probes are marked; none is a headline result on its own.
 | 50 | Partner speeds at the change, weave entering, medians | new leader minus entrant: US-101 −0.40 m/s (176 sides), I-24 −0.83 (1,612), model +1.37 (594; seed mean 1.45 [1.21, 1.68]); entrant minus new follower: US-101 +1.01 (177), I-24 +1.18 (1,488), model +0.72 (740; seed mean 0.75 [0.56, 0.95]) | — (data); 5 (model, seeds 3–7, fixture) | [artifacts/lane_change_relaxation_us101.json; artifacts/lane_change_relaxation_i24.json; model: WEAVE_MODEL_PLAN.md, WP-91, no committed artifact] |
 | 51 | Gap at the change over the population's normal, weave entering (new follower / entrant behind its new leader) | US-101 0.76 (177) / 0.57 (176); I-24 0.87 (1,454 finite values) / 0.72 (1,591), follower side not coverage-robust; model 1.05 [1.01, 1.10] (740) / 1.31 (594) | — (data); 5 (model, seeds 3–7, fixture) | [artifacts/lane_change_relaxation_us101.json; artifacts/lane_change_relaxation_i24.json; model: WEAVE_MODEL_PLAN.md, WP-88 and VM AC, no committed artifact] |
 | 52 | Collisions on the MnDOT corridor's reference battery, without and with the scripted-merge guard | 15 and 0 over 20 seeds each; paired −0.75 [−1.09, −0.41] a seed; departed −0.002 [−0.008, +0.003] | 20 seeds, paired | [artifacts/mndot_rounds/weave_2026-09-24/collisions_reference_and_guard_556f737.json; battery_reference_plus_force_guard_1259a9b.json; collisions_force_guard_and_lane_change_1259a9b.json] |
+| 53 | Merge discharge on fixtures, and the acceleration lever (diagnostic) | on-ramp fixture, I-24 fleet, 1,460 ± 20 veh/h/lane against 1,657 recorded (coverage-corrected); 1,632 at mean `a_max` + 1 sd; lane-drop discharge ÷ pre-breakdown 0.90 (I-24 fleet), 0.83 (I-94 fleet) | 20 per fixture | [DISCHARGE_CALIBRATION.md §1]; no committed artifact |
+| 54 | Observed I-94 discharge ÷ pre-breakdown flow, S790→S97 | 1.10 [0.98, 1.23]; no drop resolvable | — (8 of 9 days) | [DISCHARGE_CALIBRATION.md §1] |
+| 55 | Amendment-1 grid choice (calibration) | k = 1 (mean `a_max` 1.4833 m/s²) on both; keep-right 0 (I-24), 0.1 (I-94); discharge error 12.2% → 9.4% (I-24), 26.0% → 16.2% (I-94; S97 3,321 → 3,764 veh/h) | 1 seed per pair (I-24), 2 (I-94); 75 runs | [artifacts/driver_calibration_i24.json; artifacts/driver_calibration_i94.json; DISCHARGE_CALIBRATION.md §3] |
+| 56 | String-stability onset of the population's mean driver | 28.2 veh/km at k = 0 (capacity density 29.2), 32.5 at k = 0.5, 39.8 at k = 1; unstable share at 30 veh/km 0.43 → 0.22 | — (closed form) | [DISCHARGE_CALIBRATION.md §1, §4]; `validation.string_stability`, no committed artifact |
+| 57 | I-24 batteries with the calibrated drivers (calibration, one morning) | peak sections 5,850 / 5,821 (reference) → 6,031 / 6,025 (k = 1) → 6,047 / 5,983 veh/h (k = 1 + refit); realised demand 0.987 / 0.996 / 0.921; GEH 21.5 / 25.0 / 25.7%; RMSPE 37.2 / 78.4 / 33.3%; wave 15.9 km/h PASS / no peak / no peak | 20 per arm | [artifacts/i24_validation_flow_speedcal_ref.json; artifacts/i24_validation_dc.json; artifacts/i24_validation_dc_refit.json; DISCHARGE_CALIBRATION.md §4; MERGE_MODEL_READINESS.md §5] |
+| 58 | Amendment 2, smaller shifts with demand refits (calibration) | k = 0.25: wave 15.7 km/h, GEH 16.0%, RMSPE 34.1%, realised 0.918; k = 0.5: 15.1 km/h, 24.3%, 33.9%, 0.930; floor 0.977; none qualifies, k = 0 stays | 20 per arm | [artifacts/i24_validation_dck025_refit.json; artifacts/i24_validation_dck05_refit.json; FRISCO_PROTOCOL.md, Result of Amendment 2] |
+| 59 | I-94 protocol baseline gate, calibrated drivers (rehearsal) | C1 61.8% [56.5, 67.0] / 60.0% [54.0, 66.0] (calibration / validation; reference 15.5% / 14.5%); C3 33.9% [31.3, 36.5] / 38.8% [34.2, 43.4] (reference 49.7% / 48.7%); C4 4.9 km/h; gate fails; validation days not a clean holdout | 20 | [artifacts/baseline_gate_mndot_dc.json; artifacts/baseline_gate_mndot_i94_wb_stpaul_p1.json; DISCHARGE_CALIBRATION.md §4; I94_CALIBRATION_DAYS.md §2] |
+| 60 | I-94 S790, 06:30–07:30, calibrated drivers | 3,780–4,010 veh/h in every seed, against 4,911 observed | 20 | [I94_RESIDUALS.md §0; MERGE_MODEL_READINESS.md §5]; from the battery's per-seed station-hours |
+| 61 | I-94 lane shares; netfix probe (diagnostic) | grid 7.6–9.9 points, 5.0–8.2 with S791 reversed; probe, calibrated drivers, 8.22 → 7.26 points (5.60 → 4.57); S97 level at three of four seeds (3,746 against 3,740 veh/h), no resolved discharge effect | 2 per pair; 4 per arm | [I94_LANE_SHARES.md, Verdict and Netfix probe; artifacts/i94_netfix_probe.json] |
+| 62 | T.H.52 section test, calibrated drivers (fixture, macOS) | weave 4,361 ± 83 veh/h; no-crossing ceiling 4,826 ± 19; paired loss 465 [427, 504]; old drivers 3,873 ± 106; GEH < 5 at 1 of 20 | 20 (seeds 3–22) | [WEAVE_LOSS_DIAGNOSIS.md §2; artifacts/weave_loss_2026-10-07/arms/; artifacts/p3_driver_grid_2026-10-07/th52_section_dc_weave.json] |
+| 63 | Weave rule removals and the two levers (fixture, macOS) | largest rule removal +32 [+8, +57] veh/h; `lookahead_m` 200 m +98 [+55, +141], 300 m +177 [+134, +219] | 20 paired | [WEAVE_LOSS_DIAGNOSIS.md §4; artifacts/weave_loss_2026-10-07/arms/] |
+| 64 | Merge anticipation reach, I-24 MOTION | 125 m [107, 154] (fallback stratum, 858 entering changes, 67% censored); primary stratum 82 m [67, 154], fails the width check; proposal 120 m, the current value | — (data; 1,000 bootstrap resamples) | [artifacts/merge_anticipation_i24.json; MERGE_ANTICIPATION.md, Result] |
+| 65 | T.H.52 ramp-to-ramp share: model and exploratory reading | proportional 0.29 (fixture window), 0.18 (peak hour); counts 0.58 [0.44, 0.71], exploratory and not pre-registered; working range up to 0.70, assumed | — (9 days) | [TH52_CROSSING_SHARE.md §4–5] |
+| 66 | Section test across the share range (fixture, macOS) | GEH < 5 at 1 / 9 / 20 / 20 / 20 of 20 seeds (proportional / 0.40 / 0.50 / 0.60 / 0.70); whole test 0 / 0 / 1 / 2 / 6 of 20 | 20 per share | [artifacts/th52_crossing_share_2026-10-07/summary.json; TH52_CROSSING_SHARE.md §10.3] |
+| 67 | W1 (fixture, macOS) | flow +29.0 [+9.7, +48.3] veh/h; stranded time 18.9 → 3.8 s per run; fails F3 (1.04% at one seed) and F5 (8 of 37 runs above 1%); off | 20 paired; 37-run grid | [artifacts/weave_loss_2026-10-07/w1/; WEAVE_LOSS_DIAGNOSIS.md §8.5] |
+| 68 | Measured merge model against the weave, T.H.52 section, calibrated drivers (fixture, macOS) | −52 veh/h [−96, −9]; lowest station speed −1.20 m/s [−1.87, −0.54]; go/no-go NO-GO | 20 paired | [artifacts/p3_driver_grid_2026-10-07/th52_section_dc_measured.json; artifacts/p3_driver_grid_2026-10-07/th52_section_dc_weave.json; MERGE_MODEL_READINESS.md §2–3] |
+| 69 | I-94 locks (diagnostic) | 3 of 20 four-hour replicates at k = 1 (3–38%) against 0 of 20 at k = 0 on the same seeds (0–17%); Fisher p = 0.23 | 20 per arm | [I94_COLLAPSE_DIAGNOSIS.md §5, §10]; per-replicate files in the stage archive, not committed |
+| 70 | W1b (fixture, macOS) | 7 releases, each after exactly 60.0 s; 126 of 126 runs without a release byte-identical to their references; the one fixture lock released (1,014 of 1,014 departed against 673); five ordinary Ruth St stands of 61.5–68.5 s also released | 132 paired fixture runs | [artifacts/weave_loss_2026-10-07/w1b/criteria.json; artifacts/weave_loss_2026-10-07/w1b/releases.json; WEAVE_LOSS_DIAGNOSIS.md §10.9–10.10] |
 
 ---
 
@@ -2239,3 +3147,34 @@ Found while resolving the list:
     arms (no backward front in 0 of 20 replicates, nor in the observed
     field), FAIL as before; GEH and RMSPE reproduce to the digit
     [M3_US101_VALIDATION.md, note of 2026-09-25].
+
+Found while revising on 2026-10-07. These were not settled in this pass,
+which edited only this draft; each is left for the coordinator.
+
+19. **Which I-24 arm is "canonical".** DISCHARGE_CALIBRATION.md §4 says
+    "`i24_replica_flow_speedcal` stays canonical". I24_VALIDATION.md §0.10
+    calls that scenario the flow family's fitted arm and keeps the canonical
+    family as the published record. Both are consistent in context: the first
+    names the reference arm of the driver-calibration work. The draft calls
+    it the flow family's fitted arm, the reference for §4.6 and §5.7, and
+    keeps §5.3's record unchanged. *Open; terminology only.*
+20. **The I-24 plateau in CHANGELOG 2026-10-07.** The entry for the
+    Amendment-1 grid still reads the I-24 plateau "as demand-limited", with
+    no dated note. The step-3 entry of the same date and
+    DISCHARGE_CALIBRATION.md §3 carry the correction: a merge and discharge
+    shortfall. The draft follows the correction (§5.7). *Open; correction
+    text for the coordinator.*
+21. **Two string-stability readings.** DISCHARGE_CALIBRATION.md §1 gives the
+    onset of instability as 29 veh/km (I-24 fleet) and 35 veh/km (I-94 fleet)
+    today, against 41 and 49 at + 1 sd. §4 gives 28.2 against 39.8 veh/km for
+    the population's mean driver with 5 m vehicles. On I-24 the two differ by
+    about 1 veh/km. §1 does not state its vehicle length or desired speed, so
+    the cause of the difference is not established here. The draft quotes §4
+    with its definition (§2.2, ledger row 56). *Open.*
+22. **The netfix rule of stage p8.** I94_CALIBRATION_DAYS.md §6 records the
+    rule that lets p8 run the netfix battery as holding (S97 discharge error
+    0.326 → 0.163). I94_COLLAPSE_DIAGNOSIS.md §5 shows that it holds only
+    through the one collapsed as-built run; at the three unlocked seeds the
+    errors are 0.167 against 0.166, and the condition fails. The draft does
+    not use the rule. Whether to run `_dc_cal_netfix` rests on the fix as an
+    input correction, which is the owner's decision. *Open.*

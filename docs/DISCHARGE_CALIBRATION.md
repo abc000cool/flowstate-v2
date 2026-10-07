@@ -249,8 +249,9 @@ CLAUDE.md §3.1 makes instability near capacity a requirement, not an option.
   adopted as the canonical I-24 arm: a slightly better GEH and RMSPE bought
   with a backlog of 8 % of the demand and the loss of the emergent-wave
   criterion is not an improvement of this model, and I-24's real shortfall —
-  merge/discharge capacity at about 6,030 against 6,630 veh/h — is untouched. `i24_replica_flow_speedcal` stays canonical; `_dc_refit` is kept as a
-  documented alternative.
+  merge/discharge capacity at about 6,030 against 6,630 veh/h — is untouched. The canonical I-24 arm (`i24_replica_speedcal`) and the Amendment-1
+  reference (`i24_replica_flow_speedcal`) are unchanged; `_dc_refit` is kept as
+  a documented alternative.
 - The one-recipe-for-all-corridors reading of Amendment 1 does not hold: the
   same driver shift helps the weaving corridor and hurts the wave corridor.
   Whether a smaller shift (k = 0.25 or 0.5, with its own demand refit) keeps
