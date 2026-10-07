@@ -2,6 +2,7 @@ import { Navigate, Route, Routes } from 'react-router-dom';
 import { AppStateProvider } from './components/AppContext';
 import { GuidedFirstRun } from './components/GuidedFirstRun';
 import { Layout } from './components/Layout';
+import { CompareView } from './views/CompareView';
 import { OnboardView } from './views/OnboardView';
 import { ReportsView } from './views/ReportsView';
 import { RunDetailView } from './views/RunDetailView';
@@ -23,6 +24,7 @@ export function App(): JSX.Element {
           <Route path="/runs" element={<RunsView />} />
           <Route path="/runs/:runId" element={<RunDetailView />} />
           <Route path="/sweeps" element={<SweepsView />} />
+          <Route path="/compare" element={<CompareView />} />
           <Route path="/reports" element={<ReportsView />} />
           <Route path="*" element={<Navigate to="/scenarios" replace />} />
         </Route>

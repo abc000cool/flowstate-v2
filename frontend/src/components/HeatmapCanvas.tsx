@@ -16,7 +16,14 @@
  * headed by `#` provenance lines: run, tier ("screening" for a macro run),
  * seed and replicate, config hash, units, bin sizes and export time.
  * The plot follows its container through a ResizeObserver, so it tracks a
- * sidebar collapse, not only window resizes. */
+ * sidebar collapse, not only window resizes.
+ *
+ * Two fields compared side by side (views/CompareView.tsx) share their axes
+ * through `extent` (`unionExtent` of both) and their colour scale by
+ * construction: the ramps have fixed domains, never a per-field range. A
+ * field narrower than the shared axes is drawn where its bins fall, and the
+ * plot outside it stays blank. `showLegend={false}` leaves the legend and the
+ * caption to the page, which draws them once under both plots. */
 
 import {
   useCallback,
@@ -62,6 +69,14 @@ export function heatmapHeight(cssW: number): number {
   return Math.round(Math.min(460, Math.max(floor, cssW * 0.42)));
 }
 
+/** The outer edges of a plot's axes [s, m]. */
+export interface HeatExtent {
+  t0: number;
+  t1: number;
+  x0: number;
+  x1: number;
+}
+
 /** True when the API returned no bins on either axis. */
 export function isEmptyHeatmap(h: Heatmap): boolean {
   return h.values.length === 0 || h.values[0].length === 0;
@@ -69,7 +84,7 @@ export function isEmptyHeatmap(h: Heatmap): boolean {
 
 /** Outer edges of the field. The API sends bin centers; extend by half a bin
  * on each side so the outer bins are drawn at full width. */
-export function heatmapExtent(h: Heatmap): { t0: number; t1: number; x0: number; x1: number } {
+export function heatmapExtent(h: Heatmap): HeatExtent {
   const half = (c: number[]): number => (c.length > 1 ? (c[1] - c[0]) / 2 : 0.5);
   return {
     t0: (h.t_bins[0] ?? 0) - half(h.t_bins),
@@ -77,6 +92,25 @@ export function heatmapExtent(h: Heatmap): { t0: number; t1: number; x0: number;
     x0: (h.x_bins[0] ?? 0) - half(h.x_bins),
     x1: (h.x_bins[h.x_bins.length - 1] ?? 1) + half(h.x_bins),
   };
+}
+
+/** The smallest extent covering every field: shared axes for fields drawn
+ * side by side. */
+export function unionExtent(fields: Heatmap[]): HeatExtent | null {
+  if (fields.length === 0) return null;
+  const all = fields.map(heatmapExtent);
+  return {
+    t0: Math.min(...all.map((e) => e.t0)),
+    t1: Math.max(...all.map((e) => e.t1)),
+    x0: Math.min(...all.map((e) => e.x0)),
+    x1: Math.max(...all.map((e) => e.x1)),
+  };
+}
+
+/** Whether two extents are the same span (to a micrometre / microsecond). */
+export function sameExtent(a: HeatExtent, b: HeatExtent): boolean {
+  const eq = (u: number, v: number): boolean => Math.abs(u - v) <= 1e-6 * Math.max(1, Math.abs(u), Math.abs(v));
+  return eq(a.t0, b.t0) && eq(a.t1, b.t1) && eq(a.x0, b.x0) && eq(a.x1, b.x1);
 }
 
 /** The binned field as CSV in SI units: `t_s,x_m,speed_ms` (or
@@ -364,12 +398,21 @@ interface Cursor {
 const IDLE_READOUT =
   'Hover the field, or focus it and use the arrow keys, to read values.';
 
+/** How to read the plot's orientation; under the legend. */
+export const HEATMAP_CAPTION = 'Downstream is up. Waves travelling upstream slope down to the right.';
+
 export function HeatmapCanvas({
   heatmap,
   field,
+  extent,
+  showLegend = true,
 }: {
   heatmap: Heatmap;
   field: HeatField;
+  /** Axes shared with another plot (`unionExtent`); default: this field's own. */
+  extent?: HeatExtent | null;
+  /** False leaves the legend and caption to the page (one under two plots). */
+  showLegend?: boolean;
 }): JSX.Element {
   const wrapRef = useRef<HTMLDivElement>(null);
   const baseRef = useRef<HTMLCanvasElement>(null);
@@ -385,8 +428,19 @@ export function HeatmapCanvas({
 
   const nt = heatmap.values.length;
   const nx = nt > 0 ? heatmap.values[0].length : 0;
-  const { t0, t1, x0, x1 } = useMemo(() => heatmapExtent(heatmap), [heatmap]);
+  // the field's own edges, and the axes it is drawn on (the same unless a
+  // shared extent was passed)
+  const own = useMemo(() => heatmapExtent(heatmap), [heatmap]);
+  const t0 = extent?.t0 ?? own.t0;
+  const t1 = extent?.t1 ?? own.t1;
+  const x0 = extent?.x0 ?? own.x0;
+  const x1 = extent?.x1 ?? own.x1;
   const xSpan = x1 - x0;
+  // where the bins sit inside the plot [px]: the whole plot on own axes
+  const dataL = MARGIN.l + ((own.t0 - t0) / (t1 - t0)) * plotW;
+  const dataW = ((own.t1 - own.t0) / (t1 - t0)) * plotW;
+  const dataT = MARGIN.t + ((x1 - own.x1) / (x1 - x0)) * plotH;
+  const dataH = ((own.x1 - own.x0) / (x1 - x0)) * plotH;
 
   /* follow the container's width (sidebar collapse included) */
   useEffect(() => {
@@ -443,7 +497,7 @@ export function HeatmapCanvas({
     }
     offCtx.putImageData(img, 0, 0);
     ctx.imageSmoothingEnabled = false;
-    ctx.drawImage(off, 0, 0, nt, nx, MARGIN.l, MARGIN.t, plotW, plotH);
+    ctx.drawImage(off, 0, 0, nt, nx, dataL, dataT, dataW, dataH);
     ctx.imageSmoothingEnabled = true;
 
     // --- null bins: themed background + 45° hatch, one path of column runs ---
@@ -469,8 +523,8 @@ export function HeatmapCanvas({
       return ctx.createPattern(tile, 'repeat');
     })();
     if (pattern) {
-      const bw = plotW / nt;
-      const bh = plotH / nx;
+      const bw = dataW / nt;
+      const bh = dataH / nx;
       const path = new Path2D();
       let any = false;
       for (let it = 0; it < nt; it++) {
@@ -484,7 +538,7 @@ export function HeatmapCanvas({
           const start = ix;
           while (ix < nx && (col[ix] === null || !Number.isFinite(col[ix] as number))) ix++;
           // rows [start, ix) in position order; position increases upward
-          path.rect(MARGIN.l + it * bw, MARGIN.t + plotH - ix * bh, bw, (ix - start) * bh);
+          path.rect(dataL + it * bw, dataT + dataH - ix * bh, bw, (ix - start) * bh);
           any = true;
         }
       }
@@ -543,7 +597,7 @@ export function HeatmapCanvas({
     ctx.textBaseline = 'middle';
     ctx.fillText(`Position (${distUnit(xSpan)})`, 0, 0);
     ctx.restore();
-  }, [heatmap, field, theme, cssW, cssH, plotW, plotH, nt, nx, t0, t1, x0, x1, xSpan]);
+  }, [heatmap, field, theme, cssW, cssH, plotW, plotH, nt, nx, t0, t1, x0, x1, xSpan, dataL, dataT, dataW, dataH]);
 
   /* crosshair overlay: solid halo then line, never dashed */
   useEffect(() => {
@@ -593,10 +647,10 @@ export function HeatmapCanvas({
     (it: number, ix: number): Cursor => ({
       it,
       ix,
-      px: MARGIN.l + ((it + 0.5) / nt) * plotW,
-      py: MARGIN.t + (1 - (ix + 0.5) / nx) * plotH,
+      px: dataL + ((it + 0.5) / nt) * dataW,
+      py: dataT + (1 - (ix + 0.5) / nx) * dataH,
     }),
-    [nt, nx, plotW, plotH],
+    [nt, nx, dataL, dataT, dataW, dataH],
   );
 
   const onMove = useCallback(
@@ -604,22 +658,23 @@ export function HeatmapCanvas({
       const rect = e.currentTarget.getBoundingClientRect();
       const mx = e.clientX - rect.left;
       const my = e.clientY - rect.top;
+      // outside the bins (the margins, or the blank part of shared axes)
       if (
         nt === 0 ||
         nx === 0 ||
-        mx < MARGIN.l ||
-        mx > MARGIN.l + plotW ||
-        my < MARGIN.t ||
-        my > MARGIN.t + plotH
+        mx < dataL ||
+        mx > dataL + dataW ||
+        my < dataT ||
+        my > dataT + dataH
       ) {
         if (!focused) setCursor(null);
         return;
       }
-      const it = Math.min(nt - 1, Math.max(0, Math.floor(((mx - MARGIN.l) / plotW) * nt)));
-      const ix = Math.min(nx - 1, Math.max(0, Math.floor((1 - (my - MARGIN.t) / plotH) * nx)));
+      const it = Math.min(nt - 1, Math.max(0, Math.floor(((mx - dataL) / dataW) * nt)));
+      const ix = Math.min(nx - 1, Math.max(0, Math.floor((1 - (my - dataT) / dataH) * nx)));
       setCursor({ it, ix, px: mx, py: my });
     },
-    [nt, nx, plotW, plotH, focused],
+    [nt, nx, dataL, dataT, dataW, dataH, focused],
   );
 
   const onKeyDown = (e: ReactKeyboardEvent<HTMLDivElement>): void => {
@@ -661,10 +716,12 @@ export function HeatmapCanvas({
       )} · ${formatBinValue(field, value)}`
     : null;
 
-  const unit = distUnit(xSpan);
+  // the field's own span, which on shared axes can be less than the axes
+  const ownSpan = own.x1 - own.x0;
+  const unit = distUnit(ownSpan);
   const ariaLabel =
-    `Space–time ${field} field, ${formatTickMin(t0)}–${formatTickMin(t1)} min, ` +
-    `${formatTickDist(x0, xSpan)}–${formatTickDist(x1, xSpan)} ${unit}. ` +
+    `Space–time ${field} field, ${formatTickMin(own.t0)}–${formatTickMin(own.t1)} min, ` +
+    `${formatTickDist(own.x0, ownSpan)}–${formatTickDist(own.x1, ownSpan)} ${unit}. ` +
     `Colour scale ${LEGENDS[field].range}.`;
 
   return (
@@ -698,13 +755,11 @@ export function HeatmapCanvas({
           style={{ left: MARGIN.l, top: MARGIN.t, width: plotW, height: plotH }}
         />
       </div>
-      <RampLegend field={field} />
+      {showLegend && <RampLegend field={field} />}
       <div className={`heatmap-readout${readout ? '' : ' idle'}`} aria-live={focused ? 'polite' : 'off'}>
         {readout ?? IDLE_READOUT}
       </div>
-      <p className="heatmap-caption">
-        Downstream is up. Waves travelling upstream slope down to the right.
-      </p>
+      {showLegend && <p className="heatmap-caption">{HEATMAP_CAPTION}</p>}
     </div>
   );
 }

@@ -71,6 +71,7 @@ describe('navigation', () => {
     expect(within(group('Simulate')).getAllByRole('link').map((a) => a.textContent)).toEqual([
       'Runs',
       'Sweeps',
+      'Compare',
     ]);
     expect(within(group('Report')).getAllByRole('link').map((a) => a.textContent)).toEqual([
       'Reports',

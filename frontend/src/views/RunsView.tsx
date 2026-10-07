@@ -63,6 +63,7 @@ import { ProgressBar, SeededBadge, StatusChip, TierBadge } from '../components/b
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { Icon } from '../components/icons';
 import { PageHeader } from '../components/PageHeader';
+import { RunFilterGroup } from '../components/RunFilterGroup';
 import { toast, toastError } from '../components/toast';
 import { Callout } from '../components/ui/Callout';
 import { HashValue } from '../components/ui/CopyButton';
@@ -139,58 +140,6 @@ const STATUS_CHIP_LABELS: Record<RunStatus, string> = {
   failed: 'Failed',
 };
 const TIER_CHIP_LABELS: Record<string, string> = { micro: 'Micro', macro: 'Macro' };
-
-/** One dimension of the filter bar: "All" plus a toggle button per value,
- * each with the rows it would show. */
-function FilterGroup({
-  id,
-  label,
-  facet,
-  chosen,
-  labelFor,
-  titleFor,
-  onAll,
-  onToggle,
-}: {
-  id: RunFilterKey;
-  label: string;
-  facet: ReturnType<typeof runFacet>;
-  chosen: string[];
-  labelFor: (value: string) => string;
-  titleFor?: (value: string) => string | undefined;
-  onAll: () => void;
-  onToggle: (value: string) => void;
-}): JSX.Element {
-  return (
-    <div className="runs-filter-group" role="group" aria-labelledby={`runs-filter-${id}`}>
-      <span className="runs-filter-label" id={`runs-filter-${id}`}>
-        {label}
-      </span>
-      <button
-        type="button"
-        className="chip-toggle filter-chip"
-        aria-pressed={chosen.length === 0}
-        onClick={onAll}
-      >
-        <span className="filter-chip-label">All</span>
-        <span className="filter-chip-count mono">{facet.total}</span>
-      </button>
-      {facet.values.map(({ value, count }) => (
-        <button
-          key={value}
-          type="button"
-          className="chip-toggle filter-chip"
-          aria-pressed={chosen.includes(value)}
-          title={titleFor?.(value)}
-          onClick={() => onToggle(value)}
-        >
-          <span className="filter-chip-label">{labelFor(value)}</span>
-          <span className="filter-chip-count mono">{count}</span>
-        </button>
-      ))}
-    </div>
-  );
-}
 
 export function RunsView(): JSX.Element {
   const [runs, setRuns] = useState<RunSummary[] | null>(null);
@@ -874,7 +823,7 @@ export function RunsView(): JSX.Element {
               // URL already chose something in it
               if (key !== 'status' && facet.values.length < 2 && chosen.length === 0) return null;
               return (
-                <FilterGroup
+                <RunFilterGroup
                   key={key}
                   id={key}
                   label={key === 'status' ? 'Status' : key === 'tier' ? 'Tier' : 'Scenario'}

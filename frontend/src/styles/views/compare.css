@@ -1,0 +1,260 @@
+/* Compare view (views/CompareView.tsx): two finished runs side by side. The
+   pickers' filter chips are the Runs view's (.runs-filter-*, runs.css), the
+   facts are the shared .fact-list, the table is table.data and the plots are
+   the heatmap's own (viz.css); only the side-by-side layout and the metric
+   table's cells live here. Tokens only, so both themes follow.
+
+   Two columns where the panel is wide enough, one under the other below
+   (phone width, a narrow window, a collapsed layout): container queries on
+   the panel, so the split follows the panel rather than the window. */
+
+/* ------------------------------ pickers ------------------------------- */
+
+.compare-pick-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-6);
+}
+@container (min-width: 720px) {
+  .compare-pick-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.compare-side {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+/* run labels are long (id · scenario · tier · reps · hash): mono, and never
+   wider than the column */
+.compare-side select.input {
+  width: 100%;
+  font-family: var(--font-mono);
+  font-size: var(--text-12);
+  letter-spacing: var(--tracking-none);
+}
+
+.compare-list-error {
+  margin-bottom: var(--space-4);
+}
+
+.compare-facts,
+.compare-facts-loading {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.compare-run-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.compare-run-id {
+  font-size: var(--text-13);
+  font-weight: var(--weight-medium);
+  color: var(--text-primary);
+}
+.compare-run-id:hover {
+  text-decoration: underline;
+}
+
+.compare-setup-source {
+  margin: 0;
+  max-width: var(--prose-max);
+  font-size: var(--text-12);
+  line-height: var(--leading-12);
+  color: var(--text-secondary);
+}
+
+/* the warnings and notes about what B − A folds in */
+.compare-notes {
+  margin: 0;
+  padding-left: var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.compare-notready,
+.compare-errors {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+/* --------------------------- metric table ----------------------------- */
+
+/* the group rows and row headers sit in the body: not sticky, and not
+   styled as column headers */
+table.data.compare-table tbody th {
+  position: static;
+  z-index: auto;
+  background: transparent;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+table.data.compare-table thead th.num {
+  white-space: nowrap;
+}
+
+.compare-col-id {
+  margin-left: var(--space-1);
+  font-weight: var(--weight-regular);
+}
+
+table.data.compare-table tr.compare-group th {
+  padding-top: var(--space-4);
+  color: var(--text-primary);
+  font-size: var(--text-13);
+  line-height: var(--leading-13);
+  font-weight: var(--weight-semibold);
+  border-bottom: 1px solid var(--border-default);
+}
+table.data.compare-table tbody tr.compare-group:hover {
+  background: transparent;
+}
+
+table.data.compare-table th.compare-metric {
+  vertical-align: top;
+  white-space: normal;
+  min-width: 160px;
+  text-align: left;
+}
+
+.compare-metric-label {
+  display: block;
+  color: var(--text-primary);
+  font-size: var(--text-12);
+  line-height: var(--leading-12);
+  font-weight: var(--weight-medium);
+  letter-spacing: var(--tracking-caps);
+}
+
+.compare-metric-unit,
+.compare-metric-good {
+  display: block;
+  font-weight: var(--weight-regular);
+  letter-spacing: var(--tracking-none);
+}
+.compare-metric-unit {
+  font-family: var(--font-mono);
+}
+
+/* a run's cell: the mean, then its interval and n, then a badge */
+table.data.compare-table td.compare-stat {
+  vertical-align: top;
+}
+.compare-stat > span {
+  display: block;
+}
+.compare-stat > .tag {
+  display: inline-flex;
+  margin-top: var(--space-1);
+}
+
+.compare-mean {
+  color: var(--text-primary);
+  font-size: var(--text-13);
+  line-height: var(--leading-13);
+  font-weight: var(--weight-medium);
+}
+
+.compare-ci {
+  color: var(--text-secondary);
+  font-size: var(--text-11);
+  line-height: var(--leading-11);
+}
+
+/* no value is a word, never a zero */
+.compare-absent {
+  color: var(--text-secondary);
+  font-family: var(--font-sans);
+  font-style: italic;
+}
+
+table.data.compare-table td.compare-diff,
+table.data.compare-table td.compare-rel {
+  vertical-align: top;
+  color: var(--text-primary);
+  font-size: var(--text-13);
+  font-weight: var(--weight-medium);
+}
+table.data.compare-table td.compare-none {
+  color: var(--text-secondary);
+  font-weight: var(--weight-regular);
+}
+
+.compare-diff-note {
+  margin: 0;
+  max-width: var(--prose-max);
+  font-size: var(--text-12);
+  line-height: var(--leading-12);
+  color: var(--text-secondary);
+}
+
+/* ------------------------------ fields -------------------------------- */
+
+.compare-field-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.compare-heat-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-6);
+}
+@container (min-width: 880px) {
+  .compare-heat-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+/* each plot sizes its states from its own width (viz.css uses cqw) */
+.compare-heat-side {
+  container-type: inline-size;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.compare-heat-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+  min-height: var(--control-h-sm);
+}
+
+.compare-heat-title {
+  margin: 0;
+  font-size: var(--text-13);
+  line-height: var(--leading-13);
+  font-weight: var(--weight-semibold);
+  color: var(--text-primary);
+}
+.compare-heat-title .mono {
+  font-size: var(--text-12);
+  font-weight: var(--weight-medium);
+}
+
+.compare-heat-seed {
+  font-size: var(--text-12);
+  line-height: var(--leading-12);
+  color: var(--text-secondary);
+}
+
+.compare-field-notes {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}

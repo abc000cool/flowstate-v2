@@ -439,9 +439,14 @@ export function getRunMetrics(runId: string): Promise<RunMetrics> {
   return request<RunMetrics>(`/runs/${encodeURIComponent(runId)}/metrics`);
 }
 
-export function getRunHeatmap(runId: string, field: HeatField): Promise<Heatmap> {
+/** `GET /runs/{id}/heatmap`: one replicate's binned field, the run's first
+ * seed unless `seed` names another (the API answers 404 for a seed the run
+ * did not run). The demo backend ignores `seed`; the answer's own `seed`
+ * says which replicate it is, whatever was asked. */
+export function getRunHeatmap(runId: string, field: HeatField, seed?: number): Promise<Heatmap> {
   if (isMockActive()) return mock.mockGetRunHeatmap(runId, field);
-  return request<Heatmap>(`/runs/${encodeURIComponent(runId)}/heatmap?field=${field}`);
+  const s = seed === undefined ? '' : `&seed=${encodeURIComponent(seed)}`;
+  return request<Heatmap>(`/runs/${encodeURIComponent(runId)}/heatmap?field=${field}${s}`);
 }
 
 /** `POST /sweeps` answers 202 with the full `SweepOut` (cells still without

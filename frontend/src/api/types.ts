@@ -150,6 +150,11 @@ export interface RunSummary {
   run_id: string;
   scenario_id: string;
   scenario_name?: string;
+  /** The sweep this run is a cell of (`RunOut.sweep_id`), null for a run
+   * launched on its own. A sweep cell's controller, penetration and
+   * compliance are its cell's (`GET /sweeps/{id}`), not its scenario's.
+   * Optional: the demo backend and an older service leave it out. */
+  sweep_id?: string | null;
   status: RunStatus;
   progress: RunProgress;
   config_hash: string;

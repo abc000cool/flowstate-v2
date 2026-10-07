@@ -129,6 +129,12 @@ table.data.weave-table th {
   vertical-align: bottom;
 }
 
+/* "Compare with…" sits beside it; both start at the top, since the report
+   action can carry its reason underneath */
+.run-detail .page-actions {
+  align-items: flex-start;
+}
+
 /* ---- "Report on this run" (§10.4 P2), in the page-header actions ---- */
 /* Disabled with its reason beside it when the run cannot be reported (a
    macro run, or one not done), never hidden. */

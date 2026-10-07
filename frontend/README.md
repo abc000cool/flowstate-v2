@@ -41,4 +41,4 @@ live in localStorage; change them from the Settings drawer in the left rail.
 - `src/api/client.ts` — typed fetch client for the v2 API contract
 - `src/mocks/` — mock backend + synthetic space-time field generators
 - `src/components/HeatmapCanvas.tsx` — canvas space-time diagram w/ crosshair
-- `src/views/` — Scenarios / Runs / Run detail / Sweeps / Reports
+- `src/views/` — Scenarios / Runs / Run detail / Sweeps / Compare (`/compare?a=&b=`) / Reports

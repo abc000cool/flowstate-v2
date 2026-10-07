@@ -260,6 +260,21 @@ const ICON_NODES = {
       <path d="m12 5 7 7-7 7" />
     </>
   ),
+  // added for Compare (two runs side by side): the nav entry and "Swap A and B"
+  'columns-2': (
+    <>
+      <rect width="18" height="18" x="3" y="3" rx="2" />
+      <path d="M12 3v18" />
+    </>
+  ),
+  'arrow-left-right': (
+    <>
+      <path d="M8 3 4 7l4 4" />
+      <path d="M4 7h16" />
+      <path d="m16 21 4-4-4-4" />
+      <path d="M20 17H4" />
+    </>
+  ),
 } satisfies Record<string, ReactElement>;
 
 /** Lucide icon names available in this file. */
@@ -328,3 +343,5 @@ export const IconLoaderCircle = (p: IconProps): JSX.Element => <Icon name="loade
 export const IconRefreshCw = (p: IconProps): JSX.Element => <Icon name="refresh-cw" {...p} />;
 export const IconSearch = (p: IconProps): JSX.Element => <Icon name="search" {...p} />;
 export const IconArrowRight = (p: IconProps): JSX.Element => <Icon name="arrow-right" {...p} />;
+export const IconColumns2 = (p: IconProps): JSX.Element => <Icon name="columns-2" {...p} />;
+export const IconArrowLeftRight = (p: IconProps): JSX.Element => <Icon name="arrow-left-right" {...p} />;

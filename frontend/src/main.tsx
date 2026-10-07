@@ -15,6 +15,7 @@ import './styles/views/onboard.css';
 import './styles/views/runs.css';
 import './styles/views/run-detail.css';
 import './styles/views/sweeps.css';
+import './styles/views/compare.css';
 import './styles/views/reports.css';
 import './styles/views/first-run.css';
 

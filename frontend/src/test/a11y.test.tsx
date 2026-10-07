@@ -69,6 +69,11 @@ describe('accessibility audit: every route on demo data', () => {
       () => screen.findByRole('img', { name: /^Space–time speed field/ }, { timeout: 4000 }),
     ],
     ['/sweeps', () => screen.findByRole('heading', { level: 1, name: 'Sweeps' })],
+    // the demo baseline beside the demo follower_stopper run: both fields drawn
+    [
+      '/compare?a=run-8f2c11&b=run-a41d09',
+      () => screen.findAllByRole('img', { name: /^Space–time speed field/ }, { timeout: 4000 }),
+    ],
     // a sweep id while offline is refused rather than drawn from demo data;
     // the matrix is audited against the live API below
     ['/sweeps?sweep=sw-demo', () => screen.findByText(/could not be loaded/, {}, { timeout: 4000 })],

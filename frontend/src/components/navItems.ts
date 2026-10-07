@@ -25,6 +25,8 @@ export const NAV_GROUPS: { id: string; label: string; items: NavEntry[] }[] = [
     items: [
       { to: '/runs', label: 'Runs', icon: 'activity' },
       { to: '/sweeps', label: 'Sweeps', icon: 'grid-3x3' },
+      // two finished runs side by side (views/CompareView.tsx)
+      { to: '/compare', label: 'Compare', icon: 'columns-2' },
     ],
   },
   {

@@ -28,6 +28,7 @@ const PALETTE_LABELS = [
   'Go to Scenarios',
   'Go to Runs',
   'Go to Sweeps',
+  'Go to Compare',
   'Go to Reports',
   'Go to First run',
   'Launch a ring_sugiyama run…',
@@ -366,7 +367,7 @@ describe('command palette: keyboard model', () => {
     renderShell();
     pressShortcut();
     const list = within(palette()).getByRole('listbox', { name: 'Commands' });
-    for (const page of ['Onboard corridor', 'Scenarios', 'Runs', 'Sweeps', 'Reports', 'First run']) {
+    for (const page of ['Onboard corridor', 'Scenarios', 'Runs', 'Sweeps', 'Compare', 'Reports', 'First run']) {
       expect(within(list).getByRole('option', { name: `Go to ${page}` })).toBeInTheDocument();
     }
     expect(within(list).getByRole('option', { name: 'Launch a ring_sugiyama run…' })).toBeInTheDocument();

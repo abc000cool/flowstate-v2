@@ -14,11 +14,12 @@
  * leaves the source unknown, and the view says exactly that rather than
  * assuming the preset. */
 
-import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
 import { getRun, getRunHeatmap, getRunMetrics, isMockActive } from '../api/client';
 import type { HeatField, Heatmap, RunDetail, RunMetrics } from '../api/types';
 import { useAppState } from '../components/AppContext';
+import { FieldTabs } from '../components/FieldTabs';
 import { ProgressBar, SeededBadge, StatusChip, TierBadge } from '../components/bits';
 import { downloadHeatmapCSV, HeatmapCanvas, isEmptyHeatmap } from '../components/HeatmapCanvas';
 import { Icon } from '../components/icons';
@@ -36,7 +37,6 @@ import { failureReason, formatFetchError } from '../lib/format';
 import { FOCUS_CONTENT_STATE, useAuthFailed, usePoll } from '../lib/hooks';
 import { groupedMetricKeys } from '../lib/metrics';
 
-const FIELDS: HeatField[] = ['speed', 'density'];
 const METRIC_SKELETONS = 8;
 
 const FD_PRESET_TITLE =
@@ -53,43 +53,6 @@ function RetryButton({ onClick }: { onClick: () => void }): JSX.Element {
       <Icon name="refresh-cw" size={14} />
       Retry
     </button>
-  );
-}
-
-/** SPEED | DENSITY segmented tabs; Left/Right move and select. */
-function FieldTabs({
-  field,
-  onChange,
-}: {
-  field: HeatField;
-  onChange: (f: HeatField) => void;
-}): JSX.Element {
-  const onKeyDown = (e: KeyboardEvent<HTMLDivElement>): void => {
-    if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
-    e.preventDefault();
-    const i = FIELDS.indexOf(field);
-    const next = FIELDS[(i + (e.key === 'ArrowRight' ? 1 : FIELDS.length - 1)) % FIELDS.length];
-    onChange(next);
-    e.currentTarget.querySelector<HTMLButtonElement>(`#field-tab-${next}`)?.focus();
-  };
-  return (
-    <div className="seg" role="tablist" aria-label="Heatmap field" onKeyDown={onKeyDown}>
-      {FIELDS.map((f) => (
-        <button
-          key={f}
-          id={`field-tab-${f}`}
-          type="button"
-          role="tab"
-          aria-selected={field === f}
-          aria-controls="field-tabpanel"
-          tabIndex={field === f ? 0 : -1}
-          className={field === f ? 'active' : ''}
-          onClick={() => onChange(f)}
-        >
-          {f.toUpperCase()}
-        </button>
-      ))}
-    </div>
   );
 }
 
@@ -138,6 +101,23 @@ function ReportOnRun({ runId, run }: { runId: string; run: RunDetail }): JSX.Ele
         </>
       )}
     </div>
+  );
+}
+
+/** "Compare with…": Compare with this run as A (`/compare?a=<run_id>`), the
+ * other run still to be picked. Only for a finished run: Compare reads
+ * metrics and fields, which a run has once it is done. */
+function CompareWith({ runId }: { runId: string }): JSX.Element {
+  return (
+    <Link
+      className="btn"
+      to={`/compare?a=${encodeURIComponent(runId)}`}
+      state={FOCUS_CONTENT_STATE}
+      title="Put this run beside another finished run: metrics with their CIs, B − A, and both fields"
+    >
+      <Icon name="columns-2" size={16} />
+      Compare with…
+    </Link>
   );
 }
 
@@ -270,7 +250,14 @@ export function RunDetailView(): JSX.Element {
       <PageHeader
         title={<span className="run-title">{runId}</span>}
         documentTitle={runId}
-        actions={run ? <ReportOnRun runId={runId} run={run} /> : undefined}
+        actions={
+          run ? (
+            <>
+              {run.status === 'done' && <CompareWith runId={runId} />}
+              <ReportOnRun runId={runId} run={run} />
+            </>
+          ) : undefined
+        }
         meta={
           run && (
             <>
