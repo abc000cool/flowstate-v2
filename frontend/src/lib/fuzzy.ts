@@ -5,7 +5,13 @@
  * A word scores highest as a prefix of the label, then at the start of a
  * word in it, then anywhere in it, then as a subsequence ("gtr" in "Go to
  * Reports"); the same match in the keywords counts for less and highlights
- * nothing. Pure and deterministic, so the ranking is unit-tested. */
+ * nothing. Pure and deterministic, so the ranking is unit-tested.
+ *
+ * A word that is a subsequence of the text always matches. Among its
+ * alignments the one that scores best is chosen (letters on word starts,
+ * then a tight span), so "goto" finds "Go to Onboard corridor" even though
+ * its second "o" could start "onboard": a greedy jump to the next word start
+ * would strand the "t" it still needs. */
 
 export interface FuzzyMatch {
   score: number;
@@ -40,24 +46,66 @@ function matchWord(word: string, text: string): FuzzyMatch | null {
     if (word.length === text.length) score += 20;
     return { score, indices };
   }
-  // subsequence: greedy, but jump to the next word start when it fits
-  const indices: number[] = [];
-  let from = 0;
-  for (const ch of word) {
-    let i = text.indexOf(ch, from);
-    if (i === -1) return null;
-    for (let j = i; j !== -1; j = text.indexOf(ch, j + 1)) {
-      if (isWordStart(text, j)) {
-        i = j;
-        break;
+  return matchSubsequence(word, text);
+}
+
+/** Extra score per subsequence letter that lands on a word start; each letter
+ * skipped inside the span costs one. */
+const WORD_START_BONUS = 4;
+
+/** `word` as a (non-contiguous) subsequence of `text`, both lower-case: the
+ * alignment with the best score, or null when `word` is not a subsequence.
+ *
+ * The score is `30 − (span − |word|) + 4 · word starts`, and `span − 1` is
+ * the sum of the steps between consecutive matched letters, so the score
+ * splits per letter and a dynamic programme over (letter, position) finds the
+ * best alignment exactly, in O(|word| · |text|). Ties go to the earliest
+ * positions. */
+function matchSubsequence(word: string, text: string): FuzzyMatch | null {
+  const m = word.length;
+  const n = text.length;
+  // best[k][i]: the highest `bonus − (i − first)` over alignments of
+  // word[0..k] whose letter k sits at text[i]; -Infinity where none exists.
+  // from[k][i]: where letter k − 1 sits in that alignment.
+  const best: number[][] = [];
+  const from: number[][] = [];
+  for (let k = 0; k < m; k++) {
+    const row = new Array<number>(n).fill(-Infinity);
+    const back = new Array<number>(n).fill(-1);
+    const prev = k > 0 ? best[k - 1] : null;
+    // max over j < i of prev[j] + j, and the earliest j that reaches it
+    let carry = -Infinity;
+    let carryAt = -1;
+    for (let i = 0; i < n; i++) {
+      if (prev !== null && i > 0 && prev[i - 1] + (i - 1) > carry) {
+        carry = prev[i - 1] + (i - 1);
+        carryAt = i - 1;
+      }
+      if (text[i] !== word[k]) continue;
+      const bonus = isWordStart(text, i) ? WORD_START_BONUS : 0;
+      if (prev === null) {
+        row[i] = bonus;
+      } else if (carryAt !== -1) {
+        row[i] = carry - i + bonus;
+        back[i] = carryAt;
       }
     }
-    indices.push(i);
-    from = i + 1;
+    best.push(row);
+    from.push(back);
   }
-  const span = indices[indices.length - 1] - indices[0] + 1;
+  let end = -1;
+  for (let i = 0; i < n; i++) {
+    if (best[m - 1][i] > (end === -1 ? -Infinity : best[m - 1][end])) end = i;
+  }
+  if (end === -1) return null;
+  const indices = new Array<number>(m);
+  for (let k = m - 1, i = end; k >= 0; k--) {
+    indices[k] = i;
+    i = from[k][i];
+  }
+  const span = indices[m - 1] - indices[0] + 1;
   const starts = indices.filter((i) => isWordStart(text, i)).length;
-  const score = Math.max(1, 30 - (span - word.length) + 4 * starts);
+  const score = Math.max(1, 30 - (span - m) + WORD_START_BONUS * starts);
   return { score, indices };
 }
 

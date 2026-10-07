@@ -196,9 +196,9 @@ export function RunsView(): JSX.Element {
   const [seedRaw, setSeedRaw] = useState('');
   const [confirming, setConfirming] = useState(false);
   const [busy, setBusy] = useState(false);
-  /** Why the newest read of the runs list failed; null once a poll lands.
-   * With nothing on screen yet it is the table's error callout; after a first
-   * answer the rows stay and the header reads stale instead of live. */
+  /** Why the newest read of the runs list to settle failed; null once a poll
+   * lands. With nothing on screen yet it is the table's error callout; after a
+   * first answer the rows stay and the header reads stale instead of live. */
   const [loadError, setLoadError] = useState<string | null>(null);
   /** When the rows on screen were read: the stale pill's "last update". */
   const [updatedAt, setUpdatedAt] = useState<Date | null>(null);
@@ -209,11 +209,21 @@ export function RunsView(): JSX.Element {
   // up front instead of failing on the click (api/client.assertWritable)
   const offline = useOfflineFallback();
 
-  // Sequence numbers for the two polls: a response that a newer request has
-  // already overtaken is dropped. Without this the last demo-backed read of a
-  // reconnect — in flight when the link came back — lands after the live one
-  // and puts demo rows back on screen as if they were the server's.
+  // Sequence numbers for the two polls: an older answer never replaces a newer
+  // one. Without this the last demo-backed read of a reconnect — in flight
+  // when the link came back — lands after the live one and puts demo rows back
+  // on screen as if they were the server's.
   const runsSeq = useRef(0);
+  /** The runs poll is compared against the newest read that has *settled*
+   * (rows or an error), not the newest sent: `usePoll` starts a read every 2 s
+   * without waiting for the last, so once `GET /runs` takes longer than that
+   * (a store held by its busy timeout, a gateway 504 after its own timeout)
+   * every read is overtaken by the next before it answers. "Drop unless newest
+   * sent" then discarded every answer, failures included, and the header said
+   * Live over rows that had stopped updating. Each answer now lands unless a
+   * newer one already has, so the header follows the newest outcome: Live
+   * after a success, Stale after a failure. */
+  const runsSettled = useRef(0);
   const librarySeq = useRef(0);
   /** The library is compared against the newest response *applied*, not the
    * newest request sent: `GET /scenarios/preset` takes about a second, and the
@@ -228,7 +238,8 @@ export function RunsView(): JSX.Element {
     const fromDemo = isMockActive();
     try {
       const rows = await listRuns();
-      if (seq !== runsSeq.current) return;
+      if (seq < runsSettled.current) return;
+      runsSettled.current = seq;
       setRuns(rows);
       setRunsDemo(fromDemo);
       setLoadError(null);
@@ -238,7 +249,8 @@ export function RunsView(): JSX.Element {
       // pauses this poll entirely). A first load that has nothing to show says
       // why in the table, instead of a skeleton forever; after that the rows
       // stay and the header says they are stale, with this error.
-      if (seq !== runsSeq.current) return;
+      if (seq < runsSettled.current) return;
+      runsSettled.current = seq;
       setLoadError(formatFetchError(err));
     }
   }, []);

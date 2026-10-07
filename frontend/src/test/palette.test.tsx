@@ -22,6 +22,54 @@ import { auditA11y, formatViolations } from './a11y';
 
 /* ------------------------------ fuzzy ------------------------------------ */
 
+/** The palette's fixed labels, as `CommandPalette` builds them. */
+const PALETTE_LABELS = [
+  'Go to Onboard corridor',
+  'Go to Scenarios',
+  'Go to Runs',
+  'Go to Sweeps',
+  'Go to Reports',
+  'Go to First run',
+  'Launch a ring_sugiyama run…',
+  'Open settings',
+  'Theme: System',
+  'Theme: Light',
+  'Theme: Dark',
+];
+
+/** Every distinct `size`-letter subsequence of `text`, whitespace skipped (the
+ * query splits on it). */
+function subsequences(text: string, size: number): string[] {
+  const out = new Set<string>();
+  const walk = (from: number, word: string): void => {
+    if (word.length === size) {
+      out.add(word);
+      return;
+    }
+    for (let i = from; i < text.length; i++) if (!/\s/.test(text[i])) walk(i + 1, word + text[i]);
+  };
+  walk(0, '');
+  return [...out];
+}
+
+/** The documented subsequence score, maximised by brute force over every
+ * alignment of `word` in `text`: 30 − (span − |word|) + 4 per word start. */
+function bestAlignmentScore(word: string, text: string): number | null {
+  const isStart = (i: number): boolean => i === 0 || /[\s\-_/·:.(),]/.test(text[i - 1]);
+  let best: number | null = null;
+  const walk = (k: number, from: number, picked: number[]): void => {
+    if (k === word.length) {
+      const span = picked[picked.length - 1] - picked[0] + 1;
+      const score = Math.max(1, 30 - (span - word.length) + 4 * picked.filter(isStart).length);
+      if (best === null || score > best) best = score;
+      return;
+    }
+    for (let i = from; i < text.length; i++) if (text[i] === word[k]) walk(k + 1, i + 1, [...picked, i]);
+  };
+  walk(0, 0, []);
+  return best;
+}
+
 describe('fuzzyMatch', () => {
   it('matches case-insensitively and ranks prefix > word start > inside > subsequence', () => {
     const prefix = fuzzyMatch('go', 'Go to Reports');
@@ -46,6 +94,40 @@ describe('fuzzyMatch', () => {
     // a keyword hit highlights nothing in the label, and counts for less
     expect(viaKeywords!.indices).toEqual([]);
     expect(kw!.score).toBeGreaterThan(viaKeywords!.score);
+  });
+
+  it('finds a subsequence even where a jump to the next word start would strand later letters', () => {
+    // the second "o" of "goto" could start "onboard", but then no "t" is left;
+    // the last "o" may (G-o t-O(nboard): a word start outweighs two letters skipped)
+    expect(fuzzyMatch('goto', 'Go to Onboard corridor')?.indices).toEqual([0, 1, 3, 6]);
+    expect(fuzzyMatch('goto onboard', 'Go to Onboard corridor')).not.toBeNull();
+    expect(fuzzyMatch('goon', 'Go to Onboard corridor')).not.toBeNull();
+    // the "r" of "first" could start "run", but then no "s" is left
+    expect(fuzzyMatch('gofirst', 'Go to First run')?.indices).toEqual([0, 1, 6, 7, 8, 9, 10]);
+  });
+
+  it('matches every 2- and 3-letter subsequence of the palette labels, highlighting its letters', () => {
+    const misses: string[] = [];
+    for (const label of PALETTE_LABELS) {
+      const text = label.toLowerCase();
+      for (const word of subsequences(text, 2).concat(subsequences(text, 3))) {
+        const m = fuzzyMatch(word, label);
+        if (!m || m.indices.map((i) => text[i]).join('') !== word) misses.push(`${word} in ${label}`);
+      }
+    }
+    expect(misses).toEqual([]);
+  });
+
+  it('scores a subsequence by its best alignment: word starts, then the tightest span', () => {
+    for (const label of ['Go to First run', 'Go to Onboard corridor', 'Launch a ring_sugiyama run…']) {
+      const text = label.toLowerCase();
+      for (const word of subsequences(text, 3)) {
+        if (text.includes(word)) continue; // contiguous: scored on its own scale
+        expect(fuzzyMatch(word, label)?.score, `${word} in ${label}`).toBe(bestAlignmentScore(word, text));
+      }
+    }
+    // a word-start alignment beats an earlier, tighter one: R(eports), not (go) to (repo)r(ts)
+    expect(fuzzyMatch('gtr', 'Go to Reports')?.indices).toEqual([0, 3, 6]);
   });
 
   it('matches everything with an empty query', () => {
@@ -329,6 +411,21 @@ describe('command palette: keyboard model', () => {
     expect(screen.getByTestId('where')).toHaveTextContent('/sweeps');
     expect(screen.getByText('sweeps page')).toBeInTheDocument();
     expect(document.activeElement).toBe(document.getElementById('content'));
+    await screen.findByText('API LINK', {}, { timeout: 4000 });
+  });
+
+  it('finds a page whose name the query spells across words', async () => {
+    renderShell();
+    pressShortcut();
+    fireEvent.change(box(), { target: { value: 'goto onboard' } });
+    expect(activeOption()).toHaveAccessibleName('Go to Onboard corridor');
+    fireEvent.change(box(), { target: { value: 'gofirst' } });
+    expect(activeOption()).toHaveAccessibleName('Go to First run');
+    fireEvent.change(box(), { target: { value: 'goto' } });
+    const names = within(palette())
+      .getAllByRole('option')
+      .map((o) => o.getAttribute('aria-label') ?? o.textContent);
+    expect(names).toEqual(expect.arrayContaining(['Go to Onboard corridor', 'Go to First run']));
     await screen.findByText('API LINK', {}, { timeout: 4000 });
   });
 

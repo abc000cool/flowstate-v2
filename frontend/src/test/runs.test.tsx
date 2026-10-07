@@ -818,3 +818,98 @@ describe('RunsView when GET /runs starts failing', () => {
     expect(screen.queryByText('HTTP 503 — database is locked')).toBeNull();
   }, 15000);
 });
+
+/** The 2 s poll does not wait for the last read, so once `GET /runs` takes
+ * longer than that (a store held by its busy timeout, a gateway that answers
+ * 504 after its own timeout) the reads overlap and each is overtaken by the
+ * next before it answers. Every answer must still count unless a newer one
+ * has already landed — failures included — or the header keeps saying Live
+ * over rows that stopped updating. */
+describe('RunsView when GET /runs is slower than the poll', () => {
+  /** The `/runs` reads still waiting for an answer, oldest first. */
+  let pending: ((res: Response) => void)[] = [];
+  let slow = false;
+
+  beforeEach(() => {
+    setOfflineFallback(false);
+    clearAuthFailure();
+    pending = [];
+    slow = false;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((input: RequestInfo | URL): Promise<Response> => {
+        const url = String(input);
+        if (url.endsWith('/scenarios/preset')) return Promise.resolve(json([]));
+        if (url.endsWith('/scenarios')) return Promise.resolve(json([scenario]));
+        if (url.endsWith('/runs')) {
+          if (!slow) return Promise.resolve(json([run]));
+          return new Promise<Response>((resolve) => pending.push(resolve));
+        }
+        return Promise.resolve(json({ detail: `unexpected ${url}` }, 404));
+      }),
+    );
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    clearAuthFailure();
+  });
+
+  /** Answer the `n`th read still pending (0 = oldest sent). */
+  async function answer(n: number, res: Response): Promise<void> {
+    await act(async () => {
+      pending[n](res);
+      await new Promise((r) => setTimeout(r, 0));
+    });
+  }
+
+  it('turns stale when an overtaken read fails, and live again when a newer one lands', async () => {
+    render(
+      <MemoryRouter>
+        <RunsView />
+      </MemoryRouter>,
+    );
+    const table = await screen.findByRole('table', { name: 'runs' }, { timeout: 4000 });
+    await within(table).findByText('run-a41d09', {}, { timeout: 4000 });
+    expect(screen.getByText('Live')).toBeInTheDocument();
+
+    slow = true;
+    // two reads in flight at once: the first is overtaken before it answers
+    await waitFor(() => expect(pending.length).toBeGreaterThanOrEqual(2), { timeout: 6000 });
+    await answer(0, json({ detail: 'gateway timeout' }, 504));
+    expect(screen.getByText(/^Stale — last update \d{2}:\d{2}:\d{2}$/)).toBeInTheDocument();
+    expect(screen.getByText('HTTP 504 — gateway timeout')).toBeInTheDocument();
+    expect(screen.queryByText('Live')).toBeNull();
+    // the rows stay, labelled as the last answer
+    expect(within(table).getByText('run-a41d09')).toBeInTheDocument();
+
+    // the newer read lands, rows and all, though a third may be in flight
+    await answer(1, json([{ ...run, run_id: 'run-b77e10' }]));
+    expect(screen.getByText('Live')).toBeInTheDocument();
+    expect(screen.queryByText(/^Stale — last update/)).toBeNull();
+    expect(within(table).getByText('run-b77e10')).toBeInTheDocument();
+    for (const resolve of pending.slice(2)) resolve(json([{ ...run, run_id: 'run-b77e10' }]));
+  }, 20000);
+
+  it('never lets an older answer undo a newer one', async () => {
+    render(
+      <MemoryRouter>
+        <RunsView />
+      </MemoryRouter>,
+    );
+    const table = await screen.findByRole('table', { name: 'runs' }, { timeout: 4000 });
+    await within(table).findByText('run-a41d09', {}, { timeout: 4000 });
+
+    slow = true;
+    await waitFor(() => expect(pending.length).toBeGreaterThanOrEqual(2), { timeout: 6000 });
+    // the newer read fails first; the older one's rows, landing after, are
+    // not the current state and must not turn the header live
+    await answer(1, json({ detail: 'database is locked' }, 503));
+    expect(screen.getByText(/^Stale — last update/)).toBeInTheDocument();
+    await answer(0, json([{ ...run, run_id: 'run-old' }]));
+    expect(screen.getByText(/^Stale — last update/)).toBeInTheDocument();
+    expect(screen.queryByText('Live')).toBeNull();
+    expect(within(table).queryByText('run-old')).toBeNull();
+    for (const resolve of pending.slice(2)) resolve(json([run]));
+  }, 20000);
+});

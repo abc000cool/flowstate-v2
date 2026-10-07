@@ -60,8 +60,11 @@
  * `?select=<run_id>` (Run detail's "Report on this run", §10.4 P2) preselects
  * that run once the runs list has it, and a callout under step 1 says so — or
  * says why not: a macro run, a failed one, or one this server does not list.
- * A run still computing is waited for. The parameter is dropped from the URL
- * once it has been dealt with. */
+ * A run still computing is waited for. So is the server itself: a runs list
+ * read from the offline fallback's demo backend cannot say whether a server
+ * run exists or has finished, so it decides nothing — the callout says the
+ * API is unreachable and the request stays open until the server answers.
+ * The parameter is dropped from the URL once it has been dealt with. */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { MouseEvent as ReactMouseEvent } from 'react';
@@ -75,6 +78,7 @@ import {
   getReportMarkdown,
   getReportPdf,
   isMockActive,
+  isMockEnv,
   listCorridors,
   listCriteriaProfiles,
   listReports,
@@ -318,14 +322,26 @@ const MACRO_TOOLTIP =
 
 /** What became of a `?select=<run_id>` (Run detail's "Report on this run"):
  * the run was selected, or why it was not. `waiting` keeps the request open
- * until the run finishes. */
-type PreselectOutcome = 'selected' | 'macro' | 'waiting' | 'failed' | 'missing';
+ * until the run finishes; `offline` keeps it open until the server answers
+ * again (the runs list on screen is the offline fallback's demo data, which
+ * knows nothing of the server's runs). */
+type PreselectOutcome = 'selected' | 'macro' | 'waiting' | 'offline' | 'failed' | 'missing';
 
 interface PreselectNote {
   runId: string;
   outcome: PreselectOutcome;
-  /** The run's status, for `waiting`. */
+  /** The run's status, for `waiting`; for `offline`, its status at the
+   * server's last answer, when there was one. */
   status?: string;
+  /** The outcome was decided on the built-in demo data (VITE_MOCK), not a
+   * server's list. Captured with the outcome: the list on screen may come
+   * from elsewhere by the time the note is read. */
+  demo?: boolean;
+}
+
+/** Outcomes that keep `?select=` open: the request is not dealt with yet. */
+function preselectPending(outcome: PreselectOutcome | undefined): boolean {
+  return outcome === 'waiting' || outcome === 'offline';
 }
 
 /** Reports. Inside the app's router the page honours `?select=<run_id>`;
@@ -660,6 +676,20 @@ function ReportsPage({
   settledRef.current = onPreselectSettled;
   useEffect(() => {
     if (preselect === null || !runsLoaded) return;
+    // A list the offline fallback served is demo data, not the server's: the
+    // run's absence from it, or a demo row's status, says nothing about the
+    // server's run. Deciding on it would drop `?select=` for good on a single
+    // failed health probe, and the run would never be selected once it
+    // finished. Keep waiting, say why, and decide on the server's next answer.
+    // (Under VITE_MOCK the demo backend is the only backend, so it decides.)
+    if (runsDemo && !isMockEnv()) {
+      setPreselectNote((prev) => {
+        if (prev && prev.runId === preselect && prev.outcome === 'offline') return prev;
+        const lastKnown = prev && prev.runId === preselect && !prev.demo ? prev.status : undefined;
+        return { runId: preselect, outcome: 'offline', status: lastKnown };
+      });
+      return;
+    }
     const run = allRuns.find((r) => r.run_id === preselect);
     let outcome: PreselectOutcome;
     if (!run) outcome = 'missing';
@@ -668,14 +698,18 @@ function ReportsPage({
     else if (run.status === 'failed') outcome = 'failed';
     else outcome = 'waiting';
     setPreselectNote((prev) =>
-      prev && prev.runId === preselect && prev.outcome === outcome && prev.status === run?.status
+      prev &&
+      prev.runId === preselect &&
+      prev.outcome === outcome &&
+      prev.status === run?.status &&
+      prev.demo === runsDemo
         ? prev
-        : { runId: preselect, outcome, status: run?.status },
+        : { runId: preselect, outcome, status: run?.status, demo: runsDemo },
     );
     if (outcome === 'waiting') return;
     if (outcome === 'selected') setSelected((s) => (s.has(preselect) ? s : new Set(s).add(preselect)));
     settledRef.current?.();
-  }, [preselect, runsLoaded, allRuns]);
+  }, [preselect, runsLoaded, allRuns, runsDemo]);
 
   // bring a preselected row into view: the picker scrolls, and the run may
   // sit below its fold
@@ -689,8 +723,9 @@ function ReportsPage({
   }, [preselectNote]);
 
   const dismissPreselect = (): void => {
-    // dismissing a run still being waited for also stops the wait
-    if (preselectNote?.outcome === 'waiting') settledRef.current?.();
+    // dismissing a run still being waited for (or a server still being waited
+    // for) also stops the wait
+    if (preselectPending(preselectNote?.outcome)) settledRef.current?.();
     setPreselectNote(null);
   };
 
@@ -1128,11 +1163,7 @@ function ReportsPage({
               Choose finished micro runs
             </h3>
             {preselectNote && (
-              <PreselectCallout
-                note={preselectNote}
-                demo={runsDemo}
-                onDismiss={dismissPreselect}
-              />
+              <PreselectCallout note={preselectNote} onDismiss={dismissPreselect} />
             )}
             <div
               className="table-wrap scroll-y reports-picker"
@@ -1354,11 +1385,9 @@ function ReportsPage({
  * the user has found the picker). */
 function PreselectCallout({
   note,
-  demo,
   onDismiss,
 }: {
   note: PreselectNote;
-  demo: boolean;
   onDismiss: () => void;
 }): JSX.Element {
   const id = <span className="mono">{note.runId}</span>;
@@ -1385,12 +1414,27 @@ function PreselectCallout({
         </>
       );
       break;
+    case 'offline':
+      tone = 'neutral';
+      body = note.status ? (
+        <>
+          {id} was {note.status} at the server's last answer. The API is unreachable now, and
+          the demo data shown cannot say whether it has finished; it will be checked again, and
+          selected once done, when the server answers.
+        </>
+      ) : (
+        <>
+          {id} cannot be looked up while the API is unreachable: the runs shown are demo data, not
+          this server's. It will be checked against the server's runs list once the API answers.
+        </>
+      );
+      break;
     case 'failed':
       body = <>{id} failed, so it has no results to report and is not selected.</>;
       break;
     default:
-      body = demo ? (
-        <>{id} is not in the demo data shown while the API is unreachable, so it is not selected.</>
+      body = note.demo ? (
+        <>{id} is not in the built-in demo data, so it is not selected.</>
       ) : (
         <>{id} is not in this server's runs list, so it is not selected.</>
       );

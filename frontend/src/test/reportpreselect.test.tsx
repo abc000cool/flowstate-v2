@@ -209,6 +209,76 @@ describe('Reports ?select=', () => {
     await waitFor(() => expect(screen.getByTestId('where')).toHaveTextContent(/^\/reports$/));
   }, 15000);
 
+  it('keeps waiting through a demo answer while the API is down, then selects the run when done', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    renderAt('/reports?select=run-going');
+    await picker();
+    expect(await screen.findByText(/is running\. It will be selected here once it is done\./)).toBeInTheDocument();
+
+    // one failed health probe: the next runs poll is answered by the demo
+    // backend, which knows nothing of this server's run-going
+    act(() => setOfflineFallback(true));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5500);
+    });
+    // the demo list has landed (the server's runs are gone from the picker)...
+    const demoPicker = screen.getByRole('table', { name: 'finished runs' });
+    await waitFor(() => expect(within(demoPicker).queryByLabelText('select run-a')).toBeNull());
+    // ...and the request stays open, saying what it now waits for
+    expect(screen.getByTestId('where')).toHaveTextContent('/reports?select=run-going');
+    expect(screen.queryByText(/is not in/)).toBeNull();
+    const note = screen.getByText(/was running at the server's last answer\. The API is unreachable now/);
+    expect(note).toHaveTextContent(/it will be checked again, and selected once done, when the server answers\./);
+
+    // the server is back, and the run has finished meanwhile
+    RUNS = RUNS.map((r) => (r.run_id === 'run-going' ? run('run-going', 'done') : r));
+    act(() => setOfflineFallback(false));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5500);
+    });
+    const t = screen.getByRole('table', { name: 'finished runs' });
+    await waitFor(() => expect(within(t).getByLabelText('select run-going')).toBeChecked());
+    expect(screen.getByText(/is selected\./)).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByTestId('where')).toHaveTextContent(/^\/reports$/));
+  }, 15000);
+
+  it('decides nothing on demo data when opened offline, and keeps a server verdict once the API drops', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    setOfflineFallback(true);
+    renderAt('/reports?select=run-nowhere');
+    await waitFor(() => expect(document.querySelector('.reports-preselect')).not.toBeNull(), { timeout: 4000 });
+    expect(screen.getByTestId('where')).toHaveTextContent('/reports?select=run-nowhere');
+    expect(
+      screen.getByText(/cannot be looked up while the API is unreachable: the runs shown are demo data/),
+    ).toBeInTheDocument();
+    expect(formatViolations(auditA11y(document.body))).toEqual([]);
+
+    // the server answers: now the run's absence is a verdict
+    act(() => setOfflineFallback(false));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5500);
+    });
+    expect(await screen.findByText(/is not in this server's runs list/)).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByTestId('where')).toHaveTextContent(/^\/reports$/));
+
+    // and the verdict keeps its source when the list on screen turns demo
+    act(() => setOfflineFallback(true));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5500);
+    });
+    const verdict = screen.getByText(/is not in this server's runs list/);
+    expect(verdict.closest('.callout')).not.toHaveTextContent(/demo/);
+  }, 15000);
+
+  it('stops waiting for the server when the note is dismissed', async () => {
+    setOfflineFallback(true);
+    renderAt('/reports?select=run-going');
+    await screen.findByText(/cannot be looked up while the API is unreachable/, {}, { timeout: 4000 });
+    fireEvent.click(screen.getByRole('button', { name: 'Dismiss' }));
+    expect(screen.queryByText(/cannot be looked up/)).toBeNull();
+    await waitFor(() => expect(screen.getByTestId('where')).toHaveTextContent(/^\/reports$/));
+  });
+
   it('selects nothing without the parameter, and works outside a router', async () => {
     render(<ReportsView />);
     const t = await picker();
