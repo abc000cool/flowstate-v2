@@ -1,0 +1,234 @@
+# i80_replica — NGSIM I-80 eastbound (Emeryville, CA; 13 April 2005), block p2 + p3 (2005-04-13 16:59:27.5 PDT, 1966.5 s), E11 of
+# docs/PRE_FRISCO_PROGRAM.md. Written on the VM by scripts/i80_build_replica.py from the raw NGSIM
+# export (data hash 82f1bb3f9051…); every number is in artifacts/i80_replica_inputs.json.
+# Geometry, counted demand and the measured boundary as the US-101 replica; the fleet block copied from
+# scenarios/i24_replica_flow_rc_speedcal_dc_refit.yaml; nothing fitted on I-80. merge: lane_change (the kept configuration). Do not edit.
+# config hash 43a66c754f31; seeded=False.
+name: i80_replica
+tier: micro
+network:
+  kind: osm
+  osm_file: data/osm/i80_ngsim.osm
+  corridor_edges:
+  - '9001'
+  - '9002'
+  - '9003'
+  - '9004'
+  - '9005'
+  inflow:
+  - - 0.0
+    - 2.09
+  - - 480.0
+    - 1.953333
+  - - 780.0
+    - 1.373333
+  - - 1080.0
+    - 1.823333
+  - - 1380.0
+    - 1.933333
+  - - 1680.0
+    - 1.22
+  - - 1980.0
+    - 0.036036
+  boundary:
+    steps:
+    - - 0.0
+      - 7.9794
+    - - 210.0
+      - 7.9794
+    - - 240.0
+      - 7.9271
+    - - 270.0
+      - 7.8256
+    - - 300.0
+      - 7.4429
+    - - 330.0
+      - 6.763
+    - - 360.0
+      - 10.067
+    - - 390.0
+      - 9.9086
+    - - 420.0
+      - 7.4602
+    - - 450.0
+      - 5.2622
+    - - 480.0
+      - 5.5714
+    - - 510.0
+      - 7.0819
+    - - 540.0
+      - 7.3737
+    - - 570.0
+      - 5.0075
+    - - 600.0
+      - 6.202
+    - - 630.0
+      - 7.3315
+    - - 660.0
+      - 8.2859
+    - - 690.0
+      - 8.4144
+    - - 720.0
+      - 5.7056
+    - - 750.0
+      - 7.4533
+    - - 780.0
+      - 6.7571
+    - - 810.0
+      - 4.7091
+    - - 840.0
+      - 3.639
+    - - 870.0
+      - 3.2134
+    - - 900.0
+      - 2.7036
+    - - 930.0
+      - 3.4889
+    - - 960.0
+      - 4.6851
+    - - 990.0
+      - 4.9623
+    - - 1020.0
+      - 5.9631
+    - - 1050.0
+      - 4.8677
+    - - 1080.0
+      - 4.9436
+    - - 1110.0
+      - 9.5743
+    - - 1140.0
+      - 6.7849
+    - - 1170.0
+      - 8.707
+    - - 1200.0
+      - 8.534
+    - - 1230.0
+      - 8.1109
+    - - 1260.0
+      - 6.9361
+    - - 1290.0
+      - 3.7147
+    - - 1320.0
+      - 5.6025
+    - - 1350.0
+      - 8.1844
+    - - 1380.0
+      - 8.6226
+    - - 1410.0
+      - 9.3934
+    - - 1440.0
+      - 9.0737
+    - - 1470.0
+      - 8.6679
+    - - 1500.0
+      - 8.1099
+    - - 1530.0
+      - 3.7315
+    - - 1560.0
+      - 3.6718
+    - - 1590.0
+      - 3.0417
+    - - 1620.0
+      - 3.1895
+    - - 1650.0
+      - 2.9139
+    - - 1680.0
+      - 5.4024
+    - - 1710.0
+      - 6.3211
+    - - 1740.0
+      - 4.8442
+    - - 1770.0
+      - 3.048
+    - - 1800.0
+      - 3.3745
+    - - 1830.0
+      - 6.5011
+    - - 1860.0
+      - 3.8741
+    - - 1890.0
+      - 3.9539
+    - - 1920.0
+      - 3.4252
+    - - 1950.0
+      - 6.557
+    - - 1980.0
+      - 5.9226
+    - - 2010.0
+      - 4.0892
+    - - 2040.0
+      - 0.8725
+    - - 2070.0
+      - 1.0944
+    - - 2100.0
+      - 1.5163
+    - - 2130.0
+      - 1.4708
+    exit_buffer_m: 200.0
+  ramps:
+  - kind: 'on'
+    name: Powell St on-ramp
+    edges:
+    - '9010'
+    attach_edge: '9003'
+    inflow:
+    - - 0.0
+      - 0.253333
+    - - 480.0
+      - 0.23
+    - - 780.0
+      - 0.23
+    - - 1080.0
+      - 0.26
+    - - 1380.0
+      - 0.256667
+    - - 1680.0
+      - 0.173333
+    - - 1980.0
+      - 0.0
+  entry_lane_shares:
+  - 0.247119
+  - 0.161652
+  - 0.138284
+  - 0.145647
+  - 0.15493
+  - 0.152369
+fleet:
+  model: IDM
+  v0: 33.3
+  T: 1.4
+  a_max: 0.73
+  b: 1.67
+  s0: 2.0
+  delta: 4.0
+  heterogeneity_frac: 0.12
+  idm_calibration: artifacts/idm_i24_capacity_amax_k1.0.json
+  lc_strategic: 5.0
+  lc_strategic_ramp: 1.0
+  lc_keep_right: 0.0
+  lc_cooperative: 1.0
+  lc_assertive: 1.0
+  lc_speed_gain: 1.0
+  heavy: null
+  jm_timegap_minor_s: null
+  jm_ignore_foe_prob: null
+  lc_sublane: null
+  lc_pushy: null
+  lc_impatience: null
+  lc_accel_lat: null
+  max_speed_lat: null
+  min_gap_lat: null
+  lat_alignment: null
+  lc_overtake_right: null
+  hov_fraction: 0.0
+  speed_factor: 1.0
+  speed_dev: 0.0
+sim:
+  duration_s: 2147.0
+  step_length_s: 0.5
+  action_step_s: 0.5
+  warmup_s: 180.0
+  output_hz: 2.0
+perturbation: null
+seed: 42
+replicates: 20

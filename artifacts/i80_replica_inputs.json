@@ -1,0 +1,681 @@
+{
+ "schema_version": 1,
+ "kind": "i80_replica_inputs",
+ "created_at": "2026-10-08T04:28:12Z",
+ "source": "scripts/i80_build_replica.py",
+ "code": "8ea59ec94ecddec569337c116a8116c5d475883a",
+ "code_dirty": true,
+ "data_hash": "82f1bb3f90512967bc2880d2c4f4e6e962f5ebf44841dc7d5822b4887f661658",
+ "data_version": "raw NGSIM I-80 (data.transportation.gov Socrata 8ect-6jqj, location 'i-80'), not the Montanino-Punzo reconstruction",
+ "citation": "U.S. Department of Transportation Federal Highway Administration (2016). Next Generation Simulation (NGSIM) Vehicle Trajectories and Supporting Data. data.transportation.gov, dataset 8ect-6jqj, location 'i-80' (raw export). Site: FHWA-HRT-06-137 (2006), NGSIM Interstate 80 Freeway Dataset fact sheet.",
+ "block": [
+  "p2",
+  "p3"
+ ],
+ "block_t0_wall_clock": "2005-04-13 16:59:27.5 PDT",
+ "block_span_s": 1966.5,
+ "nothing_fitted": "every number below is counted, measured or a stated constant; no parameter was fitted on I-80",
+ "geometry": {
+  "site_length_m": 505.0,
+  "gore_m": 117.76,
+  "accel_end_m": 202.3,
+  "approach_m": 505.0,
+  "exit_m": 200.0,
+  "ramp_m": 200.0,
+  "zone_counts": {
+   "n_transitions_7_to_6": 445,
+   "n_lane7_samples": 124466
+  },
+  "lanes": {
+   "lanes_present": [
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7
+   ],
+   "share_ending_above_ramp_lane": 0.0
+  },
+  "lane7_visible_upstream_of_gore_m": 51.1,
+  "lane7_speed_upstream_of_gore_ms_p50": 2.539,
+  "lane7_speed_in_zone_ms_p50": 2.777
+ },
+ "corridor": {
+  "edges": [
+   "9001",
+   "9002",
+   "9003",
+   "9004",
+   "9005"
+  ],
+  "site_first_edge": "9002",
+  "site_edges": [
+   "9002",
+   "9003",
+   "9004"
+  ],
+  "attach_edge": "9003",
+  "ramp_edges": [
+   "9010"
+  ],
+  "edge_spans_data_m": {
+   "9001": [
+    -505.0,
+    0.0
+   ],
+   "9002": [
+    0.0,
+    117.76
+   ],
+   "9003": [
+    117.76,
+    202.3
+   ],
+   "9004": [
+    202.3,
+    505.0
+   ],
+   "9005": [
+    505.0,
+    705.0
+   ]
+  }
+ },
+ "osm": {
+  "path": "data/osm/i80_ngsim.osm",
+  "sha256": "d0ca003ec39225be2346d770b0879a6f6c6cf6aff72556f0bf4181ee1b3d3e88",
+  "origin_latlon": [
+   37.83,
+   -122.297
+  ],
+  "ramp_angle_deg": 45.0,
+  "mainline_maxspeed": "65 mph",
+  "mainline_maxspeed_source": "California Vehicle Code \u00a722349(a) maximum; the segment's posting is not verified",
+  "ramp_maxspeed": "netconvert motorway_link default (80 km/h)",
+  "layout": {
+   "node_s_m": {
+    "1": 0.0,
+    "2": 505.18,
+    "3": 631.83,
+    "4": 703.96,
+    "5": 1006.76,
+    "6": 1206.83
+   },
+   "compiled_lengths_m": {
+    "9001": 505.0,
+    "9002": 117.76,
+    "9003": 84.54,
+    "9004": 302.7,
+    "9005": 200.0
+   },
+   "measured_lengths_m": {
+    "9001": 505.0,
+    "9002": 117.76,
+    "9003": 84.54,
+    "9004": 302.7,
+    "9005": 200.0
+   },
+   "passes": 2,
+   "boundary_errors_m": [
+    [
+     0.0,
+     0.18,
+     9.07,
+     -3.34,
+     -3.24,
+     -3.17
+    ],
+    [
+     0.0,
+     0.0,
+     0.0,
+     0.0,
+     0.0,
+     0.0
+    ]
+   ]
+  },
+  "layout_rule": "node positions moved until every corridor edge compiles (netconvert, as the runner imports the map) within 0.5 m of its measured length"
+ },
+ "demand": {
+  "rule": "an entry is a vehicle first seen after its period's first frame, on lanes 1-6 (mainline) or 7 (ramp); stitched at each period's last recorded entry of the stream; 5-min windows on the block's wall clock, the last partial",
+  "mainline_windows": [
+   {
+    "t_start_s": 0.0,
+    "t_end_s": 300.0,
+    "n_entries": 627,
+    "inflow_veh_s": 2.09
+   },
+   {
+    "t_start_s": 300.0,
+    "t_end_s": 600.0,
+    "n_entries": 586,
+    "inflow_veh_s": 1.9533333333333334
+   },
+   {
+    "t_start_s": 600.0,
+    "t_end_s": 900.0,
+    "n_entries": 412,
+    "inflow_veh_s": 1.3733333333333333
+   },
+   {
+    "t_start_s": 900.0,
+    "t_end_s": 1200.0,
+    "n_entries": 547,
+    "inflow_veh_s": 1.8233333333333333
+   },
+   {
+    "t_start_s": 1200.0,
+    "t_end_s": 1500.0,
+    "n_entries": 580,
+    "inflow_veh_s": 1.9333333333333333
+   },
+   {
+    "t_start_s": 1500.0,
+    "t_end_s": 1800.0,
+    "n_entries": 366,
+    "inflow_veh_s": 1.22
+   },
+   {
+    "t_start_s": 1800.0,
+    "t_end_s": 1966.5,
+    "n_entries": 6,
+    "inflow_veh_s": 0.036036036036036036
+   }
+  ],
+  "ramp_windows": [
+   {
+    "t_start_s": 0.0,
+    "t_end_s": 300.0,
+    "n_entries": 76,
+    "inflow_veh_s": 0.25333333333333335
+   },
+   {
+    "t_start_s": 300.0,
+    "t_end_s": 600.0,
+    "n_entries": 69,
+    "inflow_veh_s": 0.23
+   },
+   {
+    "t_start_s": 600.0,
+    "t_end_s": 900.0,
+    "n_entries": 69,
+    "inflow_veh_s": 0.23
+   },
+   {
+    "t_start_s": 900.0,
+    "t_end_s": 1200.0,
+    "n_entries": 78,
+    "inflow_veh_s": 0.26
+   },
+   {
+    "t_start_s": 1200.0,
+    "t_end_s": 1500.0,
+    "n_entries": 77,
+    "inflow_veh_s": 0.25666666666666665
+   },
+   {
+    "t_start_s": 1500.0,
+    "t_end_s": 1800.0,
+    "n_entries": 52,
+    "inflow_veh_s": 0.17333333333333334
+   },
+   {
+    "t_start_s": 1800.0,
+    "t_end_s": 1966.5,
+    "n_entries": 0,
+    "inflow_veh_s": 0.0
+   }
+  ],
+  "mainline_windows_us101_spatial_rule": [
+   {
+    "t_start_s": 0.0,
+    "t_end_s": 300.0,
+    "n_entries": 618,
+    "inflow_veh_s": 2.06
+   },
+   {
+    "t_start_s": 300.0,
+    "t_end_s": 600.0,
+    "n_entries": 578,
+    "inflow_veh_s": 1.9266666666666667
+   },
+   {
+    "t_start_s": 600.0,
+    "t_end_s": 900.0,
+    "n_entries": 407,
+    "inflow_veh_s": 1.3566666666666667
+   },
+   {
+    "t_start_s": 900.0,
+    "t_end_s": 1200.0,
+    "n_entries": 542,
+    "inflow_veh_s": 1.8066666666666666
+   },
+   {
+    "t_start_s": 1200.0,
+    "t_end_s": 1500.0,
+    "n_entries": 573,
+    "inflow_veh_s": 1.91
+   },
+   {
+    "t_start_s": 1500.0,
+    "t_end_s": 1800.0,
+    "n_entries": 361,
+    "inflow_veh_s": 1.2033333333333334
+   },
+   {
+    "t_start_s": 1800.0,
+    "t_end_s": 1966.5,
+    "n_entries": 6,
+    "inflow_veh_s": 0.036036036036036036
+   }
+  ],
+  "per_period": {
+   "mainline": [
+    {
+     "period": "p2",
+     "n_entries": 1629,
+     "n_used": 1629
+    },
+    {
+     "period": "p3",
+     "n_entries": 1574,
+     "n_used": 1495
+    }
+   ],
+   "ramp": [
+    {
+     "period": "p2",
+     "n_entries": 206,
+     "n_used": 206
+    },
+    {
+     "period": "p3",
+     "n_entries": 215,
+     "n_used": 215
+    }
+   ],
+   "mainline_spatial": [
+    {
+     "period": "p2",
+     "n_entries": 1607,
+     "n_used": 1607
+    },
+    {
+     "period": "p3",
+     "n_entries": 1558,
+     "n_used": 1478
+    }
+   ]
+  },
+  "switches_ms": {
+   "mainline": [
+    1113437675700,
+    null
+   ],
+   "ramp": [
+    1113437629300,
+    null
+   ],
+   "mainline_spatial": [
+    1113437675700,
+    null
+   ]
+  },
+  "entry_lanes": "observed",
+  "entry_lane_shares": [
+   0.247119,
+   0.161652,
+   0.138284,
+   0.145647,
+   0.15493,
+   0.152369
+  ],
+  "entry_lane_counts": [
+   772,
+   505,
+   432,
+   455,
+   484,
+   476
+  ]
+ },
+ "boundary": {
+  "rule": "mean mainline speed in the site's last 100 m per 30 s on the block's wall clock (each period up to its switch), empty windows filled forward then backward; the first value held through the warm-up; on the exit edge",
+  "schedule_wall": [
+   [
+    0.0,
+    7.9794
+   ],
+   [
+    30.0,
+    7.9794
+   ],
+   [
+    60.0,
+    7.9271
+   ],
+   [
+    90.0,
+    7.8256
+   ],
+   [
+    120.0,
+    7.4429
+   ],
+   [
+    150.0,
+    6.763
+   ],
+   [
+    180.0,
+    10.067
+   ],
+   [
+    210.0,
+    9.9086
+   ],
+   [
+    240.0,
+    7.4602
+   ],
+   [
+    270.0,
+    5.2622
+   ],
+   [
+    300.0,
+    5.5714
+   ],
+   [
+    330.0,
+    7.0819
+   ],
+   [
+    360.0,
+    7.3737
+   ],
+   [
+    390.0,
+    5.0075
+   ],
+   [
+    420.0,
+    6.202
+   ],
+   [
+    450.0,
+    7.3315
+   ],
+   [
+    480.0,
+    8.2859
+   ],
+   [
+    510.0,
+    8.4144
+   ],
+   [
+    540.0,
+    5.7056
+   ],
+   [
+    570.0,
+    7.4533
+   ],
+   [
+    600.0,
+    6.7571
+   ],
+   [
+    630.0,
+    4.7091
+   ],
+   [
+    660.0,
+    3.639
+   ],
+   [
+    690.0,
+    3.2134
+   ],
+   [
+    720.0,
+    2.7036
+   ],
+   [
+    750.0,
+    3.4889
+   ],
+   [
+    780.0,
+    4.6851
+   ],
+   [
+    810.0,
+    4.9623
+   ],
+   [
+    840.0,
+    5.9631
+   ],
+   [
+    870.0,
+    4.8677
+   ],
+   [
+    900.0,
+    4.9436
+   ],
+   [
+    930.0,
+    9.5743
+   ],
+   [
+    960.0,
+    6.7849
+   ],
+   [
+    990.0,
+    8.707
+   ],
+   [
+    1020.0,
+    8.534
+   ],
+   [
+    1050.0,
+    8.1109
+   ],
+   [
+    1080.0,
+    6.9361
+   ],
+   [
+    1110.0,
+    3.7147
+   ],
+   [
+    1140.0,
+    5.6025
+   ],
+   [
+    1170.0,
+    8.1844
+   ],
+   [
+    1200.0,
+    8.6226
+   ],
+   [
+    1230.0,
+    9.3934
+   ],
+   [
+    1260.0,
+    9.0737
+   ],
+   [
+    1290.0,
+    8.6679
+   ],
+   [
+    1320.0,
+    8.1099
+   ],
+   [
+    1350.0,
+    3.7315
+   ],
+   [
+    1380.0,
+    3.6718
+   ],
+   [
+    1410.0,
+    3.0417
+   ],
+   [
+    1440.0,
+    3.1895
+   ],
+   [
+    1470.0,
+    2.9139
+   ],
+   [
+    1500.0,
+    5.4024
+   ],
+   [
+    1530.0,
+    6.3211
+   ],
+   [
+    1560.0,
+    4.8442
+   ],
+   [
+    1590.0,
+    3.048
+   ],
+   [
+    1620.0,
+    3.3745
+   ],
+   [
+    1650.0,
+    6.5011
+   ],
+   [
+    1680.0,
+    3.8741
+   ],
+   [
+    1710.0,
+    3.9539
+   ],
+   [
+    1740.0,
+    3.4252
+   ],
+   [
+    1770.0,
+    6.557
+   ],
+   [
+    1800.0,
+    5.9226
+   ],
+   [
+    1830.0,
+    4.0892
+   ],
+   [
+    1860.0,
+    0.8725
+   ],
+   [
+    1890.0,
+    1.0944
+   ],
+   [
+    1920.0,
+    1.5163
+   ],
+   [
+    1950.0,
+    1.4708
+   ]
+  ],
+  "min_ms": 0.8725,
+  "max_ms": 10.067
+ },
+ "fleet": {
+  "from": "scenarios/i24_replica_flow_rc_speedcal_dc_refit.yaml",
+  "sha256": "f5d59576a0e39daaf4cd0daeb60a697dc8261873cbdddb855f99a21af43b8ddb",
+  "block": {
+   "model": "IDM",
+   "v0": 33.3,
+   "T": 1.4,
+   "a_max": 0.73,
+   "b": 1.67,
+   "s0": 2.0,
+   "delta": 4.0,
+   "heterogeneity_frac": 0.12,
+   "idm_calibration": "artifacts/idm_i24_capacity_amax_k1.0.json",
+   "lc_strategic": 5.0,
+   "lc_strategic_ramp": 1.0,
+   "lc_keep_right": 0.0,
+   "lc_cooperative": 1.0,
+   "lc_assertive": 1.0,
+   "lc_speed_gain": 1.0,
+   "heavy": null,
+   "jm_timegap_minor_s": null,
+   "jm_ignore_foe_prob": null,
+   "lc_sublane": null,
+   "lc_pushy": null,
+   "lc_impatience": null,
+   "lc_accel_lat": null,
+   "max_speed_lat": null,
+   "min_gap_lat": null,
+   "lat_alignment": null,
+   "lc_overtake_right": null,
+   "hov_fraction": 0.0,
+   "speed_factor": 1.0,
+   "speed_dev": 0.0
+  }
+ },
+ "analysis_windows": [
+  {
+   "period": "p2",
+   "lo_s": 36.8,
+   "hi_s": 908.3,
+   "origin_offset_s": -0.6,
+   "populated_start_s": 36.8
+  },
+  {
+   "period": "p3",
+   "lo_s": 908.3,
+   "hi_s": 1811.0,
+   "origin_offset_s": 797.4,
+   "populated_start_s": 905.9
+  }
+ ],
+ "warmup_s": 180.0,
+ "scenario": {
+  "path": "scenarios/i80_replica.yaml",
+  "name": "i80_replica",
+  "config_hash": "43a66c754f31"
+ },
+ "limitations": [
+  "The road is a straight hand-built layout with the measured lengths; curvature, grade and lane widths are not modelled.",
+  "Lane 1 is an HOV lane in the recording; the replica has no HOV rule.",
+  "The ramp edge (200 m) and its speed are not measured; the mainline speed limit is California's maximum, not a verified posting.",
+  "Trucks are p2 3.8%, p3 2.7% of the block's vehicles; the kept I-24 fleet has no heavy vehicles."
+ ],
+ "wall_s": 3.3
+}

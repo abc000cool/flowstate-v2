@@ -261,3 +261,20 @@ zero collisions in the arm's 20 runs. A criterion is met, not met, or not evalua
 is rescued only if it meets E1–E4 and the kept configuration (LC2013, `merge: lane_change`) does not meet at
 least one. Readout: `artifacts/i80_merge_validation.json`. Fixed before any run; approved by the coordinator
 2026-10-07 under the owner's delegation; never re-thresholded.
+
+### M1 result — 2026-10-08 (stage p21, code 8ea59ec)
+
+E11 ran with M1 as fixed above (docs/I80_MERGE_VALIDATION.md; readout `artifacts/i80_merge_validation.json`,
+`problems` empty, `reading_text` "measured is not rescued").
+
+- **Kept** (`i80_replica`, 43a66c754f31, `merge: lane_change`) meets E1 and E4 but fails E2: the new follower is at
+  1.0927 and the leader side at 1.127 of a normal gap at the change, where I-80 has 0.7668 and 0.5785, and the
+  leader side does not recover. It fails all six E3 overlaps; for example, the accepted lead gap is
+  2.82 [2.75, 2.88] s against I-80's 1.35 [1.15, 1.52].
+- **`measured`** (`i80_replica_measured`, 7ef6ce60af40) meets E1, E4, E2's leader side and three of the six E3
+  overlaps (accepted lead gap and both partner speeds). It fails E2's follower side (0.9155 against ≤ 0.9) and
+  E3 on the accepted lag gap (2.25 [2.21, 2.30] s against [1.47, 1.87]). Its two critical-gap medians are also
+  underpowered: 18 and 9 of 20 seed readings, the other fits at the 0.01-s bound.
+- **Both arms** had zero collisions in 20 runs.
+- **Consequences.** Under E13's rule, `merge: measured` is retired; deleting it is the owner's ask-first. The kept
+  configuration is not validated on I-80 either. Neither result moves any default or hash.

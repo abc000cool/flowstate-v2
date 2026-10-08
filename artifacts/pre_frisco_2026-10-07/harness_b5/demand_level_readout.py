@@ -46,6 +46,16 @@ fields line for line.
 
 ``evaluate`` exits 3 after writing the output when anything is recorded under ``problems`` or the fit
 stopped (the stage logs the failure and carries on).
+
+Section lanes (I-24; ``scripts/fit_demand_level.py --section-lanes``, docs/I24_CONSISTENCY_C7B.md §3). A
+fit that states ``section_lanes: observed`` scored its objective on the observed lane set (lanes 1-4); it
+is re-derived on that lane set from its own per-seed lane crossings by scripts/i24_validate.py's
+``lane_crossing_block`` (imported, as the fit used it), and four checks join the fit's: the setting is
+``observed`` (any other stated value fails), the per-lane sums equal the all-lane counts, the recorded
+lane sets are the re-derived ones, and every scale read the same lane sets. A fit that does not state
+``section_lanes`` counted every lane (as before). Beside C1-C5 the output reports ``section_lanes``: the
+fit's setting and lane sets, and the lane set each battery's link-flow criteria row (C3's input) was
+scored on. Reported, not gating: C1-C5 are unchanged.
 """
 
 from __future__ import annotations
@@ -65,6 +75,7 @@ import numpy as np
 
 REPO = Path(__file__).resolve().parents[3]
 _B1B2 = REPO / "artifacts" / "i24_discharge_2026-10-07" / "harness_b1b2" / "corridor_b1b2.py"
+_SCRIPTS = REPO / "scripts"
 
 
 def _load(name: str, path: Path) -> ModuleType:
@@ -138,6 +149,15 @@ NOT_VALIDATION = {
 def load(path: str) -> dict[str, Any] | None:
     p = REPO / path
     return json.loads(p.read_text()) if p.is_file() else None
+
+
+def _i24_validate() -> ModuleType:
+    """scripts/i24_validate.py: the battery's lane-set rule (``lane_crossing_block``), imported."""
+    if str(_SCRIPTS) not in sys.path:
+        sys.path.insert(0, str(_SCRIPTS))
+    import i24_validate
+
+    return i24_validate
 
 
 def sha(path: str) -> str | None:
@@ -223,7 +243,13 @@ def rederive(fit: dict[str, Any], recompute: Any) -> dict[str, Any]:
 
 def _strip_scale(rec: dict[str, Any]) -> dict[str, Any]:
     """A fit record without its per-run tables (they stay in the fit artifact)."""
-    drop = {"counts_per_window", "segment_speeds_ms", "calibration_station_hours"}
+    drop = {
+        "counts_per_window",
+        "segment_speeds_ms",
+        "calibration_station_hours",
+        "counts_per_window_lane_set",
+        "lane_crossings",
+    }
     return {
         **{k: v for k, v in rec.items() if k != "per_seed"},
         "per_seed": [{k: v for k, v in p.items() if k not in drop} for p in rec["per_seed"]],
@@ -390,17 +416,40 @@ def criteria_i24(
 def fit_checks_i24(
     fit: dict[str, Any], frm_art: dict[str, Any]
 ) -> tuple[dict[str, Any], dict[str, Any]]:
-    """Whether the fit ran as B5 fixed it, and the rule re-derived from its per-seed records."""
+    """Whether the fit ran as B5 fixed it, and the rule re-derived from its per-seed records.
+
+    A fit on the observed lane set (``section_lanes: observed``) is re-derived on the lane-set counts
+    scripts/i24_validate.py's ``lane_crossing_block`` makes of each scale's per-seed lane crossings,
+    and gains the lane checks (module docstring, "Section lanes"); any other fit reads every lane.
+    """
     obs_doc = load(I24_OBSERVED) or {}
     obs_hourly = np.asarray(obs_doc.get(I24_OBSERVED_KEY, []), float)
     fit_w = list(I24_FIT_WINDOWS)
+    mode = fit.get("section_lanes", "all")
+    observed = mode == "observed"
+    lane_blocks: dict[float, dict[str, Any]] = {}
+
+    def lane_block(rec: dict[str, Any]) -> dict[str, Any]:
+        val = _i24_validate()
+        per = rec["per_seed"]
+        block = val.lane_crossing_block(
+            [p["lane_crossings"] for p in per],
+            [p["counts_per_window"] for p in per],
+            val.SECTIONS_M,
+            len(per[0]["counts_per_window"][0]),
+        )
+        lane_blocks[_key(rec["scale"])] = block
+        return block
 
     def recompute(rec: dict[str, Any]) -> ObjectiveReading:
+        counts = (
+            lane_block(rec)["counts_per_replicate_lane_set"]
+            if observed
+            else [p["counts_per_window"] for p in rec["per_seed"]]
+        )
         sims = [
-            (np.asarray(p["counts_per_window"], float) * (3600.0 / I24_WINDOW_S))[:, fit_w]
-            .ravel()
-            .tolist()
-            for p in rec["per_seed"]
+            (np.asarray(c, float) * (3600.0 / I24_WINDOW_S))[:, fit_w].ravel().tolist()
+            for c in counts
         ]
         return replicate_mean_objective(sims, obs_hourly[:, fit_w].ravel().tolist())
 
@@ -440,9 +489,63 @@ def fit_checks_i24(
         "objectives_and_choice_rederived": rd["ok"],
         "reproduction_exact": bool((fit.get("reproduction") or {}).get("exact")),
     }
-    return checks, {
+    rederived = {
         "final": {k: v for k, v in rd.items() if not k.startswith("_")},
         "coarse": {k: v for k, v in rd_coarse.items() if not k.startswith("_")},
+    }
+    if mode != "all":  # --section-lanes observed (module docstring, "Section lanes")
+        keys = ("section_m", "n_lanes", "lane_set")
+        sets = {s: [{k: x[k] for k in keys} for x in b["sections"]] for s, b in lane_blocks.items()}
+        first = next(iter(sets.values()), None)
+        consistent = observed and all(v == first for v in sets.values())
+        stated = fit.get("lane_sets") or {}
+        checks["section_lanes_known"] = observed
+        checks["lane_crossings_sum_to_counts"] = observed and all(
+            b["sums_equal_counts_per_replicate"] for b in lane_blocks.values()
+        )
+        checks["lane_sets_rederived"] = (
+            observed
+            and all(
+                cbb._canon(r.get("lane_sets"))
+                == cbb._canon((lane_blocks.get(_key(r["scale"])) or {}).get("sections"))
+                for r in fit["per_scale"]
+            )
+            and stated.get("consistent_across_scales") == consistent
+            and cbb._canon(stated.get("sections")) == cbb._canon(first if consistent else None)
+        )
+        checks["lane_sets_consistent_across_scales"] = consistent
+        rederived["lane_sets"] = first if consistent else sets
+    return checks, rederived
+
+
+def row_lanes(art: dict[str, Any]) -> str:
+    """The lane set a battery's link-flow criteria row was scored on: ``observed`` or ``all``.
+
+    ``observed`` when its ``geh.primary`` is scripts/i24_validate.py's ``LANE_SET_PRIMARY``
+    (``--section-lanes observed``); every other battery scores every lane of the section's edge.
+    """
+    primary = (art.get("geh") or {}).get("primary")
+    return "observed" if primary == _i24_validate().LANE_SET_PRIMARY else "all"
+
+
+def section_lanes_reading(
+    fit: dict[str, Any], refit_art: dict[str, Any], frm_art: dict[str, Any]
+) -> dict[str, Any]:
+    """Beside C1-C5: the fit's section lanes and the lane set of each battery's link-flow row (reported)."""
+    mode = fit.get("section_lanes", "all")
+    rows = {"refit": row_lanes(refit_art), "from_arm": row_lanes(frm_art)}
+    return {
+        "what": "the simulated count at every section: every lane of the section's edge ('all') or "
+        "the observed lane set, lanes 1-4 ('observed'; docs/I24_CONSISTENCY_C7B.md §3). Reported, not "
+        "gating: C3 reads each battery's link-flow criteria row as that battery scored it",
+        "fit": mode,
+        "stated_by_the_fit": "section_lanes" in fit,
+        "fit_lane_sets": (fit.get("lane_sets") or {}).get("sections")
+        if mode == "observed"
+        else None,
+        "c3_rows": rows,
+        "c3_rows_alike": rows["refit"] == rows["from_arm"],
+        "fit_objective_alike_c3_rows": mode == rows["refit"] == rows["from_arm"],
     }
 
 
@@ -485,6 +588,9 @@ def evaluate_i24(out: Path, fit_path: str, label: str, runs_root: Path) -> dict[
             "constraint_unmet": fit.get("constraint_unmet"),
             "reproduction": fit.get("reproduction"),
             "per_scale": [_strip_scale(r) for r in fit["per_scale"]],
+            # the sections' simulated count (module docstring, "Section lanes"); absent: every lane
+            "section_lanes": fit.get("section_lanes", "all"),
+            "lane_sets": fit.get("lane_sets"),
         }
     )
     if fit.get("constraint_unmet"):
@@ -571,6 +677,7 @@ def evaluate_i24(out: Path, fit_path: str, label: str, runs_root: Path) -> dict[
             "level_unchanged_reproduces_from_arm": same_level_repro,
             "criteria": crit,
             "verdicts": _verdicts(crit),
+            "section_lanes": section_lanes_reading(fit, refit_art, frm_art),
             "c1_c5_hold": holds,
             "candidate": None if problems else holds,
             "problems": problems,
@@ -959,12 +1066,19 @@ def main(argv: list[str] | None = None) -> int:
         doc = evaluate_i24(out, args.fit, args.label, runs_root)
     else:
         doc = evaluate_i94(out, args.fit)
+    lanes = doc.get("section_lanes")
     print(
         f"{args.corridor}: "
         + (
             "criteria " + json.dumps(doc.get("verdicts"))
             if doc.get("verdicts")
             else str(doc.get("reading", ""))
+        )
+        + (
+            f"; section lanes: fit {lanes['fit']}, C3 rows {lanes['c3_rows']['refit']} (refit) / "
+            f"{lanes['c3_rows']['from_arm']} (from-arm)"
+            if lanes
+            else ""
         )
         + f"; candidate: {doc.get('candidate')} -> {out}"
     )

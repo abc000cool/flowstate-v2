@@ -350,6 +350,8 @@ E1–E4 and the kept configuration fails at least one.
 **Risks.** Raw NGSIM is noisy (reconstructed NGSIM is out of scope by owner
 rule); gaps and speeds rest on positions. n is reported with every interval.
 
+**Status 2026-10-08.** E11 ran (stage p21, 04:23–04:31 UTC, self-deleting VM, code 8ea59ec; docs/I80_MERGE_VALIDATION.md): kept fails E2 and E3 (0 of 6 overlaps), measured fails E2 and E3 (3 of 6), zero collisions in both; "measured is not rescued". E13: by the pre-registered rule `merge: measured` is retired; the deletion (which must now also cover scenarios/i80_replica_measured.yaml) awaits the owner's ask-first. The kept configuration is not validated on I-80 either, and VALIDATION_REPORT must say so; the observed in-zone count (113 changes against 421 ramp entries) needs a check before E11 is cited.
+
 ## E12 — the platform-sensitive tests (item 21)
 
 **List.** `pytest -m "not slow" -q -rxX` on the 15 marked tests, macOS, 2026-10-07:

@@ -11,9 +11,10 @@ reported only. Five seeds per scale, the from-arm battery's first five.
 
 Why a new script. ``scripts/i24_fit_demand_scale.py`` minimises segment-speed RMSPE on one
 seed per scale; it cannot see vehicles held off the network and twice chose a backlog
-(Amendment 2's refits, round p14's s = 1.125 inserting 0.783). That script and its defaults
-are untouched (its committed fits re-derive byte for byte, tests/test_scripts/
-test_fit_demand_level.py); this one reuses its helpers.
+(Amendment 2's refits, round p14's s = 1.125 inserting 0.783). That script's defaults are
+untouched (its committed fits re-derive byte for byte, tests/test_scripts/
+test_fit_demand_level.py); this one reuses its helpers and its run (``_job``, whose optional
+seventh item, added for ``--section-lanes observed``, records the run's crossings by lane).
 
 ``--corridor i24``: the from-arm is the B2 arm ``scenarios/i24_replica_flow_rc_speedcal_dc_refit.yaml``
 (909b89f298c5), its base ``scenarios/i24_replica_flow_rc_corrected_dc.yaml`` (219f7db55a74)
@@ -36,6 +37,23 @@ Outputs ``artifacts/demand_level_fit_i24.json`` and, with ``--write-scenario``,
 ``--from-battery`` (``--carried-scale`` when its level is not the p4 fit's 0.925); the plan's
 expected hashes guard the default files only, and the recipe check (base x carried scale = the
 from-arm) and the battery's hash guard every arm.
+
+``--section-lanes {all,observed}`` (I-24 only; docs/I24_CONSISTENCY_C7B.md §3). At 1,000 m and
+4,800 m the sections lie on 5-lane edges; the observed count reads lanes 1-4. ``all`` (the
+default) counts every lane of the section's edge, as before: the runs, readings, choice and
+scenario are exactly as before, and the artifact adds one trailing key, ``section_lanes``.
+``observed`` counts the observed lane set at every section exactly as ``scripts/i24_validate.py
+--section-lanes observed`` scores a battery's row, by that script's own functions: each run
+records its crossings by lane (``i24_validate.section_lane_crossings``, through the I-24
+fitter's job), and each scale's five runs are read by ``i24_validate.lane_crossing_block`` (a
+section's lane set is the four highest SUMO lane indices crossed in; per-lane sums that differ
+from the all-lane counts fail the fit). The objective and the held-out reading are then on the
+lane set, the all-lane readings are reported beside them (``objective_all_lanes``,
+``held_out_all_lanes``), the artifact states the lane set per section (``lane_sets``), and the
+reproduction run also compares its per-lane crossings with the from-arm battery's when that
+battery recorded them (``--lane-crossings``). I-94 needs no such option: its station totals
+count every lane a simulated crossing is counted in, auxiliary lanes included
+(``calibration.loaders.mndot``), so ``--section-lanes observed`` is refused there.
 
 ``--corridor i94``: the from-arm is ``--from-scenario`` (stage p17's arm, selected by D10's
 rule; default ``scenarios/mndot_i94_wb_stpaul_weave_dc_cal_w1b_w2.yaml``) with its battery
@@ -93,6 +111,7 @@ import yaml
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import i24_fit_demand_scale as fit24  # the I-24 fitter's helpers; its defaults are not touched
+import i24_validate as val  # the battery's lane reader and lane-set rule (--section-lanes)
 
 from calibration.demand_level import (
     I24_COARSE,
@@ -168,6 +187,20 @@ OBJECTIVE_TEXT = {
         "the baseline gate pools replicates; the validation days are the held-out reading"
     ),
 }
+#: What ``--section-lanes observed`` adds to the I-24 objective's definition.
+LANE_SET_OBJECTIVE_TEXT = (
+    "the simulated count at every section read on the observed lane set (--section-lanes "
+    "observed), as scripts/i24_validate.py --section-lanes observed scores the row and by its "
+    "functions (section_lane_crossings per run, lane_crossing_block over each scale's runs): "
+    + val.LANE_SET_RULE
+)
+
+
+def objective_text_i24(section_lanes: str) -> str:
+    """The I-24 objective's definition: the committed text, plus the lane set when it is observed."""
+    if section_lanes == "all":
+        return OBJECTIVE_TEXT["i24"]
+    return f"{OBJECTIVE_TEXT['i24']}; {LANE_SET_OBJECTIVE_TEXT}"
 
 
 class Refused(Exception):
@@ -298,6 +331,12 @@ class I24Setup:
     out_name: str
     obs_hourly: np.ndarray
     obs_speeds: np.ndarray
+    #: ``--section-lanes``: the sections' simulated count on every lane or the observed lane set
+    section_lanes: str = "all"
+
+    @property
+    def lanes_observed(self) -> bool:
+        return self.section_lanes == "observed"
 
 
 def _hash_of(doc: dict[str, Any]) -> str:
@@ -390,16 +429,91 @@ def i24_setup(args: argparse.Namespace) -> I24Setup:
         out_name=args.name or f"{from_path.stem}{I24_SUFFIX}",
         obs_hourly=obs_hourly,
         obs_speeds=obs_speeds,
+        section_lanes=str(args.section_lanes),
     )
 
 
+def _lanes_item(setup: I24Setup) -> tuple[bool, ...]:
+    """The job's optional seventh item: ``(True,)`` asks the run for its crossings by lane."""
+    return (True,) if setup.lanes_observed else ()
+
+
 def i24_jobs(setup: I24Setup, scales: Sequence[float]) -> list[tuple[Any, ...]]:
-    """The I-24 fitter's job tuples: every scale on every fit seed, under the output name."""
+    """The I-24 fitter's job tuples: every scale on every fit seed, under the output name.
+
+    Six items, as the fitter's own; ``--section-lanes observed`` adds a seventh, True.
+    """
     return [
-        (float(s), int(seed), setup.population, "corrected", str(setup.base), setup.out_name)
+        (
+            float(s),
+            int(seed),
+            setup.population,
+            "corrected",
+            str(setup.base),
+            setup.out_name,
+            *_lanes_item(setup),
+        )
         for s in scales
         for seed in setup.seeds
     ]
+
+
+def lane_set_counts(scale: float, runs: Sequence[dict[str, Any]]) -> dict[str, Any]:
+    """One scale's runs read by the battery's lane rule (``i24_validate.lane_crossing_block``).
+
+    Args:
+        scale: The scale (for messages).
+        runs: Its runs in seed order, each with ``counts_per_window`` and ``lane_crossings``.
+
+    Returns:
+        The block: ``sections`` (``n_lanes``, ``lane_set`` ...) and
+        ``counts_per_replicate_lane_set`` ``[run][section][window]``.
+
+    Raises:
+        RunFailed: A run without its crossings by lane, or a run whose per-lane crossings do
+            not sum to its all-lane counts.
+    """
+    if any("lane_crossings" not in r for r in runs):
+        raise RunFailed(f"scale {scale}: a run without its crossings by lane (--section-lanes)")
+    n_win = len(runs[0]["counts_per_window"][0])
+    block = val.lane_crossing_block(
+        [r["lane_crossings"] for r in runs],
+        [r["counts_per_window"] for r in runs],
+        val.SECTIONS_M,
+        n_win,
+    )
+    if not block["sums_equal_counts_per_replicate"]:
+        raise RunFailed(f"scale {scale}: the per-lane crossings do not sum to the all-lane counts")
+    return block
+
+
+def fit_lane_sets(records: Sequence[dict[str, Any]]) -> dict[str, Any]:
+    """The lane set used per section, stated once for the fit (``--section-lanes observed``).
+
+    Each scale's lane sets come from its own runs (the battery's rule over a battery's
+    replicates); ``consistent_across_scales`` says whether every scale read the same ones.
+    """
+    keys = ("section_m", "n_lanes", "lane_set")
+    by_scale = [
+        {"scale": rec["scale"], "sections": [{k: s[k] for k in keys} for s in rec["lane_sets"]]}
+        for rec in records
+    ]
+    first = by_scale[0]["sections"] if by_scale else None
+    consistent = all(b["sections"] == first for b in by_scale)
+    out = {
+        "observed_lanes": f"1-{val.OBSERVED_LANE_COUNT}, the four leftmost: the four highest SUMO "
+        "lane indices of the section's edge",
+        "rule": val.LANE_SET_RULE,
+        "definition": val.LANE_CROSSINGS_DEFINITION,
+        "reader": "scripts/i24_validate.py section_lane_crossings (each run) and "
+        "lane_crossing_block (each scale's runs), imported, as its --section-lanes observed "
+        "reads a battery's replicates",
+        "consistent_across_scales": consistent,
+        "sections": first if consistent else None,
+    }
+    if not consistent:
+        out["by_scale"] = by_scale
+    return out
 
 
 def _flows(counts: Sequence[Sequence[float]], windows: Sequence[int]) -> list[float]:
@@ -415,18 +529,30 @@ def _obs(obs_hourly: np.ndarray, windows: Sequence[int]) -> list[float]:
 def i24_scale(
     scale: float, rows: list[dict[str, Any]], setup: I24Setup
 ) -> tuple[ScaleReading, dict[str, Any]]:
-    """One scale's reading and its record from its five runs (seed order)."""
+    """One scale's reading and its record from its five runs (seed order).
+
+    The objective scores each run's all-lane counts, or with ``--section-lanes observed`` its
+    counts on the observed lane set (:func:`lane_set_counts`; the all-lane readings, the lane
+    sets and the per-run lane tables are then added last in their blocks).
+    """
     by_seed = {int(r["seed"]): r for r in rows}
     runs = [by_seed[s] for s in setup.seeds]
     hashes = sorted({r["config_hash"] for r in runs})
     if len(hashes) != 1:
         raise RunFailed(f"scale {scale}: runs of different configurations {hashes}")
     train, test = list(fit24.TRAIN_WINDOWS), list(fit24.TEST_WINDOWS)
+    lanes = lane_set_counts(scale, runs) if setup.lanes_observed else None
+    # the counts the objective scores (module docstring, --section-lanes)
+    scored = (
+        [r["counts_per_window"] for r in runs]
+        if lanes is None
+        else lanes["counts_per_replicate_lane_set"]
+    )
     objective = replicate_mean_objective(
-        [_flows(r["counts_per_window"], train) for r in runs], _obs(setup.obs_hourly, train)
+        [_flows(c, train) for c in scored], _obs(setup.obs_hourly, train)
     )
     held_out = replicate_mean_objective(
-        [_flows(r["counts_per_window"], test) for r in runs], _obs(setup.obs_hourly, test)
+        [_flows(c, test) for c in scored], _obs(setup.obs_hourly, test)
     )
     with np.errstate(invalid="ignore"):
         seg_mean = np.nanmean(
@@ -454,17 +580,34 @@ def i24_scale(
         "per_seed": [
             {
                 **{k: r[k] for k in ("seed", "config_hash", "inserted_fraction", "wall_s")},
-                "geh_train": fit24.geh_reading(r["counts_per_window"], setup.obs_hourly, train),
-                "geh_test": fit24.geh_reading(r["counts_per_window"], setup.obs_hourly, test),
+                "geh_train": fit24.geh_reading(c, setup.obs_hourly, train),
+                "geh_test": fit24.geh_reading(c, setup.obs_hourly, test),
                 "rmspe_train": r["rmspe_train"],
                 "rmspe_test": r["rmspe_test"],
                 "rmspe_all": r["rmspe_all"],
                 "counts_per_window": r["counts_per_window"],
                 "segment_speeds_ms": _nan_as_none(r["segment_speeds_ms"]),
             }
-            for r in runs
+            for r, c in zip(runs, scored, strict=True)
         ],
     }
+    if lanes is not None:  # --section-lanes observed: additions, last in their blocks
+        record["objective_all_lanes"] = replicate_mean_objective(
+            [_flows(r["counts_per_window"], train) for r in runs], _obs(setup.obs_hourly, train)
+        ).to_dict()
+        record["held_out_all_lanes"] = replicate_mean_objective(
+            [_flows(r["counts_per_window"], test) for r in runs], _obs(setup.obs_hourly, test)
+        ).to_dict()
+        record["lane_sets"] = lanes["sections"]
+        for p, r, c in zip(record["per_seed"], runs, scored, strict=True):
+            p["geh_train_all_lanes"] = fit24.geh_reading(
+                r["counts_per_window"], setup.obs_hourly, train
+            )
+            p["geh_test_all_lanes"] = fit24.geh_reading(
+                r["counts_per_window"], setup.obs_hourly, test
+            )
+            p["counts_per_window_lane_set"] = c
+            p["lane_crossings"] = r["lane_crossings"]
     return reading, record
 
 
@@ -489,8 +632,13 @@ def i24_reproduction(row: dict[str, Any] | None, setup: I24Setup) -> dict[str, A
         "segment_speeds_ms": _canon(_nan_as_none(row["segment_speeds_ms"]))
         == _canon(_nan_as_none(battery_seg.tolist())),
     }
+    battery_lanes = sim.get("lane_crossings")
+    if setup.lanes_observed and battery_lanes is not None:
+        checks["lane_crossings"] = _canon(row.get("lane_crossings")) == _canon(
+            battery_lanes["per_replicate"][i]
+        )
     differs = [k for k, ok in checks.items() if not ok]
-    return {
+    out = {
         "run": True,
         "what": "the from-arm configuration (base x the carried scale, the from-arm's name) on the "
         "first fit seed, against the from-arm battery's replicate of that seed: the code tree "
@@ -502,6 +650,14 @@ def i24_reproduction(row: dict[str, Any] | None, setup: I24Setup) -> dict[str, A
         "exact": not differs,
         "differs": differs,
     }
+    if setup.lanes_observed:  # --section-lanes observed: an addition, last
+        out["lane_crossings_check"] = (
+            "compared with the battery's simulated.lane_crossings of that seed (checks.lane_crossings)"
+            if battery_lanes is not None
+            else "not compared: the from-arm battery records no lane crossings (it ran without "
+            "--lane-crossings); the run's all-lane counts are compared"
+        )
+    return out
 
 
 def i24_fit(args: argparse.Namespace) -> int:
@@ -509,7 +665,8 @@ def i24_fit(args: argparse.Namespace) -> int:
     print(
         f"i24: from-arm {_rel(setup.from_scenario)} ({setup.from_hash}, carried s = {setup.carried:g});"
         f" battery realised {setup.realised_mean:.4f} -> constraint >= {setup.floor:.4f}; seeds "
-        f"{setup.seeds}",
+        f"{setup.seeds}"
+        + ("; sections counted on the observed lane set" if setup.lanes_observed else ""),
         flush=True,
     )
     repro_job = (
@@ -519,6 +676,7 @@ def i24_fit(args: argparse.Namespace) -> int:
         "corrected",
         str(setup.base),
         setup.from_name,
+        *_lanes_item(setup),
     )
     coarse = list(I24_COARSE)
     rows = fit24._run_jobs([*i24_jobs(setup, coarse), repro_job], args.procs)
@@ -555,7 +713,10 @@ def i24_fit(args: argparse.Namespace) -> int:
         "versions": _versions(),
         "corridor": "i24",
         "rule": RULE_TEXT,
-        "objective": {"estimator": "replicate_mean", "definition": OBJECTIVE_TEXT["i24"]},
+        "objective": {
+            "estimator": "replicate_mean",
+            "definition": objective_text_i24(setup.section_lanes),
+        },
         "inserted_fraction_definition": fit24.INSERTED_DEFINITION.replace(
             "the fit's single seed", "each fit seed"
         ),
@@ -603,7 +764,11 @@ def i24_fit(args: argparse.Namespace) -> int:
         "chosen": None,
         "reproduction": repro,
         "scenario_out": None,
+        # the sections' simulated count (--section-lanes; added last, 2026-10-07)
+        "section_lanes": setup.section_lanes,
     }
+    if setup.lanes_observed:
+        payload["lane_sets"] = fit_lane_sets([readings[s][1] for s in sorted(readings)])
     out = _abs(args.out or I24_OUT)
     if final.constraint_unmet:
         write_json(out, payload)
@@ -632,12 +797,18 @@ def write_scenario_i24(
 ) -> str:
     """The base scaled by the chosen s (``scaled_config``), with its provenance header."""
     h = _hash_of(doc)
+    fitted = (
+        f"#   Fitted by scripts/fit_demand_level.py --corridor i24 ({_rel(fit_out)}) on link flows,\n"
+        if not setup.lanes_observed
+        else "#   Fitted by scripts/fit_demand_level.py --corridor i24 --section-lanes observed\n"
+        f"#   ({_rel(fit_out)}) on link flows counted on the observed lane set (lanes 1-4),\n"
+    )
     header = (
         f"# {setup.out_name} — B5's demand level on the rc family (docs/PRE_FRISCO_PROGRAM.md B5;\n"
         "#   docs/FRISCO_PROTOCOL.md Amendment 6; PROPOSED, not adopted): scripts/i24_fit_demand_scale.py's\n"
         f"#   scaled_config at s = {scale:g} on {_rel(setup.base)} ({setup.base_hash}): mainline and on-ramp\n"
         f"#   inflows x s, exit fractions and the boundary as built, fleet {setup.population}.\n"
-        f"#   Fitted by scripts/fit_demand_level.py --corridor i24 ({_rel(fit_out)}) on link flows,\n"
+        f"{fitted}"
         "#   06:30-07:30 CST (07:30-08:30 held out), five seeds per scale, under the insertion\n"
         f"#   constraint >= {sel.min_inserted:.4f} (from-arm {setup.from_name}, {setup.from_hash}, at\n"
         f"#   s = {setup.carried:g}). Selection: {sel.reason}.\n"
@@ -1175,6 +1346,14 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     ap.add_argument("--base-hash", default=None, help="i24: the base's expected config hash")
     ap.add_argument("--carried-scale", type=float, default=None, help="i24: the from-arm's level")
     ap.add_argument(
+        "--section-lanes",
+        choices=val.SECTION_LANES,
+        default="all",
+        help="i24: the objective's simulated count at every section: every lane of the section's "
+        "edge ('all', the default, as before) or the observed lane set ('observed': lanes 1-4, the "
+        "four highest SUMO indices, as scripts/i24_validate.py --section-lanes observed counts it)",
+    )
+    ap.add_argument(
         "--observations", type=Path, default=None, help="i94: calibration-day observations"
     )
     ap.add_argument(
@@ -1189,6 +1368,11 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     args = ap.parse_args(argv)
     if args.procs < 1:
         ap.error("--procs must be at least 1")
+    if args.corridor == "i94" and args.section_lanes != "all":
+        ap.error(
+            "--section-lanes is I-24's: the I-94 station totals already count every lane a "
+            "simulated crossing is counted in (auxiliary lanes included)"
+        )
     return args
 
 

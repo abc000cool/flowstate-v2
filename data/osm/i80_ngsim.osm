@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<osm version="0.6" generator="scripts/i80_build_replica.py">
+  <!-- NGSIM I-80 eastbound study area (Emeryville, CA) as a straight road: generated from artifacts/i80_replica_inputs.json, not traced from a map. -->
+  <node id="1" lat="37.83000000" lon="-122.29700000"/>
+  <node id="2" lat="37.83455145" lon="-122.29700000"/>
+  <node id="3" lat="37.83569251" lon="-122.29700000"/>
+  <node id="4" lat="37.83634237" lon="-122.29700000"/>
+  <node id="5" lat="37.83907046" lon="-122.29700000"/>
+  <node id="6" lat="37.84087300" lon="-122.29700000"/>
+  <node id="10" lat="37.83441837" lon="-122.29539357"/>
+  <way id="9001">
+    <nd ref="1"/><nd ref="2"/>
+    <tag k="highway" v="motorway"/>
+    <tag k="oneway" v="yes"/>
+    <tag k="lanes" v="6"/>
+    <tag k="maxspeed" v="65 mph"/>
+  </way>
+  <way id="9002">
+    <nd ref="2"/><nd ref="3"/>
+    <tag k="highway" v="motorway"/>
+    <tag k="oneway" v="yes"/>
+    <tag k="lanes" v="6"/>
+    <tag k="maxspeed" v="65 mph"/>
+  </way>
+  <way id="9003">
+    <nd ref="3"/><nd ref="4"/>
+    <tag k="highway" v="motorway"/>
+    <tag k="oneway" v="yes"/>
+    <tag k="lanes" v="7"/>
+    <tag k="maxspeed" v="65 mph"/>
+  </way>
+  <way id="9004">
+    <nd ref="4"/><nd ref="5"/>
+    <tag k="highway" v="motorway"/>
+    <tag k="oneway" v="yes"/>
+    <tag k="lanes" v="6"/>
+    <tag k="maxspeed" v="65 mph"/>
+  </way>
+  <way id="9005">
+    <nd ref="5"/><nd ref="6"/>
+    <tag k="highway" v="motorway"/>
+    <tag k="oneway" v="yes"/>
+    <tag k="lanes" v="6"/>
+    <tag k="maxspeed" v="65 mph"/>
+  </way>
+  <way id="9010">
+    <nd ref="10"/><nd ref="3"/>
+    <tag k="highway" v="motorway_link"/>
+    <tag k="oneway" v="yes"/>
+    <tag k="lanes" v="1"/>
+  </way>
+</osm>

@@ -78,6 +78,7 @@ from i24_validate import (
     _sim_frame,
     _span,
     crossings_per_window,
+    section_lane_crossings,
 )
 
 from flowstate_core.config import ScenarioConfig, config_hash
@@ -156,8 +157,16 @@ def _rmspe_windows(sim: np.ndarray, obs: np.ndarray, windows: range) -> float:
     return float(rmspe(s[ok], o[ok]))
 
 
-def _job(args: tuple[float, int, str, str, str | None, str]) -> dict[str, Any]:
-    scale, seed, fleet_artifact, base, base_yaml_s, name = args
+def _job(args: tuple[Any, ...]) -> dict[str, Any]:
+    """One fit run: simulate ``scaled_config`` on one seed and read it as the battery reads a replicate.
+
+    ``args`` is ``(scale, seed, fleet_artifact, base, base_yaml, name)``; a seventh item
+    ``True`` (scripts/fit_demand_level.py ``--section-lanes observed``) adds the run's
+    ``lane_crossings`` (``i24_validate.section_lane_crossings``, the battery's per-lane
+    reader) last. Without it the run's record is exactly as before.
+    """
+    scale, seed, fleet_artifact, base, base_yaml_s, name = args[:6]
+    with_lanes = len(args) > 6 and bool(args[6])
     base_yaml = Path(base_yaml_s) if base_yaml_s else None
     geo = _inputs()["geometry"]
     a, b = geo["sim_x_of_data_x"]["a"], geo["sim_x_of_data_x"]["b"]
@@ -174,8 +183,11 @@ def _job(args: tuple[float, int, str, str, str | None, str]) -> dict[str, Any]:
         counts = [
             [int(c) for c in crossings_per_window(df, s, 0.0, n_win * WINDOW_S)] for s in SECTIONS_M
         ]
+        lanes = (
+            section_lane_crossings(df, SECTIONS_M, 0.0, n_win * WINDOW_S) if with_lanes else None
+        )
         wall = time.perf_counter() - t0
-    return {
+    row = {
         "scale": scale,
         "seed": seed,
         "config_hash": meta["config_hash"],
@@ -187,9 +199,12 @@ def _job(args: tuple[float, int, str, str, str | None, str]) -> dict[str, Any]:
         "counts_per_window": counts,
         "wall_s": round(wall, 1),
     }
+    if with_lanes:
+        row["lane_crossings"] = lanes
+    return row
 
 
-def _run_jobs(jobs: list[tuple[float, int, str, str, str | None, str]], procs: int) -> list[dict]:
+def _run_jobs(jobs: Sequence[tuple[Any, ...]], procs: int) -> list[dict]:
     """Run one grid round's simulations in a spawn pool, in job order."""
     ctx = mp.get_context("spawn")
     with ctx.Pool(min(procs, len(jobs))) as pool:

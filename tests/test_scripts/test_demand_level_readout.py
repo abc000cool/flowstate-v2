@@ -7,7 +7,9 @@ No simulation and no real run tree. Pinned:
 * I-24 end to end in a temporary repository: a fit made by scripts/fit_demand_level.py on synthetic
   runs, the committed from-arm battery, and a refit battery equal to it under the fit's configuration
   (a candidate); then a backlog (C2 fails: not a candidate), a missing meta.json and other seeds
-  (problems: undetermined), and a fit that stopped on constraint_unmet;
+  (problems: undetermined), and a fit that stopped on constraint_unmet; the section lanes beside
+  C1-C5 (a fit on the observed lane set re-derived on it; each battery's row lanes reported, not
+  gating; an unknown setting is a problem);
 * I-94 end to end likewise, with the gate's C1 / C3 / C4 and the no-lock rule (a collapsed seed fails
   NL), and a missing gate (undetermined).
 """
@@ -179,6 +181,58 @@ def test_i24_problems_leave_the_reading_undetermined(i24_repo: Path) -> None:
     _refit_battery(i24_repo, "000000000000")
     doc = _eval_i24(i24_repo)
     assert any("the refit battery ran 000000000000" in p for p in doc["problems"])
+
+
+def test_i24_the_section_lanes_are_reported_beside_c1_c5(
+    i24_repo: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The fit's --section-lanes and the lane set of each battery's link-flow row (C3's input),
+    reported beside C1-C5; a fit on the observed lane set is re-derived on it. Nothing gates on it."""
+    sl = _eval_i24(i24_repo)["section_lanes"]
+    assert (sl["fit"], sl["stated_by_the_fit"], sl["fit_lane_sets"]) == ("all", True, None)
+    assert sl["c3_rows"] == {"refit": "all", "from_arm": "all"}
+    assert sl["c3_rows_alike"] is True and sl["fit_objective_alike_c3_rows"] is True
+    # a fit on the observed lane set, the same runs with 30 % more on the auxiliary lanes
+    monkeypatch.setattr(fdl.fit24, "_run_jobs", _fake_jobs({"rounds": [], "aux": 0.3}))
+    args = ["--corridor", "i24", "--out", str(i24_repo / m.FIT["i24"]), "--write-scenario"]
+    args += ["--scenario-out", str(i24_repo / "b5.yaml"), "--section-lanes", "observed"]
+    assert fdl.main(args) == 0
+    fit = json.loads((i24_repo / m.FIT["i24"]).read_text())
+    battery = _refit_battery(i24_repo, fit["chosen"]["config_hash"])
+    doc = _eval_i24(i24_repo)
+    assert doc["problems"] == [] and doc["candidate"] is True
+    checks = doc["fit"]["checks"]
+    assert all(checks.values()) and {"lane_sets_rederived", "section_lanes_known"} <= set(checks)
+    assert doc["fit"]["section_lanes"] == "observed"
+    assert doc["fit"]["lane_sets"]["sections"] == doc["fit"]["rederived"]["lane_sets"]
+    assert all(
+        not {"lane_crossings", "counts_per_window_lane_set"} & set(p)
+        for r in doc["fit"]["per_scale"]
+        for p in r["per_seed"]
+    )
+    sl = doc["section_lanes"]
+    assert sl["fit"] == "observed"
+    assert [x["n_lanes"] for x in sl["fit_lane_sets"]] == [4, 5, 4, 4, 5, 4]
+    assert sl["c3_rows"] == {"refit": "all", "from_arm": "all"}
+    # reported: the fit read the observed lane set, both batteries' rows every lane
+    assert sl["fit_objective_alike_c3_rows"] is False
+    # a refit battery scored on the observed lane set (--section-lanes observed): reported, not gating
+    battery["geh"]["primary"] = "recommended_lane_set"
+    (i24_repo / "artifacts" / f"i24_validation_{m.I24_LABEL}.json").write_text(json.dumps(battery))
+    doc2 = _eval_i24(i24_repo)
+    assert doc2["section_lanes"]["c3_rows"] == {"refit": "observed", "from_arm": "all"}
+    assert doc2["section_lanes"]["c3_rows_alike"] is False
+    assert (doc2["verdicts"], doc2["problems"], doc2["candidate"]) == (doc["verdicts"], [], True)
+    assert m.main(["i24", "--out", str(i24_repo / "o.json")]) == 0
+    assert "section lanes: fit observed, C3 rows observed (refit) / all (from-arm)" in (
+        capsys.readouterr().out
+    )
+    # a fit whose lane setting is not one the fitter writes: not run as B5 fixed it
+    fit["section_lanes"] = "some"
+    (i24_repo / m.FIT["i24"]).write_text(json.dumps(fit))
+    doc3 = _eval_i24(i24_repo)
+    assert doc3["candidate"] is None
+    assert "the fit was not run as B5 fixed it: section_lanes_known" in doc3["problems"]
 
 
 def test_i24_a_fit_that_stopped_reads_constraint_unmet(

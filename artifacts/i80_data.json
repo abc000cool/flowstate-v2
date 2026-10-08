@@ -1,0 +1,148 @@
+{
+ "schema_version": 1,
+ "kind": "i80_data",
+ "created_at": "2026-10-08T04:27:51Z",
+ "source": "scripts/i80_data.py",
+ "code": "8ea59ec94ecddec569337c116a8116c5d475883a",
+ "code_dirty": true,
+ "data_hash": "82f1bb3f90512967bc2880d2c4f4e6e962f5ebf44841dc7d5822b4887f661658",
+ "data_version": "raw NGSIM I-80 (data.transportation.gov Socrata 8ect-6jqj, location 'i-80'), not the Montanino-Punzo reconstruction",
+ "citation": "U.S. Department of Transportation Federal Highway Administration (2016). Next Generation Simulation (NGSIM) Vehicle Trajectories and Supporting Data. data.transportation.gov, dataset 8ect-6jqj, location 'i-80' (raw export). Site: FHWA-HRT-06-137 (2006), NGSIM Interstate 80 Freeway Dataset fact sheet.",
+ "fetch": {
+  "dataset": "8ect-6jqj",
+  "location": "i-80",
+  "order": ":id",
+  "chunk_rows": 200000,
+  "fetched_at": "2026-10-08T04:27:37Z",
+  "n_rows": 4566387,
+  "n_chunks": 23
+ },
+ "counts": {
+  "n_rows": 4566387,
+  "n_exact_duplicates": 0,
+  "n_rows_deduplicated": 4566387
+ },
+ "periods": [
+  {
+   "label": "p1",
+   "start_ms": 1113433135300,
+   "end_ms": 1113434136500,
+   "span_s": 1001.2,
+   "wall_clock": [
+    "2005-04-13 15:58:55.3 PDT",
+    "2005-04-13 16:15:36.5 PDT"
+   ],
+   "rows": 1262678,
+   "vehicles": 2052,
+   "rows_by_lane": {
+    "1": 104284,
+    "2": 240524,
+    "3": 198866,
+    "4": 244065,
+    "5": 216370,
+    "6": 228638,
+    "7": 29931
+   },
+   "vehicles_ending_by_lane": {
+    "1": 359,
+    "2": 390,
+    "3": 309,
+    "4": 332,
+    "5": 307,
+    "6": 355
+   },
+   "truck_share": 0.0468,
+   "origins_ms": [
+    1113433134900
+   ],
+   "n_conflicting_slots": 0
+  },
+  {
+   "label": "p2",
+   "start_ms": 1113436767500,
+   "end_ms": 1113437746100,
+   "span_s": 978.6,
+   "wall_clock": [
+    "2005-04-13 16:59:27.5 PDT",
+    "2005-04-13 17:15:46.1 PDT"
+   ],
+   "rows": 1549918,
+   "vehicles": 1836,
+   "rows_by_lane": {
+    "1": 144583,
+    "2": 278312,
+    "3": 240095,
+    "4": 306111,
+    "5": 263734,
+    "6": 262396,
+    "7": 54687
+   },
+   "vehicles_ending_by_lane": {
+    "1": 406,
+    "2": 321,
+    "3": 262,
+    "4": 269,
+    "5": 245,
+    "6": 333
+   },
+   "truck_share": 0.0381,
+   "origins_ms": [
+    1113436766900
+   ],
+   "n_conflicting_slots": 0
+  },
+  {
+   "label": "p3",
+   "start_ms": 1113437565600,
+   "end_ms": 1113438734000,
+   "span_s": 1168.4,
+   "wall_clock": [
+    "2005-04-13 17:12:45.6 PDT",
+    "2005-04-13 17:32:14.0 PDT"
+   ],
+   "rows": 1753791,
+   "vehicles": 1790,
+   "rows_by_lane": {
+    "1": 155721,
+    "2": 311854,
+    "3": 280871,
+    "4": 330013,
+    "5": 305350,
+    "6": 300203,
+    "7": 69779
+   },
+   "vehicles_ending_by_lane": {
+    "1": 396,
+    "2": 291,
+    "3": 246,
+    "4": 257,
+    "5": 251,
+    "6": 349
+   },
+   "truck_share": 0.0274,
+   "origins_ms": [
+    1113437564900
+   ],
+   "n_conflicting_slots": 0
+  }
+ ],
+ "blocks": [
+  [
+   "p1"
+  ],
+  [
+   "p2",
+   "p3"
+  ]
+ ],
+ "replica_block": [
+  "p2",
+  "p3"
+ ],
+ "rules": {
+  "duplicates": "exact duplicate rows dropped after the loader's parse (US-101's rule); a residual second row of one vehicle in one frame of a period dropped, first kept",
+  "periods": "recording origin global_time - frame_id x 100 ms; origins within 60000 ms are one period",
+  "blocks": "periods separated by at most 60 s (or overlapping) are one block; the replica models the longest"
+ },
+ "wall_s": 13.7
+}

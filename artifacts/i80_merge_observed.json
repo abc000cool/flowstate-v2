@@ -1,0 +1,975 @@
+{
+ "schema_version": 1,
+ "kind": "observed",
+ "created_at": "2026-10-08T04:28:08Z",
+ "source": "scripts/i80_merge_measures.py",
+ "code": "8ea59ec94ecddec569337c116a8116c5d475883a",
+ "code_dirty": true,
+ "data_hash": "82f1bb3f90512967bc2880d2c4f4e6e962f5ebf44841dc7d5822b4887f661658",
+ "data_version": "raw NGSIM I-80 (data.transportation.gov Socrata 8ect-6jqj, location 'i-80'), not the Montanino-Punzo reconstruction",
+ "citation": "U.S. Department of Transportation Federal Highway Administration (2016). Next Generation Simulation (NGSIM) Vehicle Trajectories and Supporting Data. data.transportation.gov, dataset 8ect-6jqj, location 'i-80' (raw export). Site: FHWA-HRT-06-137 (2006), NGSIM Interstate 80 Freeway Dataset fact sheet.",
+ "block": [
+  "p2",
+  "p3"
+ ],
+ "site_length_m": 505.0,
+ "zone": {
+  "name": "I-80 EB Powell St acceleration lane",
+  "kind": "merge",
+  "x_lo_m": 117.75528595200001,
+  "x_hi_m": 202.3024656
+ },
+ "zone_counts": {
+  "n_transitions_7_to_6": 445,
+  "n_lane7_samples": 124466
+ },
+ "lanes": {
+  "lanes_present": [
+   1,
+   2,
+   3,
+   4,
+   5,
+   6,
+   7
+  ],
+  "share_ending_above_ramp_lane": 0.0,
+  "mainline": [
+   1,
+   2,
+   3,
+   4,
+   5,
+   6
+  ],
+  "aux": [
+   7
+  ]
+ },
+ "windows": [
+  {
+   "period": "p2",
+   "lo_s": 36.8,
+   "hi_s": 908.3
+  },
+  {
+   "period": "p3",
+   "lo_s": 908.3,
+   "hi_s": 1811.0
+  }
+ ],
+ "periods": [
+  {
+   "period": "p2",
+   "lo_s": 36.8,
+   "hi_s": 908.3,
+   "origin_offset_s": -0.6,
+   "populated_start_s": 36.8,
+   "counts": {
+    "rows": 1546976,
+    "extraction": {
+     "n_rows": 1546976,
+     "n_transitions_raw": 931,
+     "n_flicker_samples": 180,
+     "n_transitions_held": 859,
+     "n_nonadjacent": 0,
+     "n_other_lanes": 0,
+     "n_outside_window": 0,
+     "n_outside_zones_span": 0,
+     "n_changes": 859
+    },
+    "n_entering_in_zone": 55,
+    "n_selected": 47,
+    "n_arrival_crossings": 0,
+    "sequences": {
+     "n_changes": 47,
+     "n_unmatched": 0,
+     "n_samples": 435,
+     "n_accepted_samples": 338,
+     "n_rejected_samples": 97,
+     "n_empty_samples": 0,
+     "n_suspect_samples": 138,
+     "n_changes_with_rejected": 19,
+     "n_rejected_gaps": 26
+    },
+    "post_change": {
+     "n_changes": 47,
+     "n_unmatched": 0,
+     "n_duplicate_slots": 0,
+     "n_follower_measured": 47,
+     "n_follower_observed_to_end": 23,
+     "n_follower_no_partner": 0,
+     "n_follower_not_following": 0,
+     "n_follower_suspect": 0,
+     "n_follower_window_end": 0,
+     "n_follower_changer_lost": 0,
+     "n_follower_changer_lane_change": 10,
+     "n_follower_partner_lost": 0,
+     "n_follower_partner_lane_change": 1,
+     "n_follower_cut_in": 11,
+     "n_follower_gap_bound": 2,
+     "n_leader_measured": 47,
+     "n_leader_observed_to_end": 26,
+     "n_leader_no_partner": 0,
+     "n_leader_not_following": 0,
+     "n_leader_suspect": 2,
+     "n_leader_window_end": 0,
+     "n_leader_changer_lost": 0,
+     "n_leader_changer_lane_change": 10,
+     "n_leader_partner_lost": 0,
+     "n_leader_partner_lane_change": 2,
+     "n_leader_cut_in": 7,
+     "n_leader_gap_bound": 0
+    }
+   }
+  },
+  {
+   "period": "p3",
+   "lo_s": 908.3,
+   "hi_s": 1811.0,
+   "origin_offset_s": 797.4,
+   "populated_start_s": 905.9,
+   "counts": {
+    "rows": 1753429,
+    "extraction": {
+     "n_rows": 1753429,
+     "n_transitions_raw": 949,
+     "n_flicker_samples": 146,
+     "n_transitions_held": 909,
+     "n_nonadjacent": 0,
+     "n_other_lanes": 0,
+     "n_outside_window": 0,
+     "n_outside_zones_span": 0,
+     "n_changes": 909
+    },
+    "n_entering_in_zone": 58,
+    "n_selected": 55,
+    "n_arrival_crossings": 0,
+    "sequences": {
+     "n_changes": 55,
+     "n_unmatched": 0,
+     "n_samples": 545,
+     "n_accepted_samples": 417,
+     "n_rejected_samples": 128,
+     "n_empty_samples": 0,
+     "n_suspect_samples": 221,
+     "n_changes_with_rejected": 22,
+     "n_rejected_gaps": 35
+    },
+    "post_change": {
+     "n_changes": 55,
+     "n_unmatched": 0,
+     "n_duplicate_slots": 0,
+     "n_follower_measured": 54,
+     "n_follower_observed_to_end": 22,
+     "n_follower_no_partner": 1,
+     "n_follower_not_following": 0,
+     "n_follower_suspect": 3,
+     "n_follower_window_end": 0,
+     "n_follower_changer_lost": 0,
+     "n_follower_changer_lane_change": 13,
+     "n_follower_partner_lost": 0,
+     "n_follower_partner_lane_change": 5,
+     "n_follower_cut_in": 11,
+     "n_follower_gap_bound": 0,
+     "n_leader_measured": 55,
+     "n_leader_observed_to_end": 30,
+     "n_leader_no_partner": 0,
+     "n_leader_not_following": 0,
+     "n_leader_suspect": 4,
+     "n_leader_window_end": 0,
+     "n_leader_changer_lost": 0,
+     "n_leader_changer_lane_change": 11,
+     "n_leader_partner_lost": 0,
+     "n_leader_partner_lane_change": 3,
+     "n_leader_cut_in": 7,
+     "n_leader_gap_bound": 0
+    }
+   }
+  }
+ ],
+ "parameters": {
+  "dt_s": 0.1,
+  "offsets_s": [
+   0.0,
+   2.0,
+   5.0,
+   10.0
+  ],
+  "step_s": 1.0,
+  "lookback_s": 10.0,
+  "sample_every_s": 1.0,
+  "speed_bin_m": 50.0,
+  "n_boot": 200,
+  "seed": 20260925
+ },
+ "method": {
+  "changes": "entering (lane 7 to lane 6) inside the merge zone, confirmed and not suspect (calibration.lane_change_gaps: debounce 1 s, a neighbour within 0.5 m marks a change suspect), made inside the block's analysis windows",
+  "accepted_gap_s": "lead and lag time gaps at the change of the changes sampled for the critical gaps (calibration.critical_gap.driver_gaps a_lead_s / a_lag_s), finite values (a side with no vehicle within 200 m has none)",
+  "critical_gap_s": "joint lead-lag Troutbeck maximum likelihood, log-normal (calibration.critical_gap.fit_groups by zone kind and movement, the 'all' speed class), rejected gaps over a 10 s lookback at 1 s inside the acceleration lane; the observed interval is the 200-resample driver bootstrap's percentile 95 % interval of the median",
+  "partner_speed_ms": "rel_speed_ms at the change of calibration.lane_change_relaxation.post_change_gaps: follower side = changer - new follower, leader side = new leader - changer, on the sides car-following at the change",
+  "gap_ratio": "ratio_pop: the side's time gap over the population's median car-following time gap in the rear vehicle's 2-m/s speed bin, the population being the same table's lanes 1-7 over the site and the windows (normal_time_gaps, 1 s grid); ratio_own: over the rear vehicle's own median time gap 30 to 5 s before the change",
+  "accel_lane_speed_ms": "lane-7 samples inside the merge zone and the windows, by 50-m bin from the gore",
+  "bootstrap": "observed: 200 resamples with replacement of the changes (sides), percentile 95 % interval of the median, seeds flowstate_core.rng.spawn_seeds(20260925, n) in a fixed order of the statistics"
+ },
+ "measures": {
+  "n_changes": 102,
+  "accepted_gap_s": {
+   "lead": {
+    "n": 102,
+    "median": 1.3479,
+    "p25": 0.8816,
+    "p75": 2.0574,
+    "ci95": [
+     1.1508,
+     1.5244
+    ]
+   },
+   "lag": {
+    "n": 100,
+    "median": 1.6805,
+    "p25": 1.0792,
+    "p75": 2.611,
+    "ci95": [
+     1.4745,
+     1.8678
+    ]
+   },
+   "share_no_lead": 0.0,
+   "share_no_lag": 0.0098
+  },
+  "critical_gap_s": {
+   "n_drivers": 102,
+   "fitted": true,
+   "n_used": 97,
+   "n_with_rejection": 23,
+   "n_inconsistent": 4,
+   "converged": true,
+   "lead": {
+    "median": 0.2357,
+    "ci95": [
+     0.0809,
+     0.4248
+    ],
+    "at_bound": false,
+    "degenerate": false,
+    "mu": -1.44516,
+    "sigma": 1.09749,
+    "n_boot": 200
+   },
+   "lag": {
+    "median": 0.3377,
+    "ci95": [
+     0.0656,
+     0.5813
+    ],
+    "at_bound": false,
+    "degenerate": false,
+    "mu": -1.08573,
+    "sigma": 1.17487,
+    "n_boot": 200
+   },
+   "rows": [
+    {
+     "zone_kind": "merge",
+     "movement": "entering",
+     "speed_class": "all",
+     "n_drivers": 102,
+     "v_ms_p50": 3.6332,
+     "lag_v_ms_p50": 3.2217,
+     "lead_closing_ms_p50": -0.1524,
+     "lag_closing_ms_p50": -0.3353,
+     "share_with_rejected": 0.2647,
+     "lookback_s_p50": 10.0,
+     "separate_lead": {
+      "fitted": true,
+      "mu": -1.35154,
+      "sigma": 1.17451,
+      "median_s": 0.2588,
+      "mean_s": 0.5159,
+      "sd_s": 0.8895,
+      "p10_s": 0.0575,
+      "p90_s": 1.1661,
+      "loglik": -43.3792,
+      "converged": true,
+      "degenerate": false,
+      "at_bound": false,
+      "n_input": 102,
+      "n_undefined": 0,
+      "n_no_rejection": 75,
+      "n_no_rejection_excluded": 0,
+      "n_inconsistent": 15,
+      "n_inconsistent_excluded": 15,
+      "n_uninformative": 0,
+      "n_censored": 0,
+      "n_used": 87,
+      "n_with_rejection": 12,
+      "ci95": {
+       "median_s": [
+        0.1011,
+        0.4419
+       ],
+       "mean_s": [
+        0.3232,
+        0.7033
+       ],
+       "mu": [
+        -2.2917,
+        -0.8167
+       ],
+       "sigma": [
+        0.8309,
+        1.5934
+       ]
+      },
+      "n_boot": 200,
+      "sensitivity_no_rejection_excluded": null
+     },
+     "separate_lag": {
+      "fitted": true,
+      "mu": -0.9045,
+      "sigma": 1.14767,
+      "median_s": 0.4047,
+      "mean_s": 0.782,
+      "sd_s": 1.2927,
+      "p10_s": 0.093,
+      "p90_s": 1.7617,
+      "loglik": -56.4798,
+      "converged": true,
+      "degenerate": false,
+      "at_bound": false,
+      "n_input": 102,
+      "n_undefined": 1,
+      "n_no_rejection": 74,
+      "n_no_rejection_excluded": 0,
+      "n_inconsistent": 12,
+      "n_inconsistent_excluded": 12,
+      "n_uninformative": 0,
+      "n_censored": 1,
+      "n_used": 89,
+      "n_with_rejection": 15,
+      "ci95": {
+       "median_s": [
+        0.1767,
+        0.7181
+       ],
+       "mean_s": [
+        0.5157,
+        1.2933
+       ],
+       "mu": [
+        -1.7336,
+        -0.3311
+       ],
+       "sigma": [
+        0.6545,
+        1.8759
+       ]
+      },
+      "n_boot": 200,
+      "sensitivity_no_rejection_excluded": null
+     },
+     "joint": {
+      "fitted": true,
+      "lead": {
+       "mu": -1.44516,
+       "sigma": 1.09749,
+       "median_s": 0.2357,
+       "mean_s": 0.4305,
+       "sd_s": 0.6578,
+       "p10_s": 0.0577,
+       "p90_s": 0.9621,
+       "degenerate": false,
+       "at_bound": false,
+       "ci95": {
+        "median_s": [
+         0.0809,
+         0.4248
+        ],
+        "mean_s": [
+         0.2403,
+         0.6035
+        ],
+        "mu": [
+         -2.5141,
+         -0.8561
+        ],
+        "sigma": [
+         0.6921,
+         1.6408
+        ]
+       },
+       "n_boot": 200
+      },
+      "lag": {
+       "mu": -1.08573,
+       "sigma": 1.17487,
+       "median_s": 0.3377,
+       "mean_s": 0.6733,
+       "sd_s": 1.1615,
+       "p10_s": 0.0749,
+       "p90_s": 1.5218,
+       "degenerate": false,
+       "at_bound": false,
+       "ci95": {
+        "median_s": [
+         0.0656,
+         0.5813
+        ],
+        "mean_s": [
+         0.4578,
+         1.2095
+        ],
+        "mu": [
+         -2.724,
+         -0.5426
+        ],
+        "sigma": [
+         0.6164,
+         2.1512
+        ]
+       },
+       "n_boot": 200
+      },
+      "loglik": -87.2214,
+      "converged": true,
+      "n_input": 102,
+      "n_undefined": 1,
+      "n_no_rejection": 74,
+      "n_no_rejection_excluded": 0,
+      "n_inconsistent": 4,
+      "n_inconsistent_excluded": 4,
+      "n_uninformative": 0,
+      "n_censored": 1,
+      "n_used": 97,
+      "n_with_rejection": 23,
+      "n_points": 83,
+      "n_steps": 37,
+      "sensitivity_no_rejection_excluded": null
+     }
+    },
+    {
+     "zone_kind": "merge",
+     "movement": "entering",
+     "speed_class": "v<10",
+     "n_drivers": 99,
+     "v_ms_p50": 3.5052,
+     "lag_v_ms_p50": 3.1516,
+     "lead_closing_ms_p50": -0.256,
+     "lag_closing_ms_p50": -0.3368,
+     "share_with_rejected": 0.2424,
+     "lookback_s_p50": 10.0,
+     "separate_lead": {
+      "fitted": true,
+      "mu": -1.4508,
+      "sigma": 1.216,
+      "median_s": 0.2344,
+      "mean_s": 0.4909,
+      "sd_s": 0.9035,
+      "p10_s": 0.0493,
+      "p90_s": 1.1136,
+      "loglik": -41.1285,
+      "converged": true,
+      "degenerate": false,
+      "at_bound": false,
+      "n_input": 99,
+      "n_undefined": 0,
+      "n_no_rejection": 75,
+      "n_no_rejection_excluded": 0,
+      "n_inconsistent": 13,
+      "n_inconsistent_excluded": 13,
+      "n_uninformative": 0,
+      "n_censored": 0,
+      "n_used": 86,
+      "n_with_rejection": 11,
+      "ci95": {
+       "median_s": [
+        0.0738,
+        0.4598
+       ],
+       "mean_s": [
+        0.2777,
+        0.7051
+       ],
+       "mu": [
+        -2.6065,
+        -0.777
+       ],
+       "sigma": [
+        0.7747,
+        1.7213
+       ]
+      },
+      "n_boot": 200,
+      "sensitivity_no_rejection_excluded": null
+     },
+     "separate_lag": {
+      "fitted": true,
+      "mu": -1.07602,
+      "sigma": 1.24451,
+      "median_s": 0.341,
+      "mean_s": 0.7396,
+      "sd_s": 1.4238,
+      "p10_s": 0.0692,
+      "p90_s": 1.6802,
+      "loglik": -50.6313,
+      "converged": true,
+      "degenerate": false,
+      "at_bound": false,
+      "n_input": 99,
+      "n_undefined": 1,
+      "n_no_rejection": 74,
+      "n_no_rejection_excluded": 0,
+      "n_inconsistent": 11,
+      "n_inconsistent_excluded": 11,
+      "n_uninformative": 0,
+      "n_censored": 1,
+      "n_used": 87,
+      "n_with_rejection": 13,
+      "ci95": {
+       "median_s": [
+        0.1064,
+        0.6048
+       ],
+       "mean_s": [
+        0.4644,
+        1.2362
+       ],
+       "mu": [
+        -2.241,
+        -0.5029
+       ],
+       "sigma": [
+        0.7102,
+        2.0995
+       ]
+      },
+      "n_boot": 200,
+      "sensitivity_no_rejection_excluded": null
+     },
+     "joint": {
+      "fitted": true,
+      "lead": {
+       "mu": -1.45045,
+       "sigma": 1.12499,
+       "median_s": 0.2345,
+       "mean_s": 0.4415,
+       "sd_s": 0.7043,
+       "p10_s": 0.0555,
+       "p90_s": 0.9913,
+       "degenerate": false,
+       "at_bound": false,
+       "ci95": {
+        "median_s": [
+         0.0669,
+         0.4261
+        ],
+        "mean_s": [
+         0.261,
+         0.6471
+        ],
+        "mu": [
+         -2.7039,
+         -0.853
+        ],
+        "sigma": [
+         0.6766,
+         1.7356
+        ]
+       },
+       "n_boot": 200
+      },
+      "lag": {
+       "mu": -4.60517,
+       "sigma": 3.35494,
+       "median_s": 0.01,
+       "mean_s": 2.7806,
+       "sd_s": 773.1533,
+       "p10_s": 0.0001,
+       "p90_s": 0.7367,
+       "degenerate": false,
+       "at_bound": true,
+       "ci95": {
+        "median_s": [
+         0.01,
+         0.4996
+        ],
+        "mean_s": [
+         0.4187,
+         5.5531
+        ],
+        "mu": [
+         -4.6052,
+         -0.694
+        ],
+        "sigma": [
+         0.7682,
+         3.5551
+        ]
+       },
+       "n_boot": 200
+      },
+      "loglik": -84.0804,
+      "converged": true,
+      "n_input": 99,
+      "n_undefined": 1,
+      "n_no_rejection": 74,
+      "n_no_rejection_excluded": 0,
+      "n_inconsistent": 4,
+      "n_inconsistent_excluded": 4,
+      "n_uninformative": 0,
+      "n_censored": 1,
+      "n_used": 94,
+      "n_with_rejection": 20,
+      "n_points": 75,
+      "n_steps": 34,
+      "sensitivity_no_rejection_excluded": null
+     }
+    },
+    {
+     "zone_kind": "merge",
+     "movement": "entering",
+     "speed_class": "10<=v<20",
+     "n_drivers": 3,
+     "v_ms_p50": 12.3566,
+     "lag_v_ms_p50": 12.2072,
+     "lead_closing_ms_p50": 2.9352,
+     "lag_closing_ms_p50": 0.4663,
+     "share_with_rejected": 1.0,
+     "lookback_s_p50": 5.0,
+     "separate_lead": {
+      "fitted": false,
+      "n_input": 3,
+      "n_undefined": 0,
+      "n_no_rejection": 0,
+      "n_no_rejection_excluded": 0,
+      "n_inconsistent": 2,
+      "n_inconsistent_excluded": 2,
+      "n_uninformative": 0,
+      "n_censored": 0,
+      "n_used": 1,
+      "n_with_rejection": 1
+     },
+     "separate_lag": {
+      "fitted": false,
+      "n_input": 3,
+      "n_undefined": 0,
+      "n_no_rejection": 0,
+      "n_no_rejection_excluded": 0,
+      "n_inconsistent": 1,
+      "n_inconsistent_excluded": 1,
+      "n_uninformative": 0,
+      "n_censored": 0,
+      "n_used": 2,
+      "n_with_rejection": 2
+     },
+     "joint": {
+      "fitted": false,
+      "n_input": 3,
+      "n_undefined": 0,
+      "n_no_rejection": 0,
+      "n_no_rejection_excluded": 0,
+      "n_inconsistent": 0,
+      "n_inconsistent_excluded": 0,
+      "n_uninformative": 0,
+      "n_censored": 0,
+      "n_used": 3,
+      "n_with_rejection": 3,
+      "n_points": 8,
+      "n_steps": 3
+     }
+    },
+    {
+     "zone_kind": "merge",
+     "movement": "entering",
+     "speed_class": "v>=20",
+     "n_drivers": 0
+    }
+   ]
+  },
+  "partner_speed_ms": {
+   "follower": {
+    "n": 101,
+    "median": 0.3353,
+    "p25": -0.5151,
+    "p75": 0.9754,
+    "ci95": [
+     0.0,
+     0.5547
+    ]
+   },
+   "leader": {
+    "n": 102,
+    "median": 0.1524,
+    "p25": -0.6119,
+    "p75": 0.9723,
+    "ci95": [
+     -0.0824,
+     0.4284
+    ]
+   }
+  },
+  "gap_ratio": {
+   "follower": {
+    "0": {
+     "ratio_pop": {
+      "n": 80,
+      "median": 0.7668,
+      "p25": 0.4921,
+      "p75": 1.1447,
+      "ci95": [
+       0.6586,
+       0.8888
+      ]
+     },
+     "ratio_own": {
+      "n": 75,
+      "median": 0.5862,
+      "p25": 0.3877,
+      "p75": 0.9071
+     },
+     "time_gap_s": {
+      "n": 80,
+      "median": 1.5296,
+      "p25": 1.016,
+      "p75": 2.2783
+     }
+    },
+    "2": {
+     "ratio_pop": {
+      "n": 77,
+      "median": 0.7887,
+      "p25": 0.5386,
+      "p75": 1.0857,
+      "ci95": [
+       0.6694,
+       0.8865
+      ]
+     },
+     "ratio_own": {
+      "n": 72,
+      "median": 0.7003,
+      "p25": 0.5112,
+      "p75": 0.9369
+     },
+     "time_gap_s": {
+      "n": 77,
+      "median": 1.5857,
+      "p25": 1.191,
+      "p75": 2.3883
+     }
+    },
+    "5": {
+     "ratio_pop": {
+      "n": 60,
+      "median": 0.7636,
+      "p25": 0.5992,
+      "p75": 1.0069,
+      "ci95": [
+       0.6574,
+       0.8579
+      ]
+     },
+     "ratio_own": {
+      "n": 56,
+      "median": 0.6858,
+      "p25": 0.4746,
+      "p75": 0.8973
+     },
+     "time_gap_s": {
+      "n": 60,
+      "median": 1.5683,
+      "p25": 1.1467,
+      "p75": 2.2498
+     }
+    },
+    "10": {
+     "ratio_pop": {
+      "n": 32,
+      "median": 0.8862,
+      "p25": 0.6618,
+      "p75": 1.086,
+      "ci95": [
+       0.7787,
+       0.9413
+      ]
+     },
+     "ratio_own": {
+      "n": 30,
+      "median": 0.7115,
+      "p25": 0.5267,
+      "p75": 1.0287
+     },
+     "time_gap_s": {
+      "n": 32,
+      "median": 1.7682,
+      "p25": 1.3425,
+      "p75": 2.3499
+     }
+    }
+   },
+   "leader": {
+    "0": {
+     "ratio_pop": {
+      "n": 86,
+      "median": 0.5785,
+      "p25": 0.4308,
+      "p75": 0.9363,
+      "ci95": [
+       0.5182,
+       0.735
+      ]
+     },
+     "ratio_own": {
+      "n": 67,
+      "median": 0.5987,
+      "p25": 0.4033,
+      "p75": 1.1058
+     },
+     "time_gap_s": {
+      "n": 86,
+      "median": 1.2506,
+      "p25": 0.8612,
+      "p75": 2.0383
+     }
+    },
+    "2": {
+     "ratio_pop": {
+      "n": 74,
+      "median": 0.5968,
+      "p25": 0.4566,
+      "p75": 0.7806,
+      "ci95": [
+       0.5136,
+       0.6468
+      ]
+     },
+     "ratio_own": {
+      "n": 57,
+      "median": 0.6305,
+      "p25": 0.488,
+      "p75": 0.8647
+     },
+     "time_gap_s": {
+      "n": 74,
+      "median": 1.209,
+      "p25": 0.9486,
+      "p75": 1.6353
+     }
+    },
+    "5": {
+     "ratio_pop": {
+      "n": 59,
+      "median": 0.7226,
+      "p25": 0.5166,
+      "p75": 0.9621,
+      "ci95": [
+       0.5589,
+       0.7963
+      ]
+     },
+     "ratio_own": {
+      "n": 48,
+      "median": 0.663,
+      "p25": 0.4575,
+      "p75": 0.8756
+     },
+     "time_gap_s": {
+      "n": 59,
+      "median": 1.3812,
+      "p25": 0.9705,
+      "p75": 1.7898
+     }
+    },
+    "10": {
+     "ratio_pop": {
+      "n": 46,
+      "median": 0.8809,
+      "p25": 0.6186,
+      "p75": 1.1374,
+      "ci95": [
+       0.7009,
+       0.9398
+      ]
+     },
+     "ratio_own": {
+      "n": 37,
+      "median": 0.7068,
+      "p25": 0.4859,
+      "p75": 1.03
+     },
+     "time_gap_s": {
+      "n": 46,
+      "median": 1.6542,
+      "p25": 1.1863,
+      "p75": 2.1284
+     }
+    }
+   }
+  },
+  "accel_lane_speed_ms": [
+   {
+    "bin_lo_m": 0.0,
+    "bin_hi_m": 50.0,
+    "n": 61565,
+    "median": 2.6304,
+    "p25": 1.5392,
+    "p75": 4.1605,
+    "ci95": [
+     2.5938,
+     2.6518
+    ],
+    "mean": 3.2688
+   },
+   {
+    "bin_lo_m": 50.0,
+    "bin_hi_m": 100.0,
+    "n": 38307,
+    "median": 3.048,
+    "p25": 1.652,
+    "p75": 4.5232,
+    "ci95": [
+     3.048,
+     3.048
+    ],
+    "mean": 3.2338
+   }
+  ],
+  "post_change_counts": {
+   "n_changes": 102,
+   "n_unmatched": 0,
+   "n_duplicate_slots": 0,
+   "n_follower_measured": 101,
+   "n_follower_observed_to_end": 45,
+   "n_follower_no_partner": 1,
+   "n_follower_not_following": 0,
+   "n_follower_suspect": 3,
+   "n_follower_window_end": 0,
+   "n_follower_changer_lost": 0,
+   "n_follower_changer_lane_change": 23,
+   "n_follower_partner_lost": 0,
+   "n_follower_partner_lane_change": 6,
+   "n_follower_cut_in": 22,
+   "n_follower_gap_bound": 2,
+   "n_leader_measured": 102,
+   "n_leader_observed_to_end": 56,
+   "n_leader_no_partner": 0,
+   "n_leader_not_following": 0,
+   "n_leader_suspect": 6,
+   "n_leader_window_end": 0,
+   "n_leader_changer_lost": 0,
+   "n_leader_changer_lane_change": 21,
+   "n_leader_partner_lost": 0,
+   "n_leader_partner_lane_change": 5,
+   "n_leader_cut_in": 14,
+   "n_leader_gap_bound": 0
+  }
+ },
+ "limitations": [
+  "Raw NGSIM (not the Montanino-Punzo reconstruction): positions and speeds carry the raw data's noise; gaps are measured positions and time gaps divide by the noisy v_Vel (reconstructed NGSIM is out of scope by owner rule).",
+  "Lane 1 is an HOV lane in the recording; the replica has no HOV rule.",
+  "The block's periods are stitched at the switch (each period's last recorded upstream entry); changes after a period's switch are read from the next period only.",
+  "One site, one afternoon; n is reported with every interval."
+ ],
+ "wall_s": 15.7
+}

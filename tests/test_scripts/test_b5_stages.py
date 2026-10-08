@@ -13,13 +13,20 @@ simulated (docs/PRE_FRISCO_PROGRAM.md B5).
   p8's battery, gate and gated report of ``<arm>_b5``, the readout; a missing arm runs nothing; the
   archive carries the fit runs' files and the pair manifest.
 * The ingest installs every output of both stages.
+
+The p15 fit's command is accepted as the pipeline gives it now or with ``--section-lanes all``
+(``P15_SECTION_LANES``' default, docs/I24_CONSISTENCY_C7B.md §3) anywhere in it: either is the default
+fit. Once the pipeline passes the setting, ``--p15-section-lanes observed`` must reach the fit.
 """
 
 from __future__ import annotations
 
+import re
 import subprocess
 import tarfile
 from pathlib import Path
+
+import pytest
 
 from tests.test_scripts.test_p8c_stage import BASH, GCP, _stubs, _tgz
 from tests.test_scripts.test_p14_stage import UV_STUB
@@ -108,6 +115,21 @@ def _calls(stub: Path) -> list[str]:
     ]
 
 
+#: P15_SECTION_LANES' default as the pipeline would pass it (module docstring)
+SECTION_LANES_ALL = re.compile(r" --section-lanes all(?= )")
+
+
+def _p15_calls(stub: Path) -> list[str]:
+    """``_calls``, the I-24 fit's ``--section-lanes all`` (the default, if passed) taken out."""
+    out = []
+    for c in _calls(stub):
+        if "fit_demand_level.py --corridor i24" in c:
+            assert c.count("--section-lanes") <= 1, c
+            c = SECTION_LANES_ALL.sub("", c, count=1)
+        out.append(c)
+    return out
+
+
 def _p15_fit(
     frm: str = P15_FROM,
     base: str = "i24_replica_flow_rc_corrected_dc",
@@ -144,7 +166,7 @@ def test_p15_fits_then_runs_the_battery_and_the_readout(tmp_path: Path) -> None:
     stub, repo, r = _run(tmp_path, "p15_i24_b5")
     assert r.returncode == 0, r.stderr
     assert (repo / "logs" / "p15_i24_b5.done").is_file()
-    assert _calls(stub) == [P15_FIT, *P15_REST]
+    assert _p15_calls(stub) == [P15_FIT, *P15_REST]
     assert (repo / "logs" / f"p15_fit_{P15_FROM}.ok").is_file()
     assert (repo / "logs" / "p15_b5.battery.ok").is_file()
     with tarfile.open(tmp_path / "home" / "final.tgz", "r:gz") as tf:
@@ -171,7 +193,7 @@ def test_p15_stops_when_the_constraint_is_unmet_or_the_fit_refuses(tmp_path: Pat
             repo / "logs" / "p15_i24_b5.log"
         ).read_text()
         assert "stage p15_i24_b5: FAILED" in log and words in log
-        assert _calls(stub) == [P15_FIT]  # no battery, no readout
+        assert _p15_calls(stub) == [P15_FIT]  # no battery, no readout
         assert not (repo / "logs" / f"p15_fit_{P15_FROM}.ok").exists()
         assert (tmp / "home" / "final.tgz").is_file()
 
@@ -197,7 +219,7 @@ def test_p15_does_not_repeat_a_finished_fit(tmp_path: Path) -> None:
         timeout=120,
     )
     assert r.returncode == 0, r.stderr
-    assert _calls(stub) == P15_REST
+    assert _p15_calls(stub) == P15_REST
 
 
 def test_p15_takes_the_arm_c7b_selects(tmp_path: Path) -> None:
@@ -217,7 +239,7 @@ def test_p15_takes_the_arm_c7b_selects(tmp_path: Path) -> None:
     )
     assert r.returncode == 0, r.stderr
     fit = _p15_fit("i24_c7b_arm", "i24_c7b_base", "c7b", "--carried-scale 0.95 ")
-    assert _calls(stub) == [fit, *_p15_rest("i24_c7b_arm")]
+    assert _p15_calls(stub) == [fit, *_p15_rest("i24_c7b_arm")]
     # a missing input of the arm runs nothing
     (repo / "artifacts" / "i24_validation_c7b.json").unlink()
     (repo / "logs" / "p15_i24_b5.done").unlink()
@@ -229,10 +251,23 @@ def test_p15_takes_the_arm_c7b_selects(tmp_path: Path) -> None:
         text=True,
         timeout=120,
     )
-    assert r.returncode == 0 and _calls(stub) == []
+    assert r.returncode == 0 and _p15_calls(stub) == []
     assert (
         "p15: no artifacts/i24_validation_c7b.json" in (repo / "logs" / "pipeline.log").read_text()
     )
+
+
+def test_p15_passes_its_section_lanes_setting_to_the_fit(tmp_path: Path) -> None:
+    """``--p15-section-lanes observed`` reaches the fit as ``--section-lanes observed``; the battery
+    and the readout lines are unchanged. Runs once the pipeline carries ``P15_SECTION_LANES``."""
+    if "P15_SECTION_LANES" not in (GCP / "pipeline_i24.sh").read_text():
+        pytest.skip("scripts/gcp/pipeline_i24.sh does not pass P15_SECTION_LANES yet")
+    stub, _, r = _run(tmp_path, "p15_i24_b5", "--p15-section-lanes", "observed")
+    assert r.returncode == 0, r.stderr
+    calls = _calls(stub)
+    assert calls[0].count(" --section-lanes observed ") == 1, calls[0]
+    assert calls[0].replace(" --section-lanes observed", "", 1) == P15_FIT
+    assert calls[1:] == P15_REST
 
 
 def _p17(arm: str, name: str) -> list[str]:
