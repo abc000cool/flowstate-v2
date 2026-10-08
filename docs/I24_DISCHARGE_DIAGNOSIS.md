@@ -1542,6 +1542,10 @@ hid a 628 veh/h shortfall there. The fixed rule selects `rcs` (pooled lane-set s
 B2's 53.75 %, two of 240 comparisons), so B5 (p15) refits `rcs`. Nothing is adopted, and every arm still fails the
 gate (`rcs`: 5-min GEH row 31.25 %, speed RMSPE 0.360, no backward wave).
 
+
+#### 8.4.9 B5 on the C7b arm (p15) — 2026-10-08, run
+
+The Amendment-6 demand-level fit on `rcs` kept s = 0.925 (22 of 72 fit-hour bins under GEH 5, tied with 0.9 and decided by mean GEH); the refit `i24_replica_flow_rcs_speedcal_dc_refit_b5` (ef355b83cc00) is `rcs` under another name and reproduces its battery; C1–C4 hold, C5 n/a, candidate true, nothing adopted. The full reading is docs/I24_B5_RESULT.md. B5 changes no input on I-24: the level is not what the link-flow shortfall is about (§8.4.5's C7 table: level 4 of 100 failing bins).
 ### 8.5 Corrections the record needs (owner's call)
 
 - docs/DISCHARGE_CALIBRATION.md §1: "The I-24 fixture's 1,460–1,470 × 4 lanes =

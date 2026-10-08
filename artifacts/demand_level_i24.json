@@ -1,0 +1,2513 @@
+{
+ "schema": "flowstate.demand_level_readout/1",
+ "created_at": "2026-10-08T08:36:03+00:00",
+ "code": "d8186f6f6f8e8586e3e6b70dfd1ab5190156b782",
+ "vm_snapshot": "972d5cad3482064961c08e7e2342ae544ded72fe",
+ "spec": "docs/PRE_FRISCO_PROGRAM.md B5 (criteria: docs/I24_DISCHARGE_DIAGNOSIS.md \u00a78.4.5 C1-C5, fixed 2026-10-07 before any run; the rule: docs/FRISCO_PROTOCOL.md Amendment 6)",
+ "status": "PROPOSED, not adopted: a candidate is a proposal for the arm's demand level; adoption is the owner's call",
+ "corridor": "i24",
+ "fit": {
+  "path": "artifacts/demand_level_fit_i24.json",
+  "sha256": "936e3fb15529b87c41c45869eb6d6117171668084842e4e818b804d721c6a742",
+  "from_arm": {
+   "scenario": "scenarios/i24_replica_flow_rcs_speedcal_dc_refit.yaml",
+   "sha256": "570f037fb4f8ebb429e714f866fa7132a7f3efea9ec86df1384c5a50f8639d00",
+   "name": "i24_replica_flow_rcs_speedcal_dc_refit",
+   "config_hash": "921fb1f42c67",
+   "battery": {
+    "path": "artifacts/i24_validation_dc_refit_rcs.json",
+    "sha256": "240a13c72dcfc8f96daa0356911363124a11d03e91f604c0e4b6ad167e04985b",
+    "realised_mean": 0.96696,
+    "n_replicates": 20
+   }
+  },
+  "reference_scale": 0.925,
+  "min_inserted": 0.95696,
+  "seeds": [
+   6914975401685141156,
+   134183728835869882,
+   2378473973028931053,
+   3747978530954135749,
+   677105600768189526
+  ],
+  "grid": {
+   "coarse": [
+    0.6,
+    0.7,
+    0.8,
+    0.9,
+    1.0,
+    1.1
+   ],
+   "refine_step": 0.025,
+   "refine_half_width": 2,
+   "coarse_choice": 0.9,
+   "refine": [
+    0.85,
+    0.875,
+    0.925,
+    0.95
+   ],
+   "n_runs": 51
+  },
+  "checks": {
+   "corridor": true,
+   "seeds_are_the_from_arm_batterys_first_five": true,
+   "floor_is_from_arm_minus_0.01": true,
+   "reference_is_the_from_arms_level": true,
+   "coarse_grid": true,
+   "coarse_choice_is_the_rule": true,
+   "refine_around_the_coarse_choice": true,
+   "grid_is_coarse_plus_refine": true,
+   "objectives_and_choice_rederived": true,
+   "reproduction_exact": true
+  },
+  "rederived": {
+   "final": {
+    "chosen_scale": 0.925,
+    "constraint_unmet": false,
+    "order": [
+     0.925,
+     0.9,
+     0.8,
+     0.875,
+     0.85,
+     0.7,
+     0.6
+    ],
+    "decided_by": "mean_geh",
+    "differs": [],
+    "ok": true
+   },
+   "coarse": {
+    "chosen_scale": 0.9,
+    "constraint_unmet": false,
+    "order": [
+     0.9,
+     0.8,
+     0.7,
+     0.6
+    ],
+    "decided_by": "share",
+    "differs": [],
+    "ok": true
+   }
+  },
+  "selection": {
+   "rule": "among the scales whose mean inserted fraction over the fit seeds is at least min_inserted (the from-arm battery's mean realised share - 0.01), the largest share of fit-window flow bins with GEH < 5; ties to the smaller mean GEH over the same bins, then the smaller change |s - reference_scale|, then the smaller scale; no qualifying scale: constraint_unmet, nothing chosen (docs/PRE_FRISCO_PROGRAM.md B5, docs/FRISCO_PROTOCOL.md Amendment 6)",
+   "chosen_scale": 0.925,
+   "constraint_unmet": false,
+   "min_inserted": 0.95696,
+   "reference_scale": 0.925,
+   "seeds": [
+    6914975401685141156,
+    134183728835869882,
+    2378473973028931053,
+    3747978530954135749,
+    677105600768189526
+   ],
+   "qualifying_scales": [
+    0.6,
+    0.7,
+    0.8,
+    0.85,
+    0.875,
+    0.9,
+    0.925
+   ],
+   "order": [
+    0.925,
+    0.9,
+    0.8,
+    0.875,
+    0.85,
+    0.7,
+    0.6
+   ],
+   "decided_by": "mean_geh",
+   "reason": "s = 0.925: GEH < 5 on 22 of 72 fit-window bins (0.3056, mean GEH 9.150; replicate_mean over 5 seeds), the best of the 7 of 10 scales whose mean inserted fraction is at least 0.9570 (this one 0.9654); tied on the share with s = 0.9, decided by mean_geh",
+   "per_scale": [
+    {
+     "scale": 0.6,
+     "mean_inserted": 0.99956,
+     "inserted_per_seed": [
+      0.9994,
+      0.9998,
+      0.9999,
+      0.9997,
+      0.999
+     ],
+     "meets_constraint": true,
+     "objective": {
+      "estimator": "replicate_mean",
+      "n_bins": 72,
+      "n_under_5": 2,
+      "under_5": 0.027777777777777776,
+      "mean_geh": 24.738222427082736
+     },
+     "change": 0.325
+    },
+    {
+     "scale": 0.7,
+     "mean_inserted": 0.9973000000000001,
+     "inserted_per_seed": [
+      0.9979,
+      0.9957,
+      0.9975,
+      0.997,
+      0.9984
+     ],
+     "meets_constraint": true,
+     "objective": {
+      "estimator": "replicate_mean",
+      "n_bins": 72,
+      "n_under_5": 12,
+      "under_5": 0.16666666666666666,
+      "mean_geh": 14.820572460578136
+     },
+     "change": 0.225
+    },
+    {
+     "scale": 0.8,
+     "mean_inserted": 0.99384,
+     "inserted_per_seed": [
+      0.9927,
+      0.9945,
+      0.993,
+      0.9947,
+      0.9943
+     ],
+     "meets_constraint": true,
+     "objective": {
+      "estimator": "replicate_mean",
+      "n_bins": 72,
+      "n_under_5": 20,
+      "under_5": 0.2777777777777778,
+      "mean_geh": 8.99172863804735
+     },
+     "change": 0.125
+    },
+    {
+     "scale": 0.85,
+     "mean_inserted": 0.993,
+     "inserted_per_seed": [
+      0.9936,
+      0.9931,
+      0.994,
+      0.9924,
+      0.9919
+     ],
+     "meets_constraint": true,
+     "objective": {
+      "estimator": "replicate_mean",
+      "n_bins": 72,
+      "n_under_5": 19,
+      "under_5": 0.2638888888888889,
+      "mean_geh": 9.328655709622739
+     },
+     "change": 0.075
+    },
+    {
+     "scale": 0.875,
+     "mean_inserted": 0.99118,
+     "inserted_per_seed": [
+      0.9904,
+      0.9928,
+      0.991,
+      0.9911,
+      0.9906
+     ],
+     "meets_constraint": true,
+     "objective": {
+      "estimator": "replicate_mean",
+      "n_bins": 72,
+      "n_under_5": 20,
+      "under_5": 0.2777777777777778,
+      "mean_geh": 9.126497018859608
+     },
+     "change": 0.05
+    },
+    {
+     "scale": 0.9,
+     "mean_inserted": 0.98546,
+     "inserted_per_seed": [
+      0.9898,
+      0.9879,
+      0.9843,
+      0.9842,
+      0.9811
+     ],
+     "meets_constraint": true,
+     "objective": {
+      "estimator": "replicate_mean",
+      "n_bins": 72,
+      "n_under_5": 22,
+      "under_5": 0.3055555555555556,
+      "mean_geh": 9.247061662513744
+     },
+     "change": 0.025
+    },
+    {
+     "scale": 0.925,
+     "mean_inserted": 0.9654400000000001,
+     "inserted_per_seed": [
+      0.9629,
+      0.9676,
+      0.9674,
+      0.9678,
+      0.9615
+     ],
+     "meets_constraint": true,
+     "objective": {
+      "estimator": "replicate_mean",
+      "n_bins": 72,
+      "n_under_5": 22,
+      "under_5": 0.3055555555555556,
+      "mean_geh": 9.149682748442489
+     },
+     "change": 0.0
+    },
+    {
+     "scale": 0.95,
+     "mean_inserted": 0.94026,
+     "inserted_per_seed": [
+      0.9358,
+      0.9394,
+      0.9431,
+      0.9357,
+      0.9473
+     ],
+     "meets_constraint": false,
+     "objective": {
+      "estimator": "replicate_mean",
+      "n_bins": 72,
+      "n_under_5": 21,
+      "under_5": 0.2916666666666667,
+      "mean_geh": 9.401960609269542
+     },
+     "change": 0.025
+    },
+    {
+     "scale": 1.0,
+     "mean_inserted": 0.8930199999999999,
+     "inserted_per_seed": [
+      0.8886,
+      0.892,
+      0.9023,
+      0.8891,
+      0.8931
+     ],
+     "meets_constraint": false,
+     "objective": {
+      "estimator": "replicate_mean",
+      "n_bins": 72,
+      "n_under_5": 19,
+      "under_5": 0.2638888888888889,
+      "mean_geh": 9.710106093654396
+     },
+     "change": 0.075
+    },
+    {
+     "scale": 1.1,
+     "mean_inserted": 0.80824,
+     "inserted_per_seed": [
+      0.8059,
+      0.8085,
+      0.8128,
+      0.8102,
+      0.8038
+     ],
+     "meets_constraint": false,
+     "objective": {
+      "estimator": "replicate_mean",
+      "n_bins": 72,
+      "n_under_5": 17,
+      "under_5": 0.2361111111111111,
+      "mean_geh": 10.721231672360753
+     },
+     "change": 0.175
+    }
+   ]
+  },
+  "coarse_selection": {
+   "rule": "among the scales whose mean inserted fraction over the fit seeds is at least min_inserted (the from-arm battery's mean realised share - 0.01), the largest share of fit-window flow bins with GEH < 5; ties to the smaller mean GEH over the same bins, then the smaller change |s - reference_scale|, then the smaller scale; no qualifying scale: constraint_unmet, nothing chosen (docs/PRE_FRISCO_PROGRAM.md B5, docs/FRISCO_PROTOCOL.md Amendment 6)",
+   "chosen_scale": 0.9,
+   "constraint_unmet": false,
+   "min_inserted": 0.95696,
+   "reference_scale": 0.925,
+   "seeds": [
+    6914975401685141156,
+    134183728835869882,
+    2378473973028931053,
+    3747978530954135749,
+    677105600768189526
+   ],
+   "qualifying_scales": [
+    0.6,
+    0.7,
+    0.8,
+    0.9
+   ],
+   "order": [
+    0.9,
+    0.8,
+    0.7,
+    0.6
+   ],
+   "decided_by": "share",
+   "reason": "s = 0.9: GEH < 5 on 22 of 72 fit-window bins (0.3056, mean GEH 9.247; replicate_mean over 5 seeds), the best of the 4 of 6 scales whose mean inserted fraction is at least 0.9570 (this one 0.9855)",
+   "per_scale": [
+    {
+     "scale": 0.6,
+     "mean_inserted": 0.99956,
+     "inserted_per_seed": [
+      0.9994,
+      0.9998,
+      0.9999,
+      0.9997,
+      0.999
+     ],
+     "meets_constraint": true,
+     "objective": {
+      "estimator": "replicate_mean",
+      "n_bins": 72,
+      "n_under_5": 2,
+      "under_5": 0.027777777777777776,
+      "mean_geh": 24.738222427082736
+     },
+     "change": 0.325
+    },
+    {
+     "scale": 0.7,
+     "mean_inserted": 0.9973000000000001,
+     "inserted_per_seed": [
+      0.9979,
+      0.9957,
+      0.9975,
+      0.997,
+      0.9984
+     ],
+     "meets_constraint": true,
+     "objective": {
+      "estimator": "replicate_mean",
+      "n_bins": 72,
+      "n_under_5": 12,
+      "under_5": 0.16666666666666666,
+      "mean_geh": 14.820572460578136
+     },
+     "change": 0.225
+    },
+    {
+     "scale": 0.8,
+     "mean_inserted": 0.99384,
+     "inserted_per_seed": [
+      0.9927,
+      0.9945,
+      0.993,
+      0.9947,
+      0.9943
+     ],
+     "meets_constraint": true,
+     "objective": {
+      "estimator": "replicate_mean",
+      "n_bins": 72,
+      "n_under_5": 20,
+      "under_5": 0.2777777777777778,
+      "mean_geh": 8.99172863804735
+     },
+     "change": 0.125
+    },
+    {
+     "scale": 0.9,
+     "mean_inserted": 0.98546,
+     "inserted_per_seed": [
+      0.9898,
+      0.9879,
+      0.9843,
+      0.9842,
+      0.9811
+     ],
+     "meets_constraint": true,
+     "objective": {
+      "estimator": "replicate_mean",
+      "n_bins": 72,
+      "n_under_5": 22,
+      "under_5": 0.3055555555555556,
+      "mean_geh": 9.247061662513744
+     },
+     "change": 0.025
+    },
+    {
+     "scale": 1.0,
+     "mean_inserted": 0.8930199999999999,
+     "inserted_per_seed": [
+      0.8886,
+      0.892,
+      0.9023,
+      0.8891,
+      0.8931
+     ],
+     "meets_constraint": false,
+     "objective": {
+      "estimator": "replicate_mean",
+      "n_bins": 72,
+      "n_under_5": 19,
+      "under_5": 0.2638888888888889,
+      "mean_geh": 9.710106093654396
+     },
+     "change": 0.075
+    },
+    {
+     "scale": 1.1,
+     "mean_inserted": 0.80824,
+     "inserted_per_seed": [
+      0.8059,
+      0.8085,
+      0.8128,
+      0.8102,
+      0.8038
+     ],
+     "meets_constraint": false,
+     "objective": {
+      "estimator": "replicate_mean",
+      "n_bins": 72,
+      "n_under_5": 17,
+      "under_5": 0.2361111111111111,
+      "mean_geh": 10.721231672360753
+     },
+     "change": 0.175
+    }
+   ]
+  },
+  "chosen": {
+   "scale": 0.925,
+   "config_hash": "ef355b83cc00",
+   "mean_inserted": 0.9654400000000001,
+   "objective": {
+    "estimator": "replicate_mean",
+    "n_bins": 72,
+    "n_under_5": 22,
+    "under_5": 0.3055555555555556,
+    "mean_geh": 9.149682748442489
+   },
+   "held_out": {
+    "estimator": "replicate_mean",
+    "n_bins": 72,
+    "n_under_5": 22,
+    "under_5": 0.3055555555555556,
+    "mean_geh": 11.461553355358273
+   }
+  },
+  "constraint_unmet": false,
+  "reproduction": {
+   "run": true,
+   "what": "the from-arm configuration (base x the carried scale, the from-arm's name) on the first fit seed, against the from-arm battery's replicate of that seed: the code tree reproduces the battery the criteria compare with",
+   "seed": 6914975401685141156,
+   "config_hash": "921fb1f42c67",
+   "inserted_fraction": 0.9629,
+   "checks": {
+    "config_hash": true,
+    "counts_per_window": true,
+    "inserted_fraction": true,
+    "segment_speeds_ms": true
+   },
+   "exact": true,
+   "differs": []
+  },
+  "per_scale": [
+   {
+    "scale": 0.6,
+    "config_hash": "f2081a25a50f",
+    "mean_inserted": 0.99956,
+    "meets_constraint": true,
+    "objective": {
+     "estimator": "replicate_mean",
+     "n_bins": 72,
+     "n_under_5": 2,
+     "under_5": 0.027777777777777776,
+     "mean_geh": 24.738222427082736
+    },
+    "held_out": {
+     "estimator": "replicate_mean",
+     "n_bins": 72,
+     "n_under_5": 2,
+     "under_5": 0.027777777777777776,
+     "mean_geh": 27.22760030169909
+    },
+    "speed_rmspe_reported": {
+     "replicate_mean_train": 1.2106533317353025,
+     "replicate_mean_test": 2.1605268742167283,
+     "per_seed_train": [
+      1.2203,
+      1.238,
+      1.175,
+      1.1772,
+      1.2682
+     ],
+     "per_seed_test": [
+      2.2333,
+      2.0228,
+      2.2401,
+      2.1579,
+      2.1894
+     ]
+    },
+    "per_seed": [
+     {
+      "seed": 6914975401685141156,
+      "config_hash": "f2081a25a50f",
+      "inserted_fraction": 0.9994,
+      "wall_s": 133.9,
+      "geh_train": {
+       "n_bins": 72,
+       "n_under_5": 3,
+       "under_5": 0.0417,
+       "mean": 24.927
+      },
+      "geh_test": {
+       "n_bins": 72,
+       "n_under_5": 2,
+       "under_5": 0.0278,
+       "mean": 27.672
+      },
+      "rmspe_train": 1.2203,
+      "rmspe_test": 2.2333,
+      "rmspe_all": 1.7995
+     },
+     {
+      "seed": 134183728835869882,
+      "config_hash": "f2081a25a50f",
+      "inserted_fraction": 0.9998,
+      "wall_s": 136.9,
+      "geh_train": {
+       "n_bins": 72,
+       "n_under_5": 3,
+       "under_5": 0.0417,
+       "mean": 24.888
+      },
+      "geh_test": {
+       "n_bins": 72,
+       "n_under_5": 4,
+       "under_5": 0.0556,
+       "mean": 27.582
+      },
+      "rmspe_train": 1.238,
+      "rmspe_test": 2.0228,
+      "rmspe_all": 1.6769
+     },
+     {
+      "seed": 2378473973028931053,
+      "config_hash": "f2081a25a50f",
+      "inserted_fraction": 0.9999,
+      "wall_s": 133.7,
+      "geh_train": {
+       "n_bins": 72,
+       "n_under_5": 2,
+       "under_5": 0.0278,
+       "mean": 24.928
+      },
+      "geh_test": {
+       "n_bins": 72,
+       "n_under_5": 2,
+       "under_5": 0.0278,
+       "mean": 27.477
+      },
+      "rmspe_train": 1.175,
+      "rmspe_test": 2.2401,
+      "rmspe_all": 1.7887
+     },
+     {
+      "seed": 3747978530954135749,
+      "config_hash": "f2081a25a50f",
+      "inserted_fraction": 0.9997,
+      "wall_s": 128.8,
+      "geh_train": {
+       "n_bins": 72,
+       "n_under_5": 4,
+       "under_5": 0.0556,
+       "mean": 24.983
+      },
+      "geh_test": {
+       "n_bins": 72,
+       "n_under_5": 4,
+       "under_5": 0.0556,
+       "mean": 27.005
+      },
+      "rmspe_train": 1.1772,
+      "rmspe_test": 2.1579,
+      "rmspe_all": 1.7382
+     },
+     {
+      "seed": 677105600768189526,
+      "config_hash": "f2081a25a50f",
+      "inserted_fraction": 0.999,
+      "wall_s": 128.3,
+      "geh_train": {
+       "n_bins": 72,
+       "n_under_5": 3,
+       "under_5": 0.0417,
+       "mean": 24.4
+      },
+      "geh_test": {
+       "n_bins": 72,
+       "n_under_5": 5,
+       "under_5": 0.0694,
+       "mean": 26.915
+      },
+      "rmspe_train": 1.2682,
+      "rmspe_test": 2.1894,
+      "rmspe_all": 1.7891
+     }
+    ]
+   },
+   {
+    "scale": 0.7,
+    "config_hash": "6f5482694633",
+    "mean_inserted": 0.9973000000000001,
+    "meets_constraint": true,
+    "objective": {
+     "estimator": "replicate_mean",
+     "n_bins": 72,
+     "n_under_5": 12,
+     "under_5": 0.16666666666666666,
+     "mean_geh": 14.820572460578136
+    },
+    "held_out": {
+     "estimator": "replicate_mean",
+     "n_bins": 72,
+     "n_under_5": 16,
+     "under_5": 0.2222222222222222,
+     "mean_geh": 18.703909196238023
+    },
+    "speed_rmspe_reported": {
+     "replicate_mean_train": 1.0580700370331013,
+     "replicate_mean_test": 2.0425185555781975,
+     "per_seed_train": [
+      1.0698,
+      1.0813,
+      1.009,
+      1.0974,
+      1.0633
+     ],
+     "per_seed_test": [
+      2.1236,
+      1.9989,
+      2.1004,
+      2.1169,
+      1.9022
+     ]
+    },
+    "per_seed": [
+     {
+      "seed": 6914975401685141156,
+      "config_hash": "6f5482694633",
+      "inserted_fraction": 0.9979,
+      "wall_s": 175.6,
+      "geh_train": {
+       "n_bins": 72,
+       "n_under_5": 14,
+       "under_5": 0.1944,
+       "mean": 13.699
+      },
+      "geh_test": {
+       "n_bins": 72,
+       "n_under_5": 16,
+       "under_5": 0.2222,
+       "mean": 19.066
+      },
+      "rmspe_train": 1.0698,
+      "rmspe_test": 2.1236,
+      "rmspe_all": 1.6814
+     },
+     {
+      "seed": 134183728835869882,
+      "config_hash": "6f5482694633",
+      "inserted_fraction": 0.9957,
+      "wall_s": 166.7,
+      "geh_train": {
+       "n_bins": 72,
+       "n_under_5": 13,
+       "under_5": 0.1806,
+       "mean": 15.293
+      },
+      "geh_test": {
+       "n_bins": 72,
+       "n_under_5": 15,
+       "under_5": 0.2083,
+       "mean": 19.287
+      },
+      "rmspe_train": 1.0813,
+      "rmspe_test": 1.9989,
+      "rmspe_all": 1.607
+     },
+     {
+      "seed": 2378473973028931053,
+      "config_hash": "6f5482694633",
+      "inserted_fraction": 0.9975,
+      "wall_s": 174.6,
+      "geh_train": {
+       "n_bins": 72,
+       "n_under_5": 14,
+       "under_5": 0.1944,
+       "mean": 15.761
+      },
+      "geh_test": {
+       "n_bins": 72,
+       "n_under_5": 16,
+       "under_5": 0.2222,
+       "mean": 18.951
+      },
+      "rmspe_train": 1.009,
+      "rmspe_test": 2.1004,
+      "rmspe_all": 1.6477
+     },
+     {
+      "seed": 3747978530954135749,
+      "config_hash": "6f5482694633",
+      "inserted_fraction": 0.997,
+      "wall_s": 182.2,
+      "geh_train": {
+       "n_bins": 72,
+       "n_under_5": 9,
+       "under_5": 0.125,
+       "mean": 15.143
+      },
+      "geh_test": {
+       "n_bins": 72,
+       "n_under_5": 19,
+       "under_5": 0.2639,
+       "mean": 18.479
+      },
+      "rmspe_train": 1.0974,
+      "rmspe_test": 2.1169,
+      "rmspe_all": 1.686
+     },
+     {
+      "seed": 677105600768189526,
+      "config_hash": "6f5482694633",
+      "inserted_fraction": 0.9984,
+      "wall_s": 183.0,
+      "geh_train": {
+       "n_bins": 72,
+       "n_under_5": 17,
+       "under_5": 0.2361,
+       "mean": 15.206
+      },
+      "geh_test": {
+       "n_bins": 72,
+       "n_under_5": 7,
+       "under_5": 0.0972,
+       "mean": 19.763
+      },
+      "rmspe_train": 1.0633,
+      "rmspe_test": 1.9022,
+      "rmspe_all": 1.541
+     }
+    ]
+   },
+   {
+    "scale": 0.8,
+    "config_hash": "1f6eeeb35de7",
+    "mean_inserted": 0.99384,
+    "meets_constraint": true,
+    "objective": {
+     "estimator": "replicate_mean",
+     "n_bins": 72,
+     "n_under_5": 20,
+     "under_5": 0.2777777777777778,
+     "mean_geh": 8.99172863804735
+    },
+    "held_out": {
+     "estimator": "replicate_mean",
+     "n_bins": 72,
+     "n_under_5": 17,
+     "under_5": 0.2361111111111111,
+     "mean_geh": 13.284687935730583
+    },
+    "speed_rmspe_reported": {
+     "replicate_mean_train": 0.721088396044548,
+     "replicate_mean_test": 1.6736840728340783,
+     "per_seed_train": [
+      0.6455,
+      0.7129,
+      0.8125,
+      0.7609,
+      0.7277
+     ],
+     "per_seed_test": [
+      1.6317,
+      1.7082,
+      1.7643,
+      1.6194,
+      1.6921
+     ]
+    },
+    "per_seed": [
+     {
+      "seed": 6914975401685141156,
+      "config_hash": "1f6eeeb35de7",
+      "inserted_fraction": 0.9927,
+      "wall_s": 265.7,
+      "geh_train": {
+       "n_bins": 72,
+       "n_under_5": 29,
+       "under_5": 0.4028,
+       "mean": 8.723
+      },
+      "geh_test": {
+       "n_bins": 72,
+       "n_under_5": 19,
+       "under_5": 0.2639,
+       "mean": 13.113
+      },
+      "rmspe_train": 0.6455,
+      "rmspe_test": 1.6317,
+      "rmspe_all": 1.2408
+     },
+     {
+      "seed": 134183728835869882,
+      "config_hash": "1f6eeeb35de7",
+      "inserted_fraction": 0.9945,
+      "wall_s": 283.1,
+      "geh_train": {
+       "n_bins": 72,
+       "n_under_5": 21,
+       "under_5": 0.2917,
+       "mean": 9.628
+      },
+      "geh_test": {
+       "n_bins": 72,
+       "n_under_5": 18,
+       "under_5": 0.25,
+       "mean": 13.053
+      },
+      "rmspe_train": 0.7129,
+      "rmspe_test": 1.7082,
+      "rmspe_all": 1.3088
+     },
+     {
+      "seed": 2378473973028931053,
+      "config_hash": "1f6eeeb35de7",
+      "inserted_fraction": 0.993,
+      "wall_s": 255.4,
+      "geh_train": {
+       "n_bins": 72,
+       "n_under_5": 24,
+       "under_5": 0.3333,
+       "mean": 8.761
+      },
+      "geh_test": {
+       "n_bins": 72,
+       "n_under_5": 15,
+       "under_5": 0.2083,
+       "mean": 14.422
+      },
+      "rmspe_train": 0.8125,
+      "rmspe_test": 1.7643,
+      "rmspe_all": 1.3735
+     },
+     {
+      "seed": 3747978530954135749,
+      "config_hash": "1f6eeeb35de7",
+      "inserted_fraction": 0.9947,
+      "wall_s": 284.2,
+      "geh_train": {
+       "n_bins": 72,
+       "n_under_5": 19,
+       "under_5": 0.2639,
+       "mean": 9.287
+      },
+      "geh_test": {
+       "n_bins": 72,
+       "n_under_5": 14,
+       "under_5": 0.1944,
+       "mean": 14.023
+      },
+      "rmspe_train": 0.7609,
+      "rmspe_test": 1.6194,
+      "rmspe_all": 1.2652
+     },
+     {
+      "seed": 677105600768189526,
+      "config_hash": "1f6eeeb35de7",
+      "inserted_fraction": 0.9943,
+      "wall_s": 260.9,
+      "geh_train": {
+       "n_bins": 72,
+       "n_under_5": 21,
+       "under_5": 0.2917,
+       "mean": 9.1
+      },
+      "geh_test": {
+       "n_bins": 72,
+       "n_under_5": 18,
+       "under_5": 0.25,
+       "mean": 13.408
+      },
+      "rmspe_train": 0.7277,
+      "rmspe_test": 1.6921,
+      "rmspe_all": 1.3025
+     }
+    ]
+   },
+   {
+    "scale": 0.85,
+    "config_hash": "0e2eb362fb31",
+    "mean_inserted": 0.993,
+    "meets_constraint": true,
+    "objective": {
+     "estimator": "replicate_mean",
+     "n_bins": 72,
+     "n_under_5": 19,
+     "under_5": 0.2638888888888889,
+     "mean_geh": 9.328655709622739
+    },
+    "held_out": {
+     "estimator": "replicate_mean",
+     "n_bins": 72,
+     "n_under_5": 24,
+     "under_5": 0.3333333333333333,
+     "mean_geh": 10.391173507997067
+    },
+    "speed_rmspe_reported": {
+     "replicate_mean_train": 0.42767614495588047,
+     "replicate_mean_test": 0.7279440585152245,
+     "per_seed_train": [
+      0.3902,
+      0.393,
+      0.5382,
+      0.4506,
+      0.56
+     ],
+     "per_seed_test": [
+      0.641,
+      0.7158,
+      0.6781,
+      0.9329,
+      0.8226
+     ]
+    },
+    "per_seed": [
+     {
+      "seed": 6914975401685141156,
+      "config_hash": "0e2eb362fb31",
+      "inserted_fraction": 0.9936,
+      "wall_s": 411.4,
+      "geh_train": {
+       "n_bins": 72,
+       "n_under_5": 18,
+       "under_5": 0.25,
+       "mean": 10.564
+      },
+      "geh_test": {
+       "n_bins": 72,
+       "n_under_5": 24,
+       "under_5": 0.3333,
+       "mean": 10.585
+      },
+      "rmspe_train": 0.3902,
+      "rmspe_test": 0.641,
+      "rmspe_all": 0.5306
+     },
+     {
+      "seed": 134183728835869882,
+      "config_hash": "0e2eb362fb31",
+      "inserted_fraction": 0.9931,
+      "wall_s": 378.8,
+      "geh_train": {
+       "n_bins": 72,
+       "n_under_5": 21,
+       "under_5": 0.2917,
+       "mean": 9.001
+      },
+      "geh_test": {
+       "n_bins": 72,
+       "n_under_5": 21,
+       "under_5": 0.2917,
+       "mean": 10.739
+      },
+      "rmspe_train": 0.393,
+      "rmspe_test": 0.7158,
+      "rmspe_all": 0.5774
+     },
+     {
+      "seed": 2378473973028931053,
+      "config_hash": "0e2eb362fb31",
+      "inserted_fraction": 0.994,
+      "wall_s": 368.0,
+      "geh_train": {
+       "n_bins": 72,
+       "n_under_5": 21,
+       "under_5": 0.2917,
+       "mean": 9.03
+      },
+      "geh_test": {
+       "n_bins": 72,
+       "n_under_5": 23,
+       "under_5": 0.3194,
+       "mean": 10.535
+      },
+      "rmspe_train": 0.5382,
+      "rmspe_test": 0.6781,
+      "rmspe_all": 0.6121
+     },
+     {
+      "seed": 3747978530954135749,
+      "config_hash": "0e2eb362fb31",
+      "inserted_fraction": 0.9924,
+      "wall_s": 371.3,
+      "geh_train": {
+       "n_bins": 72,
+       "n_under_5": 17,
+       "under_5": 0.2361,
+       "mean": 9.822
+      },
+      "geh_test": {
+       "n_bins": 72,
+       "n_under_5": 22,
+       "under_5": 0.3056,
+       "mean": 10.974
+      },
+      "rmspe_train": 0.4506,
+      "rmspe_test": 0.9329,
+      "rmspe_all": 0.7326
+     },
+     {
+      "seed": 677105600768189526,
+      "config_hash": "0e2eb362fb31",
+      "inserted_fraction": 0.9919,
+      "wall_s": 336.0,
+      "geh_train": {
+       "n_bins": 72,
+       "n_under_5": 20,
+       "under_5": 0.2778,
+       "mean": 9.568
+      },
+      "geh_test": {
+       "n_bins": 72,
+       "n_under_5": 21,
+       "under_5": 0.2917,
+       "mean": 10.868
+      },
+      "rmspe_train": 0.56,
+      "rmspe_test": 0.8226,
+      "rmspe_all": 0.7037
+     }
+    ]
+   },
+   {
+    "scale": 0.875,
+    "config_hash": "a691eb48ebef",
+    "mean_inserted": 0.99118,
+    "meets_constraint": true,
+    "objective": {
+     "estimator": "replicate_mean",
+     "n_bins": 72,
+     "n_under_5": 20,
+     "under_5": 0.2777777777777778,
+     "mean_geh": 9.126497018859608
+    },
+    "held_out": {
+     "estimator": "replicate_mean",
+     "n_bins": 72,
+     "n_under_5": 25,
+     "under_5": 0.3472222222222222,
+     "mean_geh": 11.003907195483322
+    },
+    "speed_rmspe_reported": {
+     "replicate_mean_train": 0.36509385360707725,
+     "replicate_mean_test": 0.37029429001241376,
+     "per_seed_train": [
+      0.3795,
+      0.4021,
+      0.4037,
+      0.4081,
+      0.3613
+     ],
+     "per_seed_test": [
+      0.4121,
+      0.3749,
+      0.383,
+      0.4276,
+      0.3762
+     ]
+    },
+    "per_seed": [
+     {
+      "seed": 6914975401685141156,
+      "config_hash": "a691eb48ebef",
+      "inserted_fraction": 0.9904,
+      "wall_s": 452.0,
+      "geh_train": {
+       "n_bins": 72,
+       "n_under_5": 26,
+       "under_5": 0.3611,
+       "mean": 9.219
+      },
+      "geh_test": {
+       "n_bins": 72,
+       "n_under_5": 17,
+       "under_5": 0.2361,
+       "mean": 11.706
+      },
+      "rmspe_train": 0.3795,
+      "rmspe_test": 0.4121,
+      "rmspe_all": 0.3961
+     },
+     {
+      "seed": 134183728835869882,
+      "config_hash": "a691eb48ebef",
+      "inserted_fraction": 0.9928,
+      "wall_s": 436.8,
+      "geh_train": {
+       "n_bins": 72,
+       "n_under_5": 16,
+       "under_5": 0.2222,
+       "mean": 9.808
+      },
+      "geh_test": {
+       "n_bins": 72,
+       "n_under_5": 23,
+       "under_5": 0.3194,
+       "mean": 10.646
+      },
+      "rmspe_train": 0.4021,
+      "rmspe_test": 0.3749,
+      "rmspe_all": 0.3887
+     },
+     {
+      "seed": 2378473973028931053,
+      "config_hash": "a691eb48ebef",
+      "inserted_fraction": 0.991,
+      "wall_s": 394.4,
+      "geh_train": {
+       "n_bins": 72,
+       "n_under_5": 22,
+       "under_5": 0.3056,
+       "mean": 9.462
+      },
+      "geh_test": {
+       "n_bins": 72,
+       "n_under_5": 19,
+       "under_5": 0.2639,
+       "mean": 11.497
+      },
+      "rmspe_train": 0.4037,
+      "rmspe_test": 0.383,
+      "rmspe_all": 0.3935
+     },
+     {
+      "seed": 3747978530954135749,
+      "config_hash": "a691eb48ebef",
+      "inserted_fraction": 0.9911,
+      "wall_s": 424.0,
+      "geh_train": {
+       "n_bins": 72,
+       "n_under_5": 18,
+       "under_5": 0.25,
+       "mean": 10.038
+      },
+      "geh_test": {
+       "n_bins": 72,
+       "n_under_5": 24,
+       "under_5": 0.3333,
+       "mean": 11.433
+      },
+      "rmspe_train": 0.4081,
+      "rmspe_test": 0.4276,
+      "rmspe_all": 0.418
+     },
+     {
+      "seed": 677105600768189526,
+      "config_hash": "a691eb48ebef",
+      "inserted_fraction": 0.9906,
+      "wall_s": 419.3,
+      "geh_train": {
+       "n_bins": 72,
+       "n_under_5": 25,
+       "under_5": 0.3472,
+       "mean": 9.05
+      },
+      "geh_test": {
+       "n_bins": 72,
+       "n_under_5": 27,
+       "under_5": 0.375,
+       "mean": 11.506
+      },
+      "rmspe_train": 0.3613,
+      "rmspe_test": 0.3762,
+      "rmspe_all": 0.3688
+     }
+    ]
+   },
+   {
+    "scale": 0.9,
+    "config_hash": "adbf72b842e2",
+    "mean_inserted": 0.98546,
+    "meets_constraint": true,
+    "objective": {
+     "estimator": "replicate_mean",
+     "n_bins": 72,
+     "n_under_5": 22,
+     "under_5": 0.3055555555555556,
+     "mean_geh": 9.247061662513744
+    },
+    "held_out": {
+     "estimator": "replicate_mean",
+     "n_bins": 72,
+     "n_under_5": 20,
+     "under_5": 0.2777777777777778,
+     "mean_geh": 11.483575609248518
+    },
+    "speed_rmspe_reported": {
+     "replicate_mean_train": 0.37191726126536345,
+     "replicate_mean_test": 0.3214206380488215,
+     "per_seed_train": [
+      0.3963,
+      0.4419,
+      0.3962,
+      0.3952,
+      0.3639
+     ],
+     "per_seed_test": [
+      0.3684,
+      0.3347,
+      0.3358,
+      0.3269,
+      0.335
+     ]
+    },
+    "per_seed": [
+     {
+      "seed": 6914975401685141156,
+      "config_hash": "adbf72b842e2",
+      "inserted_fraction": 0.9898,
+      "wall_s": 487.7,
+      "geh_train": {
+       "n_bins": 72,
+       "n_under_5": 23,
+       "under_5": 0.3194,
+       "mean": 9.744
+      },
+      "geh_test": {
+       "n_bins": 72,
+       "n_under_5": 21,
+       "under_5": 0.2917,
+       "mean": 12.465
+      },
+      "rmspe_train": 0.3963,
+      "rmspe_test": 0.3684,
+      "rmspe_all": 0.3826
+     },
+     {
+      "seed": 134183728835869882,
+      "config_hash": "adbf72b842e2",
+      "inserted_fraction": 0.9879,
+      "wall_s": 500.8,
+      "geh_train": {
+       "n_bins": 72,
+       "n_under_5": 17,
+       "under_5": 0.2361,
+       "mean": 10.435
+      },
+      "geh_test": {
+       "n_bins": 72,
+       "n_under_5": 19,
+       "under_5": 0.2639,
+       "mean": 11.695
+      },
+      "rmspe_train": 0.4419,
+      "rmspe_test": 0.3347,
+      "rmspe_all": 0.392
+     },
+     {
+      "seed": 2378473973028931053,
+      "config_hash": "adbf72b842e2",
+      "inserted_fraction": 0.9843,
+      "wall_s": 459.0,
+      "geh_train": {
+       "n_bins": 72,
+       "n_under_5": 26,
+       "under_5": 0.3611,
+       "mean": 9.177
+      },
+      "geh_test": {
+       "n_bins": 72,
+       "n_under_5": 18,
+       "under_5": 0.25,
+       "mean": 11.614
+      },
+      "rmspe_train": 0.3962,
+      "rmspe_test": 0.3358,
+      "rmspe_all": 0.3672
+     },
+     {
+      "seed": 3747978530954135749,
+      "config_hash": "adbf72b842e2",
+      "inserted_fraction": 0.9842,
+      "wall_s": 528.1,
+      "geh_train": {
+       "n_bins": 72,
+       "n_under_5": 24,
+       "under_5": 0.3333,
+       "mean": 9.273
+      },
+      "geh_test": {
+       "n_bins": 72,
+       "n_under_5": 23,
+       "under_5": 0.3194,
+       "mean": 11.372
+      },
+      "rmspe_train": 0.3952,
+      "rmspe_test": 0.3269,
+      "rmspe_all": 0.3626
+     },
+     {
+      "seed": 677105600768189526,
+      "config_hash": "adbf72b842e2",
+      "inserted_fraction": 0.9811,
+      "wall_s": 508.6,
+      "geh_train": {
+       "n_bins": 72,
+       "n_under_5": 16,
+       "under_5": 0.2222,
+       "mean": 10.366
+      },
+      "geh_test": {
+       "n_bins": 72,
+       "n_under_5": 19,
+       "under_5": 0.2639,
+       "mean": 11.807
+      },
+      "rmspe_train": 0.3639,
+      "rmspe_test": 0.335,
+      "rmspe_all": 0.3498
+     }
+    ]
+   },
+   {
+    "scale": 0.925,
+    "config_hash": "ef355b83cc00",
+    "mean_inserted": 0.9654400000000001,
+    "meets_constraint": true,
+    "objective": {
+     "estimator": "replicate_mean",
+     "n_bins": 72,
+     "n_under_5": 22,
+     "under_5": 0.3055555555555556,
+     "mean_geh": 9.149682748442489
+    },
+    "held_out": {
+     "estimator": "replicate_mean",
+     "n_bins": 72,
+     "n_under_5": 22,
+     "under_5": 0.3055555555555556,
+     "mean_geh": 11.461553355358273
+    },
+    "speed_rmspe_reported": {
+     "replicate_mean_train": 0.36025309729669797,
+     "replicate_mean_test": 0.32716427190404035,
+     "per_seed_train": [
+      0.3694,
+      0.4214,
+      0.3557,
+      0.4379,
+      0.3772
+     ],
+     "per_seed_test": [
+      0.3796,
+      0.3651,
+      0.3038,
+      0.3299,
+      0.3721
+     ]
+    },
+    "per_seed": [
+     {
+      "seed": 6914975401685141156,
+      "config_hash": "ef355b83cc00",
+      "inserted_fraction": 0.9629,
+      "wall_s": 559.1,
+      "geh_train": {
+       "n_bins": 72,
+       "n_under_5": 16,
+       "under_5": 0.2222,
+       "mean": 10.772
+      },
+      "geh_test": {
+       "n_bins": 72,
+       "n_under_5": 19,
+       "under_5": 0.2639,
+       "mean": 12.279
+      },
+      "rmspe_train": 0.3694,
+      "rmspe_test": 0.3796,
+      "rmspe_all": 0.3746
+     },
+     {
+      "seed": 134183728835869882,
+      "config_hash": "ef355b83cc00",
+      "inserted_fraction": 0.9676,
+      "wall_s": 563.0,
+      "geh_train": {
+       "n_bins": 72,
+       "n_under_5": 23,
+       "under_5": 0.3194,
+       "mean": 9.978
+      },
+      "geh_test": {
+       "n_bins": 72,
+       "n_under_5": 21,
+       "under_5": 0.2917,
+       "mean": 11.999
+      },
+      "rmspe_train": 0.4214,
+      "rmspe_test": 0.3651,
+      "rmspe_all": 0.3943
+     },
+     {
+      "seed": 2378473973028931053,
+      "config_hash": "ef355b83cc00",
+      "inserted_fraction": 0.9674,
+      "wall_s": 483.9,
+      "geh_train": {
+       "n_bins": 72,
+       "n_under_5": 22,
+       "under_5": 0.3056,
+       "mean": 9.343
+      },
+      "geh_test": {
+       "n_bins": 72,
+       "n_under_5": 20,
+       "under_5": 0.2778,
+       "mean": 11.031
+      },
+      "rmspe_train": 0.3557,
+      "rmspe_test": 0.3038,
+      "rmspe_all": 0.3307
+     },
+     {
+      "seed": 3747978530954135749,
+      "config_hash": "ef355b83cc00",
+      "inserted_fraction": 0.9678,
+      "wall_s": 562.3,
+      "geh_train": {
+       "n_bins": 72,
+       "n_under_5": 19,
+       "under_5": 0.2639,
+       "mean": 10.026
+      },
+      "geh_test": {
+       "n_bins": 72,
+       "n_under_5": 23,
+       "under_5": 0.3194,
+       "mean": 11.615
+      },
+      "rmspe_train": 0.4379,
+      "rmspe_test": 0.3299,
+      "rmspe_all": 0.3877
+     },
+     {
+      "seed": 677105600768189526,
+      "config_hash": "ef355b83cc00",
+      "inserted_fraction": 0.9615,
+      "wall_s": 550.5,
+      "geh_train": {
+       "n_bins": 72,
+       "n_under_5": 22,
+       "under_5": 0.3056,
+       "mean": 9.338
+      },
+      "geh_test": {
+       "n_bins": 72,
+       "n_under_5": 23,
+       "under_5": 0.3194,
+       "mean": 11.963
+      },
+      "rmspe_train": 0.3772,
+      "rmspe_test": 0.3721,
+      "rmspe_all": 0.3746
+     }
+    ]
+   },
+   {
+    "scale": 0.95,
+    "config_hash": "ef5bac9a3820",
+    "mean_inserted": 0.94026,
+    "meets_constraint": false,
+    "objective": {
+     "estimator": "replicate_mean",
+     "n_bins": 72,
+     "n_under_5": 21,
+     "under_5": 0.2916666666666667,
+     "mean_geh": 9.401960609269542
+    },
+    "held_out": {
+     "estimator": "replicate_mean",
+     "n_bins": 72,
+     "n_under_5": 19,
+     "under_5": 0.2638888888888889,
+     "mean_geh": 11.646701178790185
+    },
+    "speed_rmspe_reported": {
+     "replicate_mean_train": 0.3573702047572918,
+     "replicate_mean_test": 0.3260250853869388,
+     "per_seed_train": [
+      0.3565,
+      0.4062,
+      0.3606,
+      0.3754,
+      0.4466
+     ],
+     "per_seed_test": [
+      0.407,
+      0.3362,
+      0.3432,
+      0.3095,
+      0.3631
+     ]
+    },
+    "per_seed": [
+     {
+      "seed": 6914975401685141156,
+      "config_hash": "ef5bac9a3820",
+      "inserted_fraction": 0.9358,
+      "wall_s": 596.3,
+      "geh_train": {
+       "n_bins": 72,
+       "n_under_5": 21,
+       "under_5": 0.2917,
+       "mean": 10.863
+      },
+      "geh_test": {
+       "n_bins": 72,
+       "n_under_5": 19,
+       "under_5": 0.2639,
+       "mean": 12.695
+      },
+      "rmspe_train": 0.3565,
+      "rmspe_test": 0.407,
+      "rmspe_all": 0.3826
+     },
+     {
+      "seed": 134183728835869882,
+      "config_hash": "ef5bac9a3820",
+      "inserted_fraction": 0.9394,
+      "wall_s": 590.2,
+      "geh_train": {
+       "n_bins": 72,
+       "n_under_5": 21,
+       "under_5": 0.2917,
+       "mean": 10.386
+      },
+      "geh_test": {
+       "n_bins": 72,
+       "n_under_5": 21,
+       "under_5": 0.2917,
+       "mean": 12.047
+      },
+      "rmspe_train": 0.4062,
+      "rmspe_test": 0.3362,
+      "rmspe_all": 0.3728
+     },
+     {
+      "seed": 2378473973028931053,
+      "config_hash": "ef5bac9a3820",
+      "inserted_fraction": 0.9431,
+      "wall_s": 557.4,
+      "geh_train": {
+       "n_bins": 72,
+       "n_under_5": 20,
+       "under_5": 0.2778,
+       "mean": 9.737
+      },
+      "geh_test": {
+       "n_bins": 72,
+       "n_under_5": 23,
+       "under_5": 0.3194,
+       "mean": 11.995
+      },
+      "rmspe_train": 0.3606,
+      "rmspe_test": 0.3432,
+      "rmspe_all": 0.352
+     },
+     {
+      "seed": 3747978530954135749,
+      "config_hash": "ef5bac9a3820",
+      "inserted_fraction": 0.9357,
+      "wall_s": 508.4,
+      "geh_train": {
+       "n_bins": 72,
+       "n_under_5": 20,
+       "under_5": 0.2778,
+       "mean": 10.341
+      },
+      "geh_test": {
+       "n_bins": 72,
+       "n_under_5": 24,
+       "under_5": 0.3333,
+       "mean": 11.459
+      },
+      "rmspe_train": 0.3754,
+      "rmspe_test": 0.3095,
+      "rmspe_all": 0.344
+     },
+     {
+      "seed": 677105600768189526,
+      "config_hash": "ef5bac9a3820",
+      "inserted_fraction": 0.9473,
+      "wall_s": 518.2,
+      "geh_train": {
+       "n_bins": 72,
+       "n_under_5": 25,
+       "under_5": 0.3472,
+       "mean": 9.956
+      },
+      "geh_test": {
+       "n_bins": 72,
+       "n_under_5": 19,
+       "under_5": 0.2639,
+       "mean": 12.185
+      },
+      "rmspe_train": 0.4466,
+      "rmspe_test": 0.3631,
+      "rmspe_all": 0.407
+     }
+    ]
+   },
+   {
+    "scale": 1.0,
+    "config_hash": "ff422e583437",
+    "mean_inserted": 0.8930199999999999,
+    "meets_constraint": false,
+    "objective": {
+     "estimator": "replicate_mean",
+     "n_bins": 72,
+     "n_under_5": 19,
+     "under_5": 0.2638888888888889,
+     "mean_geh": 9.710106093654396
+    },
+    "held_out": {
+     "estimator": "replicate_mean",
+     "n_bins": 72,
+     "n_under_5": 20,
+     "under_5": 0.2777777777777778,
+     "mean_geh": 11.552571174020546
+    },
+    "speed_rmspe_reported": {
+     "replicate_mean_train": 0.3649103197011925,
+     "replicate_mean_test": 0.32879417944427264,
+     "per_seed_train": [
+      0.3721,
+      0.4096,
+      0.3882,
+      0.3725,
+      0.4132
+     ],
+     "per_seed_test": [
+      0.3406,
+      0.3618,
+      0.3956,
+      0.35,
+      0.3349
+     ]
+    },
+    "per_seed": [
+     {
+      "seed": 6914975401685141156,
+      "config_hash": "ff422e583437",
+      "inserted_fraction": 0.8886,
+      "wall_s": 576.6,
+      "geh_train": {
+       "n_bins": 72,
+       "n_under_5": 15,
+       "under_5": 0.2083,
+       "mean": 11.169
+      },
+      "geh_test": {
+       "n_bins": 72,
+       "n_under_5": 19,
+       "under_5": 0.2639,
+       "mean": 12.408
+      },
+      "rmspe_train": 0.3721,
+      "rmspe_test": 0.3406,
+      "rmspe_all": 0.3567
+     },
+     {
+      "seed": 134183728835869882,
+      "config_hash": "ff422e583437",
+      "inserted_fraction": 0.892,
+      "wall_s": 586.4,
+      "geh_train": {
+       "n_bins": 72,
+       "n_under_5": 18,
+       "under_5": 0.25,
+       "mean": 11.226
+      },
+      "geh_test": {
+       "n_bins": 72,
+       "n_under_5": 19,
+       "under_5": 0.2639,
+       "mean": 12.575
+      },
+      "rmspe_train": 0.4096,
+      "rmspe_test": 0.3618,
+      "rmspe_all": 0.3865
+     },
+     {
+      "seed": 2378473973028931053,
+      "config_hash": "ff422e583437",
+      "inserted_fraction": 0.9023,
+      "wall_s": 554.4,
+      "geh_train": {
+       "n_bins": 72,
+       "n_under_5": 24,
+       "under_5": 0.3333,
+       "mean": 9.515
+      },
+      "geh_test": {
+       "n_bins": 72,
+       "n_under_5": 20,
+       "under_5": 0.2778,
+       "mean": 11.919
+      },
+      "rmspe_train": 0.3882,
+      "rmspe_test": 0.3956,
+      "rmspe_all": 0.3919
+     },
+     {
+      "seed": 3747978530954135749,
+      "config_hash": "ff422e583437",
+      "inserted_fraction": 0.8891,
+      "wall_s": 608.5,
+      "geh_train": {
+       "n_bins": 72,
+       "n_under_5": 19,
+       "under_5": 0.2639,
+       "mean": 10.09
+      },
+      "geh_test": {
+       "n_bins": 72,
+       "n_under_5": 22,
+       "under_5": 0.3056,
+       "mean": 11.986
+      },
+      "rmspe_train": 0.3725,
+      "rmspe_test": 0.35,
+      "rmspe_all": 0.3614
+     },
+     {
+      "seed": 677105600768189526,
+      "config_hash": "ff422e583437",
+      "inserted_fraction": 0.8931,
+      "wall_s": 545.7,
+      "geh_train": {
+       "n_bins": 72,
+       "n_under_5": 15,
+       "under_5": 0.2083,
+       "mean": 10.701
+      },
+      "geh_test": {
+       "n_bins": 72,
+       "n_under_5": 17,
+       "under_5": 0.2361,
+       "mean": 12.13
+      },
+      "rmspe_train": 0.4132,
+      "rmspe_test": 0.3349,
+      "rmspe_all": 0.3761
+     }
+    ]
+   },
+   {
+    "scale": 1.1,
+    "config_hash": "b8aea79ec86d",
+    "mean_inserted": 0.80824,
+    "meets_constraint": false,
+    "objective": {
+     "estimator": "replicate_mean",
+     "n_bins": 72,
+     "n_under_5": 17,
+     "under_5": 0.2361111111111111,
+     "mean_geh": 10.721231672360753
+    },
+    "held_out": {
+     "estimator": "replicate_mean",
+     "n_bins": 72,
+     "n_under_5": 21,
+     "under_5": 0.2916666666666667,
+     "mean_geh": 10.892305762610471
+    },
+    "speed_rmspe_reported": {
+     "replicate_mean_train": 0.35403643646941657,
+     "replicate_mean_test": 0.30058473649333356,
+     "per_seed_train": [
+      0.4064,
+      0.3614,
+      0.3733,
+      0.3532,
+      0.3735
+     ],
+     "per_seed_test": [
+      0.2815,
+      0.3475,
+      0.3526,
+      0.3367,
+      0.3431
+     ]
+    },
+    "per_seed": [
+     {
+      "seed": 6914975401685141156,
+      "config_hash": "b8aea79ec86d",
+      "inserted_fraction": 0.8059,
+      "wall_s": 629.3,
+      "geh_train": {
+       "n_bins": 72,
+       "n_under_5": 16,
+       "under_5": 0.2222,
+       "mean": 11.174
+      },
+      "geh_test": {
+       "n_bins": 72,
+       "n_under_5": 21,
+       "under_5": 0.2917,
+       "mean": 10.481
+      },
+      "rmspe_train": 0.4064,
+      "rmspe_test": 0.2815,
+      "rmspe_all": 0.3496
+     },
+     {
+      "seed": 134183728835869882,
+      "config_hash": "b8aea79ec86d",
+      "inserted_fraction": 0.8085,
+      "wall_s": 621.3,
+      "geh_train": {
+       "n_bins": 72,
+       "n_under_5": 20,
+       "under_5": 0.2778,
+       "mean": 10.916
+      },
+      "geh_test": {
+       "n_bins": 72,
+       "n_under_5": 30,
+       "under_5": 0.4167,
+       "mean": 10.835
+      },
+      "rmspe_train": 0.3614,
+      "rmspe_test": 0.3475,
+      "rmspe_all": 0.3545
+     },
+     {
+      "seed": 2378473973028931053,
+      "config_hash": "b8aea79ec86d",
+      "inserted_fraction": 0.8128,
+      "wall_s": 609.7,
+      "geh_train": {
+       "n_bins": 72,
+       "n_under_5": 18,
+       "under_5": 0.25,
+       "mean": 11.16
+      },
+      "geh_test": {
+       "n_bins": 72,
+       "n_under_5": 19,
+       "under_5": 0.2639,
+       "mean": 11.631
+      },
+      "rmspe_train": 0.3733,
+      "rmspe_test": 0.3526,
+      "rmspe_all": 0.3631
+     },
+     {
+      "seed": 3747978530954135749,
+      "config_hash": "b8aea79ec86d",
+      "inserted_fraction": 0.8102,
+      "wall_s": 564.6,
+      "geh_train": {
+       "n_bins": 72,
+       "n_under_5": 16,
+       "under_5": 0.2222,
+       "mean": 10.794
+      },
+      "geh_test": {
+       "n_bins": 72,
+       "n_under_5": 19,
+       "under_5": 0.2639,
+       "mean": 12.495
+      },
+      "rmspe_train": 0.3532,
+      "rmspe_test": 0.3367,
+      "rmspe_all": 0.345
+     },
+     {
+      "seed": 677105600768189526,
+      "config_hash": "b8aea79ec86d",
+      "inserted_fraction": 0.8038,
+      "wall_s": 619.5,
+      "geh_train": {
+       "n_bins": 72,
+       "n_under_5": 20,
+       "under_5": 0.2778,
+       "mean": 11.783
+      },
+      "geh_test": {
+       "n_bins": 72,
+       "n_under_5": 21,
+       "under_5": 0.2917,
+       "mean": 11.489
+      },
+      "rmspe_train": 0.3735,
+      "rmspe_test": 0.3431,
+      "rmspe_all": 0.3586
+     }
+    ]
+   }
+  ],
+  "section_lanes": "all",
+  "lane_sets": null
+ },
+ "refit_battery": {
+  "label": "p15_b5",
+  "path": "artifacts/i24_validation_p15_b5.json",
+  "sha256": "a437997dc7649683c4be383672eaa1251f96ac8811af7c573cf17e4c665e66dc",
+  "scenario": "i24_replica_flow_rcs_speedcal_dc_refit_b5",
+  "config_hash": "ef355b83cc00"
+ },
+ "from_battery": {
+  "path": "artifacts/i24_validation_dc_refit_rcs.json",
+  "sha256": "240a13c72dcfc8f96daa0356911363124a11d03e91f604c0e4b6ad167e04985b",
+  "scenario": "i24_replica_flow_rcs_speedcal_dc_refit",
+  "config_hash": "921fb1f42c67"
+ },
+ "level_unchanged": true,
+ "level_unchanged_reproduces_from_arm": true,
+ "criteria": {
+  "C1": {
+   "rule": "0 collisions in every run",
+   "collisions": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "verdict": true
+  },
+  "C2": {
+   "rule": "mean realised share >= the from-arm's - 0.01 (FRISCO_PROTOCOL Amendment 2 clarification: no winning by backlog)",
+   "refit": [
+    0.96696,
+    0.9650853331648924,
+    0.9688346668351077
+   ],
+   "from_arm": [
+    0.96696,
+    0.9650853331648924,
+    0.9688346668351077
+   ],
+   "paired_refit_minus_from": [
+    0.0,
+    0.0,
+    0.0
+   ],
+   "literal_reading_ge_from_arm": true,
+   "verdict": true
+  },
+  "C3": {
+   "rule": "hourly link-flow GEH < 5 share not below the from-arm's",
+   "refit": 0.3125,
+   "from_arm": 0.3125,
+   "verdict": true
+  },
+  "C4": {
+   "rule": "15-min segment-speed RMSPE <= the from-arm's + 0.02",
+   "refit": 0.2666590785688735,
+   "from_arm": 0.2666590785688735,
+   "limit": 0.2866590785688735,
+   "per_replicate_paired_refit_minus_from": [
+    0.0,
+    0.0,
+    0.0
+   ],
+   "verdict": true
+  },
+  "C5": {
+   "rule": "the wave verdict unchanged where the from-arm passes",
+   "from_arm_passes": false,
+   "refit_passes": false,
+   "verdict": null,
+   "note": "the from-arm fails the wave row; C5 does not bind"
+  }
+ },
+ "verdicts": {
+  "C1": true,
+  "C2": true,
+  "C3": true,
+  "C4": true,
+  "C5": null
+ },
+ "section_lanes": {
+  "what": "the simulated count at every section: every lane of the section's edge ('all') or the observed lane set, lanes 1-4 ('observed'; docs/I24_CONSISTENCY_C7B.md \u00a73). Reported, not gating: C3 reads each battery's link-flow criteria row as that battery scored it",
+  "fit": "all",
+  "stated_by_the_fit": true,
+  "fit_lane_sets": null,
+  "c3_rows": {
+   "refit": "all",
+   "from_arm": "all"
+  },
+  "c3_rows_alike": true,
+  "fit_objective_alike_c3_rows": true
+ },
+ "c1_c5_hold": true,
+ "candidate": true,
+ "problems": [],
+ "reported": {
+  "gate_rows": {
+   "refit": [
+    {
+     "name": "link_flows_geh",
+     "value": 0.3125,
+     "passed": false,
+     "evaluated": true,
+     "threshold": "GEH < 5 for >= 85% of link-hour comparisons"
+    },
+    {
+     "name": "speeds_rmspe",
+     "value": 0.35994526199467025,
+     "passed": false,
+     "evaluated": true,
+     "threshold": "segment-speed RMSPE <= 15%"
+    },
+    {
+     "name": "wave_speed",
+     "value": null,
+     "passed": false,
+     "evaluated": true,
+     "threshold": "backward wave speed in [14, 22] km/h (emergent, unseeded)"
+    },
+    {
+     "name": "ring_emergence",
+     "value": 1.0,
+     "passed": true,
+     "evaluated": true,
+     "threshold": "Sugiyama ring emergence benchmark reproduced"
+    },
+    {
+     "name": "ring_dampening",
+     "value": 1.0,
+     "passed": true,
+     "evaluated": true,
+     "threshold": "Stern single-AV dampening benchmark reproduced"
+    },
+    {
+     "name": "n_seeds",
+     "value": 20.0,
+     "passed": true,
+     "evaluated": true,
+     "threshold": "n_seeds >= 20"
+    },
+    {
+     "name": "sensitivity_grid",
+     "value": 1.0,
+     "passed": true,
+     "evaluated": true,
+     "threshold": "penetration {1%, 2%, 5%, 10%, 15%, 20%} x compliance {25%, 50%, 80%, 100%} grid published with CIs"
+    },
+    {
+     "name": "no_collisions",
+     "value": 0.0,
+     "passed": true,
+     "evaluated": true,
+     "threshold": "zero SUMO collisions in every run, each run recording the counter"
+    },
+    {
+     "name": "no_locks",
+     "value": 0.0,
+     "passed": true,
+     "evaluated": true,
+     "threshold": "no run locked (no queue standing without discharge for 10 min or more), every run recorded"
+    }
+   ],
+   "from_arm": [
+    {
+     "name": "link_flows_geh",
+     "value": 0.3125,
+     "passed": false,
+     "evaluated": true,
+     "threshold": "GEH < 5 for >= 85% of link-hour comparisons"
+    },
+    {
+     "name": "speeds_rmspe",
+     "value": 0.35994526199467025,
+     "passed": false,
+     "evaluated": true,
+     "threshold": "segment-speed RMSPE <= 15%"
+    },
+    {
+     "name": "wave_speed",
+     "value": null,
+     "passed": false,
+     "evaluated": true,
+     "threshold": "backward wave speed in [14, 22] km/h (emergent, unseeded)"
+    },
+    {
+     "name": "ring_emergence",
+     "value": 1.0,
+     "passed": true,
+     "evaluated": true,
+     "threshold": "Sugiyama ring emergence benchmark reproduced"
+    },
+    {
+     "name": "ring_dampening",
+     "value": 1.0,
+     "passed": true,
+     "evaluated": true,
+     "threshold": "Stern single-AV dampening benchmark reproduced"
+    },
+    {
+     "name": "n_seeds",
+     "value": 20.0,
+     "passed": true,
+     "evaluated": true,
+     "threshold": "n_seeds >= 20"
+    },
+    {
+     "name": "sensitivity_grid",
+     "value": 1.0,
+     "passed": true,
+     "evaluated": true,
+     "threshold": "penetration {1%, 2%, 5%, 10%, 15%, 20%} x compliance {25%, 50%, 80%, 100%} grid published with CIs"
+    },
+    {
+     "name": "no_collisions",
+     "value": 0.0,
+     "passed": true,
+     "evaluated": true,
+     "threshold": "zero SUMO collisions in every run, each run recording the counter"
+    },
+    {
+     "name": "no_locks",
+     "value": 0.0,
+     "passed": true,
+     "evaluated": true,
+     "threshold": "no run locked (no queue standing without discharge for 10 min or more), every run recorded"
+    }
+   ]
+  },
+  "rmspe_5min": {
+   "refit": 0.35994526199467025,
+   "from_arm": 0.35994526199467025
+  },
+  "sections_2h": {
+   "2200": {
+    "observed": 6626.170833333333,
+    "refit": [
+     6329.7,
+     6317.353305435777,
+     6342.046694564223
+    ],
+    "from_arm": [
+     6329.7,
+     6317.353305435777,
+     6342.046694564223
+    ],
+    "paired_refit_minus_from": [
+     0.0,
+     0.0,
+     0.0
+    ],
+    "geh_refit": 3.68352538517573,
+    "geh_from_arm": 3.68352538517573
+   },
+   "3200": {
+    "observed": 6639.020833333333,
+    "refit": [
+     6276.775,
+     6263.707272048879,
+     6289.842727951121
+    ],
+    "from_arm": [
+     6276.775,
+     6263.707272048879,
+     6289.842727951121
+    ],
+    "paired_refit_minus_from": [
+     0.0,
+     0.0,
+     0.0
+    ],
+    "geh_refit": 4.507729126064405,
+    "geh_from_arm": 4.507729126064405
+   },
+   "5400": {
+    "observed": 6008.683333333334,
+    "refit": [
+     5776.275,
+     5766.149311223323,
+     5786.400688776676
+    ],
+    "from_arm": [
+     5776.275,
+     5766.149311223323,
+     5786.400688776676
+    ],
+    "paired_refit_minus_from": [
+     0.0,
+     0.0,
+     0.0
+    ],
+    "geh_refit": 3.0276290832061954,
+    "geh_from_arm": 3.0276290832061954
+   }
+  },
+  "fronts": {
+   "standard": {
+    "refit": [
+     9.9,
+     8.389935267034774,
+     11.410064732965226
+    ],
+    "from_arm": [
+     9.9,
+     8.389935267034774,
+     11.410064732965226
+    ]
+   },
+   "stripe": {
+    "refit": [
+     59.7,
+     56.08719936539311,
+     63.312800634606894
+    ],
+    "from_arm": [
+     59.7,
+     56.08719936539311,
+     63.312800634606894
+    ]
+   }
+  },
+  "hard_braking_below_8p9": {
+   "refit": 2,
+   "from_arm_p14_rerun": null
+  },
+  "locks": {
+   "refit": {
+    "no_locks_row": {
+     "value": 0.0,
+     "passed": true,
+     "evaluated": true
+    },
+    "zero_locks": true
+   },
+   "from_arm": null
+  },
+  "breakdown": {
+   "refit": {
+    "rule": "a replicate realising less than 0.9 of its planned demand while the battery's mean realised share is at least 0.95 (coordinator's pre-registration 2026-10-07; reported, gating only by a later amendment)",
+    "applies": true,
+    "per_replicate": [
+     false,
+     false,
+     false,
+     false,
+     false,
+     false,
+     false,
+     false,
+     false,
+     false,
+     false,
+     false,
+     false,
+     false,
+     false,
+     false,
+     false,
+     false,
+     false,
+     false
+    ],
+    "n_breakdowns": 0,
+    "locked_per_replicate": [
+     false,
+     false,
+     false,
+     false,
+     false,
+     false,
+     false,
+     false,
+     false,
+     false,
+     false,
+     false,
+     false,
+     false,
+     false,
+     false,
+     false,
+     false,
+     false,
+     false
+    ]
+   },
+   "from_arm": {
+    "rule": "a replicate realising less than 0.9 of its planned demand while the battery's mean realised share is at least 0.95 (coordinator's pre-registration 2026-10-07; reported, gating only by a later amendment)",
+    "applies": true,
+    "per_replicate": [
+     false,
+     false,
+     false,
+     false,
+     false,
+     false,
+     false,
+     false,
+     false,
+     false,
+     false,
+     false,
+     false,
+     false,
+     false,
+     false,
+     false,
+     false,
+     false,
+     false
+    ],
+    "n_breakdowns": 0,
+    "locked_per_replicate": null
+   }
+  },
+  "ramp_flows": {
+   "refit": {
+    "computed": true,
+    "reduction": "artifacts/i24_b2_ramp_flows_p15_b5.json",
+    "Old Hickory Blvd on-ramp": {
+     "kind": "on",
+     "model_veh_h": [
+      967.05,
+      958.1710571792277,
+      975.9289428207722
+     ],
+     "corrected_pooled_veh_h": 915.1424319348195,
+     "geh_vs_corrected": 1.6920518555148356,
+     "recorded_pooled_veh_h": 1064.7537041063672,
+     "geh_vs_recorded": 3.0653858815063817
+    },
+    "Hickory Hollow Pkwy off-ramp": {
+     "kind": "off",
+     "model_veh_h": [
+      558.4,
+      549.0247596691513,
+      567.7752403308486
+     ],
+     "corrected_pooled_veh_h": 581.1923237368231,
+     "geh_vs_corrected": 0.9548361327244325,
+     "recorded_pooled_veh_h": 593.8242433172837,
+     "geh_vs_recorded": 1.4758665023276047
+    },
+    "Hickory Hollow Pkwy on-ramp": {
+     "kind": "on",
+     "model_veh_h": [
+      470.25,
+      470.1299568376373,
+      470.3700431623627
+     ],
+     "corrected_pooled_veh_h": 442.6168182212329,
+     "geh_vs_corrected": 1.2934277703705714,
+     "recorded_pooled_veh_h": 686.721427028011,
+     "geh_vs_recorded": 9.00024353723481
+    },
+    "Bell Road off-ramp (collector road)": {
+     "kind": "off",
+     "model_veh_h": [
+      277.025,
+      272.6580185002836,
+      281.39198149971634
+     ],
+     "corrected_pooled_veh_h": 309.02513325198856,
+     "geh_vs_corrected": 1.8693877828719776,
+     "recorded_pooled_veh_h": 328.4030958999402,
+     "geh_vs_recorded": 2.952988238754257
+    }
+   },
+   "from_arm": {
+    "computed": true,
+    "reduction": "artifacts/i24_b2_ramp_flows_dc_refit_rcs.json",
+    "Old Hickory Blvd on-ramp": {
+     "kind": "on",
+     "model_veh_h": [
+      967.05,
+      958.1710571792277,
+      975.9289428207722
+     ],
+     "corrected_pooled_veh_h": 915.1424319348195,
+     "geh_vs_corrected": 1.6920518555148356,
+     "recorded_pooled_veh_h": 1064.7537041063672,
+     "geh_vs_recorded": 3.0653858815063817
+    },
+    "Hickory Hollow Pkwy off-ramp": {
+     "kind": "off",
+     "model_veh_h": [
+      558.4,
+      549.0247596691513,
+      567.7752403308486
+     ],
+     "corrected_pooled_veh_h": 581.1923237368231,
+     "geh_vs_corrected": 0.9548361327244325,
+     "recorded_pooled_veh_h": 593.8242433172837,
+     "geh_vs_recorded": 1.4758665023276047
+    },
+    "Hickory Hollow Pkwy on-ramp": {
+     "kind": "on",
+     "model_veh_h": [
+      470.25,
+      470.1299568376373,
+      470.3700431623627
+     ],
+     "corrected_pooled_veh_h": 442.6168182212329,
+     "geh_vs_corrected": 1.2934277703705714,
+     "recorded_pooled_veh_h": 686.721427028011,
+     "geh_vs_recorded": 9.00024353723481
+    },
+    "Bell Road off-ramp (collector road)": {
+     "kind": "off",
+     "model_veh_h": [
+      277.025,
+      272.6580185002836,
+      281.39198149971634
+     ],
+     "corrected_pooled_veh_h": 309.02513325198856,
+     "geh_vs_corrected": 1.8693877828719776,
+     "recorded_pooled_veh_h": 328.4030958999402,
+     "geh_vs_recorded": 2.952988238754257
+    }
+   }
+  },
+  "estimators": {
+   "gated": "A5's values (and part (ii)'s C4's) are RMSPEs of the replicate-mean field: the replicates' mean 5-min segment-speed field, in 15-min windows, against the observed field (harness/corridor_b1.py battery 'rmspe_15min'); a battery's 'rmspe.value' (reported.rmspe_5min) is the same estimator in 5-min windows",
+   "intervals": "a bracketed [mean, lo95, hi95] of RMSPEs is a 95% t-interval (harness/corridor_b1.py ci, paired) of the per-seed differences of per-replicate RMSPEs (each replicate's own field against the observed one: 'rmspe_15min_per_replicate', or the battery's 'rmspe.per_replicate_vs_observed' in 5-min windows), B1 + B2 minus B2 at the same seed; its mean is not the difference of the gated values (the RMSPE of a mean field is not the mean of the replicates' RMSPEs)"
+  }
+ },
+ "not_validation": "a demand refit on the recording it is scored on (fit hour 06:30-07:30 inside the scored window; one morning, no holdout day): calibration, never validation"
+}

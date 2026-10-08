@@ -89,6 +89,8 @@ $2.3). p17: 25 four-hour runs plus battery and gate, 155 + 12 min, **$2.2** (cap
 
 **Status — 2026-10-08 (I-24).** C7b selected `rcs`: p15 runs with `--p15-arm i24_replica_flow_rcs_speedcal_dc_refit:i24_replica_flow_rcs_corrected_dc:dc_refit_rcs` (921fb1f42c67; battery realised 0.9670, C2 floor 0.9570) on the pre-registered all-lane objective; its battery records crossings by lane so the lane-set share is reported beside it.
 
+**Status — 2026-10-08: I-24 run** (p15, code d8186f6; docs/I24_B5_RESULT.md; FRISCO_PROTOCOL Amendment 6, "Run on I-24"). On `rcs` the fit kept s = 0.925 (22 of 72 fit-hour bins, tied with 0.9, decided by mean GEH). The refit is `rcs` under another name and reproduces its battery; C1–C4 hold, C5 n/a, candidate; nothing changes on I-24, and adoption is the owner's. I-94 is running as p17 on `_rbc`.
+
 ## B6 — a joint driver fit under the emergent-wave constraint
 
 **Purpose.** Amendment 1 moved mean `a_max` alone. At k = 1 the mean driver is

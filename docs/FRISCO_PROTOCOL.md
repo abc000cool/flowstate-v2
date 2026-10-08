@@ -873,3 +873,12 @@ are the gate's calibration-day C1/C3/C4, plus §9.5's no-lock check. A level tha
 is the owner's. On I-24 this is calibration, never validation. Implemented by `calibration.demand_level`,
 `scripts/fit_demand_level.py`, stages `p15_i24_b5` / `p17_i94_b5` (docs/PRE_FRISCO_PROGRAM.md B5);
 `scripts/i24_fit_demand_scale.py` is unchanged. p15 runs on the arm that C7b's fixed rule selects.
+
+**Run on I-24 — 2026-10-08.** Stage `p15_i24_b5`, VM flowstate-p15, 07:20–08:36 UTC, code d8186f6, on C7b's `rcs` arm
+(921fb1f42c67, carried s = 0.925; floor 0.9570). The fit chose s = 0.925, the from-arm's own level: no grid scale scored
+more than 22 of 72 fit-hour bins under GEH 5, s = 0.9 tied on that share and lost on mean GEH (9.247 against 9.150), and
+0.95 and above fell below the floor. The refit (`…_b5`, ef355b83cc00) is the from-arm under another name; its 20-seed
+battery reproduces the from-arm's. C1–C4 hold and C5 does not bind (the from-arm fails the wave row); the readout
+(`artifacts/demand_level_i24.json`) records no problems and marks the level a candidate. It changes no input on I-24;
+adoption is the owner's. The arm stays calibration, not validation, and still fails the gate. I-94's run (stage
+`p17_i94_b5`, on `_rbc`) is pending. Details: docs/I24_B5_RESULT.md.
