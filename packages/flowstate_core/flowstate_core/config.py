@@ -535,6 +535,45 @@ def _removed_message(what: str, names: Iterable[str]) -> str:
     )
 
 
+#: Default upper end ``s_max`` of :class:`RampToRampRange`: the T.H.52 weave's
+#: bound (docs/TH52_CROSSING_SHARE.md §5: the upper 95 % limit of the
+#: least-biased count reading, itself biased upward; basis
+#: ``stated_assumption``), adopted with docs/FRISCO_PROTOCOL.md Amendment 3
+#: (2026-10-07). Another weave states its own bound and source in its range.
+RAMP_TO_RAMP_S_MAX_DEFAULT: Final[float] = 0.70
+
+
+class RampToRampRange(BaseModel):
+    """The per-window form of ``WeaveSpec.ramp_to_ramp_share`` (Amendment 3, 2026-10-07).
+
+    docs/FRISCO_PROTOCOL.md Amendment 3, rule 4, and its adoption's range round
+    (item 1): in each 300-s window ``w`` the weave entrance's ramp-to-ramp
+    share is ``s_w = P_w + u · (s_max − P_w)``, clipped to what the window's
+    exit volume allows (``v_OFF,w / v_ON,w``), where ``P_w`` is the
+    proportional split the plan draws today (HCM 7th ed. ch. 13's simple
+    weaving-volume estimate: the entrants' probability of taking the paired
+    exit). ``u = 0`` asks the proportional split in every window and the share
+    rises monotonically with ``u``. Written in a scenario as
+    ``ramp_to_ramp_share: {u: 0.5}`` (``s_max`` 0.70 by default), the single
+    share being a number: the two forms are one key, so they can never be set
+    together. Applied by ``microsim.vehicles.build_corridor_plan``, which
+    windows every vehicle of the swap by its free-flow arrival at the weave
+    (docs/A3_RANGE_ROUND.md §2) and records each window in
+    ``meta.json["ramp_to_ramp_shares"]``. A demand input carried for
+    sensitivity and uncertainty, never a merge-model parameter.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    u: float = Field(ge=0.0, le=1.0)
+    """The range coordinate: 0 is the proportional split, 1 is ``s_max``."""
+    s_max: float = Field(default=RAMP_TO_RAMP_S_MAX_DEFAULT, gt=0.0, le=1.0)
+    """The range's upper end with a stated source (default
+    :data:`RAMP_TO_RAMP_S_MAX_DEFAULT`, T.H.52's 0.70). At its default it is
+    omitted from the config hash (policy v2: explicit defaults hash like
+    omitted ones); ``model_dump`` and ``meta.json["config"]`` state it."""
+
+
 class WeaveSpec(BaseModel):
     """A weaving section run by the runner's two-sided gap acceptance (2026-09-23).
 
@@ -564,7 +603,7 @@ class WeaveSpec(BaseModel):
     that sets nothing takes every default, Amendment 4's W1b and W2 included
     (:data:`WEAVE_AMENDMENT4_DEFAULTS`); W2's switches on with W1b off are
     refused (:meth:`_check_params`)."""
-    ramp_to_ramp_share: float | None = Field(default=None, ge=0.0, le=1.0)
+    ramp_to_ramp_share: Annotated[float, Field(ge=0.0, le=1.0)] | RampToRampRange | None = None
     """Share of this entrance's vehicles that leave at the paired exit
     (``v_RR / v_ON``, the ramp-to-ramp movement; 2026-10-07,
     docs/TH52_CROSSING_SHARE.md). ``None`` (the default) keeps the plan's
@@ -587,7 +626,16 @@ class WeaveSpec(BaseModel):
     Not set by any committed scenario. Hash-neutral and absent from
     ``model_dump`` (so from ``meta.json["config"]`` and YAML) when unset
     (:meth:`_serialize`); the realized share is recorded in
-    ``meta.json["ramp_to_ramp_shares"]`` when set."""
+    ``meta.json["ramp_to_ramp_shares"]`` when set.
+
+    A mapping instead of a number is the per-window form,
+    :class:`RampToRampRange` (``{u: 0.5}``, optionally ``s_max``; 2026-10-07,
+    Amendment 3 adopted): one share per 300-s window, ``P_w + u · (s_max −
+    P_w)``, clipped in each window to the swap pool's exit volume instead of
+    refused, every vehicle of the swap windowed by its free-flow arrival at
+    the weave rather than by its departure. Being the same key, the two forms
+    cannot be set together. The number's behaviour and records are unchanged
+    by the mapping's existence; unset, neither exists."""
     record_commands: bool = False
     """Log every command decision this section's rules make for a vehicle
     (2026-10-07, docs/I94_CAL_COLLISIONS.md §15: which weave rule issued each

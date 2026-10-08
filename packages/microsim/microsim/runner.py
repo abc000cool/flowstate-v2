@@ -88,6 +88,7 @@ from flowstate_core.config import (
     FleetSpec,
     OSMNetwork,
     RampSpec,
+    RampToRampRange,
     RingNetwork,
     ScenarioConfig,
     config_hash,
@@ -575,6 +576,45 @@ def _resolve_ramp_pieces(cfg: ScenarioConfig, bundle: NetBundle) -> ScenarioConf
     return cfg.model_copy(update={"network": net.model_copy(update={"ramps": resolved})})
 
 
+def _ramp_to_ramp_geometry(
+    compiled: Any, corridor_edges: Sequence[str], ramps: Sequence[RampSpec]
+) -> dict[str, tuple[float, float]] | None:
+    """Edge geometry for the per-window ramp-to-ramp share, or None when no weave sets it.
+
+    ``microsim.vehicles.build_corridor_plan`` windows the swap of a weave
+    entrance whose ``ramp_to_ramp_share`` is a
+    :class:`flowstate_core.config.RampToRampRange` (Amendment 3) by each
+    vehicle's free-flow arrival at the weave; this gives it, for the corridor's
+    edges and every on-ramp's, the lane-0 length [m] and the base speed limit
+    [m/s], the largest over the edge's lanes — :class:`RouteGeometry`'s
+    convention, read here from the compiled network because the plan is built
+    before SUMO starts. None (nothing read) when no weave sets the form, so
+    every other run's plan is built exactly as before.
+
+    Args:
+        compiled: The compiled network (``sumolib.net.readNet``).
+        corridor_edges: The bundle's corridor edges in driving order.
+        ramps: The ramps, attach edges resolved to their compiled pieces.
+
+    Returns:
+        Edge id → ``(length_m, limit_ms)``, or None.
+    """
+    if not any(
+        r.kind == "on"
+        and r.weave is not None
+        and isinstance(r.weave.ramp_to_ramp_share, RampToRampRange)
+        for r in ramps
+    ):
+        return None
+    edges = list(corridor_edges) + [e for r in ramps if r.kind == "on" for e in r.edges]
+    out: dict[str, tuple[float, float]] = {}
+    for e in edges:
+        edge = compiled.getEdge(e)
+        lanes = edge.getLanes()
+        out[e] = (float(lanes[0].getLength()), max(float(lane.getSpeed()) for lane in lanes))
+    return out
+
+
 def _build_plan_and_routes(
     cfg: ScenarioConfig,
     bundle: NetBundle,
@@ -636,6 +676,7 @@ def _build_plan_and_routes(
             ramps=net.ramps,
             corridor_edges=bundle.edge_ids,
             entry_lane_shares=net.entry_lane_shares,
+            edge_geometry=_ramp_to_ramp_geometry(compiled, bundle.edge_ids, net.ramps),
         )
     write_corridor_routes(
         bundle.edge_ids,

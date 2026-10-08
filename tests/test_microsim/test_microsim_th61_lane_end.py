@@ -343,12 +343,16 @@ class TestTh61LaneEnd:
         reason="the weave model has one auxiliary lane (docs/CONTRACTS.md §2: entrants on "
         "lane 0 change left, exiters on lanes >= 1 change right to lane 0); here lanes 0 and "
         "1 both lead only to the exit (docs/WEAVE_MODEL_PLAN.md, 2026-09-25 block 3, WP-66; "
-        "the exit link's class corrected to the corridor's, WP-83). "
-        "Seed 3: 2,565 of 2,885 depart (lane_change: 2,810), the entrance 837 of 848; the "
-        "section drives 4,273 exits for 600 exiters reaching it — 569 of them change from "
-        "lane 1 to lane 0 4,229 times and back 3,807 times (lane_change: 412 and 204) — and "
-        "gives up 5 exits; no minute at 0.0 m/s at the gore, longest lane-end hold 1.0 s, "
-        "no collision",
+        "the exit link's class corrected to the corridor's, WP-83). Seed 3, measured "
+        "2026-10-07 under the W1b/W2 defaults (docs/E12_PLATFORM_TESTS.md), fails on both "
+        "platforms on the departures (95 % required; lane_change: 2,810). macOS arm64: 2,592 "
+        "of 2,885 depart (89.8 %), the entrance 847 of 848, 568 of the 601 exiters reaching "
+        "the section exit, 4 given up, longest lane-end hold 7.0 s. Linux x86_64: 2,580 of "
+        "2,885 (89.4 %), the entrance 824 of 848, 581 of 617 exit, 4 given up, longest hold "
+        "9.5 s. No minute at 0.0 m/s at the gore and no collision on either. The numbers "
+        "differ because SUMO 1.27.1 arithmetic differs between arm64 macOS and x86_64 Linux "
+        "(this fixture is not probed per step; its trajectories part in the first minute, as "
+        "the probed fixtures' do from steps 20-47; docs/E12_PLATFORM_TESTS.md)",
     )
     def test_weave_configuration_carries_the_stretch(self, tmp_path):
         """Configured as a weave section (``merge: weave`` paired with the

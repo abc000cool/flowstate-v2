@@ -32,9 +32,10 @@ RNG consumption order is fixed and documented per builder so that a given
 
 from __future__ import annotations
 
+import itertools
 import json
 import math
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Final
@@ -42,7 +43,14 @@ from typing import Any, Final
 import numpy as np
 
 from flowstate_core.artifacts import IDMCalibration
-from flowstate_core.config import AVSpec, FleetSpec, HeavyVehicleSpec, RampSpec, RingNetwork
+from flowstate_core.config import (
+    AVSpec,
+    FleetSpec,
+    HeavyVehicleSpec,
+    RampSpec,
+    RampToRampRange,
+    RingNetwork,
+)
 from flowstate_core.constants import (
     SPEED_FACTOR_BOUNDS,
     SPEED_FACTOR_DECIMALS,
@@ -146,7 +154,11 @@ class FleetPlan:
     """One record per weave entrance with ``WeaveSpec.ramp_to_ramp_share``
     set (:func:`build_corridor_plan`, :func:`_apply_ramp_to_ramp_shares`): the
     share asked, the share drawn before the swap and the one realized, and
-    the counts. Empty ⇒ no such entrance (every plan before 2026-10-07)."""
+    the counts; for the per-window form (Amendment 3,
+    :func:`_ramp_to_ramp_window`) also ``u``, ``s_max``, the timing, the
+    free-flow times and one row per window (``P_w``, ``s_w``, the clip, the
+    realized share) with the count of clipped windows. Empty ⇒ no such
+    entrance (every plan before 2026-10-07)."""
 
     def heavy(self, i: int) -> bool:
         """Whether vehicle ``i`` is a heavy vehicle."""
@@ -741,14 +753,124 @@ def _spread_pick(candidates: Sequence[int], n: int) -> list[int]:
     return [candidates[(2 * q + 1) * size // (2 * n)] for q in range(n)]
 
 
+#: How the per-window form of the share (:class:`flowstate_core.config.
+#: RampToRampRange`, Amendment 3) windows the vehicles of its swap
+#: (docs/A3_RANGE_ROUND.md §2, decided 2026-10-07 before the range round):
+#: every entrant and every swap partner by its free-flow arrival at the weave
+#: — its departure plus the free-flow time from its insertion point to the
+#: start of the entrance's attach edge, edge by edge at ``min(v0, speedFactor
+#: × base limit)``, the convention of ``microsim.runner.RouteGeometry`` — so
+#: the vehicles that trade destinations reach the gore together and the
+#: window's shares are those of the count data's window there. The single
+#: share keeps its windows of departure.
+RAMP_TO_RAMP_RANGE_TIMING: Final[str] = "free_flow_arrival"
+
+
+def _weave_pool(
+    k: int, ramp: RampSpec, ramps: Sequence[RampSpec], pos: Mapping[str, int]
+) -> tuple[int, str, int, set[int], set[str]]:
+    """The paired exit and the swap pool of weave entrance ``k`` (both forms of the share).
+
+    Returns:
+        ``(j, exit label, entrance attach position, partner origins,
+        suffixes passing the weave bound elsewhere)``: the partners' origins
+        are the corridor entry (``-1``) and every on-ramp attached upstream of
+        the entrance.
+
+    Raises:
+        ValueError: ``WeaveSpec.exit_ramp`` does not name exactly one off-ramp.
+    """
+    assert ramp.weave is not None
+    label = ramp.name or ramp.attach_edge
+    exits = [m for m, r in enumerate(ramps) if r.kind == "off" and r.name == ramp.weave.exit_ramp]
+    if len(exits) != 1:
+        raise ValueError(
+            f"ramp {label}: weave exit_ramp {ramp.weave.exit_ramp!r} must name exactly one "
+            f"off-ramp (found {len(exits)})"
+        )
+    j = exits[0]
+    entry = pos[ramp.attach_edge]
+    # the partners' origins: the corridor entry (-1) and every on-ramp
+    # attached upstream of the entrance
+    partner_origins = {-1} | {
+        u for u, r in enumerate(ramps) if r.kind == "on" and pos[r.attach_edge] < entry
+    }
+    passes_elsewhere = {""} | {
+        f"_off{m}"
+        for m, r in enumerate(ramps)
+        if r.kind == "off" and m != j and pos[r.attach_edge] >= entry
+    }
+    return j, ramps[j].name, entry, partner_origins, passes_elsewhere
+
+
 def _apply_ramp_to_ramp_shares(
     route_list: list[str],
     departs: Sequence[float],
     origin_idx: Sequence[int],
     ramps: Sequence[RampSpec],
     pos: Mapping[str, int],
+    *,
+    corridor_edges: Sequence[str] = (),
+    v0: Sequence[float] = (),
+    speed_factor: Sequence[float] = (),
+    edge_geometry: Mapping[str, tuple[float, float]] | None = None,
 ) -> tuple[dict[str, Any], ...]:
     """Meet every ``WeaveSpec.ramp_to_ramp_share`` by swapping destinations (in place).
+
+    Weave entrances in ramp order; a share given as a number is met by
+    :func:`_ramp_to_ramp_single` (one share, windows of departure, refused
+    where infeasible), one given as a mapping
+    (:class:`flowstate_core.config.RampToRampRange`, Amendment 3) by
+    :func:`_ramp_to_ramp_window` (one share per window of free-flow arrival
+    at the weave, clipped where infeasible; it needs ``corridor_edges``,
+    ``v0``, ``speed_factor`` and ``edge_geometry``). No random number is
+    drawn by either.
+
+    Returns:
+        One record per such entrance, in ramp order (``FleetPlan.ramp_to_ramp``).
+    """
+    records: list[dict[str, Any]] = []
+    for k, ramp in enumerate(ramps):
+        if ramp.kind != "on" or ramp.weave is None or ramp.weave.ramp_to_ramp_share is None:
+            continue
+        spec = ramp.weave.ramp_to_ramp_share
+        if isinstance(spec, RampToRampRange):
+            records.append(
+                _ramp_to_ramp_window(
+                    k,
+                    ramp,
+                    spec,
+                    route_list,
+                    departs,
+                    origin_idx,
+                    ramps,
+                    pos,
+                    corridor_edges=corridor_edges,
+                    v0=v0,
+                    speed_factor=speed_factor,
+                    edge_geometry=edge_geometry,
+                )
+            )
+        else:
+            records.append(
+                _ramp_to_ramp_single(
+                    k, ramp, float(spec), route_list, departs, origin_idx, ramps, pos
+                )
+            )
+    return tuple(records)
+
+
+def _ramp_to_ramp_single(
+    k: int,
+    ramp: RampSpec,
+    share: float,
+    route_list: list[str],
+    departs: Sequence[float],
+    origin_idx: Sequence[int],
+    ramps: Sequence[RampSpec],
+    pos: Mapping[str, int],
+) -> dict[str, Any]:
+    """Meet one entrance's single ``WeaveSpec.ramp_to_ramp_share`` (in place).
 
     For a weave entrance ``k`` with the share ``s`` set and its paired exit
     ``j`` (``WeaveSpec.exit_ramp``), per :data:`RAMP_TO_RAMP_WINDOW_S` window of
@@ -793,123 +915,340 @@ def _apply_ramp_to_ramp_shares(
             split) too few partners pass the weave bound elsewhere.
 
     Returns:
-        One record per such entrance, in ramp order (``FleetPlan.ramp_to_ramp``).
+        The entrance's record (one entry of ``FleetPlan.ramp_to_ramp``).
     """
-    records: list[dict[str, Any]] = []
     window = RAMP_TO_RAMP_WINDOW_S
-    for k, ramp in enumerate(ramps):
-        if ramp.kind != "on" or ramp.weave is None or ramp.weave.ramp_to_ramp_share is None:
-            continue
-        share = float(ramp.weave.ramp_to_ramp_share)
-        label = ramp.name or ramp.attach_edge
-        exits = [
-            m for m, r in enumerate(ramps) if r.kind == "off" and r.name == ramp.weave.exit_ramp
-        ]
-        if len(exits) != 1:
+    label = ramp.name or ramp.attach_edge
+    j, exit_label, _entry, partner_origins, passes_elsewhere = _weave_pool(k, ramp, ramps, pos)
+    on_base, rr, to_j = f"on{k}", f"on{k}_off{j}", f"_off{j}"
+
+    def base_of(i: int) -> str:
+        return "main" if origin_idx[i] < 0 else f"on{origin_idx[i]}"
+
+    def suffix_of(i: int) -> str:
+        return route_list[i][len(base_of(i)) :]
+
+    entrants: dict[int, list[int]] = {}
+    partners: dict[int, list[int]] = {}
+    for i, t in enumerate(departs):
+        w = int(t // window)
+        if origin_idx[i] == k:
+            entrants.setdefault(w, []).append(i)
+        elif origin_idx[i] in partner_origins:
+            partners.setdefault(w, []).append(i)
+    for ws in partners.values():
+        # departure order across origins (the corridor entry's alone is
+        # already in it: its ids follow its sorted departures)
+        ws.sort(key=lambda i: (departs[i], i))
+    n_before = sum(route_list[i] == rr for ws in entrants.values() for i in ws)
+    n_exit = sum(route_list[i] == rr for ws in entrants.values() for i in ws) + sum(
+        suffix_of(i) == to_j for ws in partners.values() for i in ws
+    )
+    n_cum, target_cum, to_exit, from_exit = 0, 0, 0, 0
+    for w in sorted(entrants):
+        ent, main = entrants[w], partners.get(w, [])
+        n_cum += len(ent)
+        target_prev, target_cum = target_cum, math.floor(share * n_cum + 0.5)
+        target = target_cum - target_prev
+        have = [i for i in ent if route_list[i] == rr]
+        to_exit_main = [i for i in main if suffix_of(i) == to_j]
+        t0, t1 = w * window, (w + 1) * window
+        exit_volume = len(have) + len(to_exit_main)
+        if target > exit_volume:
             raise ValueError(
-                f"ramp {label}: weave exit_ramp {ramp.weave.exit_ramp!r} must name exactly one "
-                f"off-ramp (found {len(exits)})"
+                f"ramp {label}: ramp_to_ramp_share {share:g} asks {target} of the "
+                f"{len(ent)} entrants departing in [{t0:g}, {t1:g}) s to take "
+                f"{exit_label!r}, but the swap pool holds only {exit_volume} vehicles "
+                "departing then bound for it (this entrance's, the corridor entry's and "
+                "those of on-ramps upstream of it): the pool's exit volume must be at "
+                "least the ramp-to-ramp volume (largest feasible share in this window "
+                f"{exit_volume / len(ent):.3f})"
             )
-        j = exits[0]
-        exit_label = ramps[j].name
-        entry = pos[ramp.attach_edge]
-        on_base, rr, to_j = f"on{k}", f"on{k}_off{j}", f"_off{j}"
-        # the partners' origins: the corridor entry (-1) and every on-ramp
-        # attached upstream of the entrance
-        partner_origins = {-1} | {
-            u for u, r in enumerate(ramps) if r.kind == "on" and pos[r.attach_edge] < entry
-        }
-        passes_elsewhere = {""} | {
-            f"_off{m}"
-            for m, r in enumerate(ramps)
-            if r.kind == "off" and m != j and pos[r.attach_edge] >= entry
-        }
-
-        def base_of(i: int) -> str:
-            return "main" if origin_idx[i] < 0 else f"on{origin_idx[i]}"
-
-        def suffix_of(i: int) -> str:
-            return route_list[i][len(base_of(i)) :]
-
-        entrants: dict[int, list[int]] = {}
-        partners: dict[int, list[int]] = {}
-        for i, t in enumerate(departs):
-            w = int(t // window)
-            if origin_idx[i] == k:
-                entrants.setdefault(w, []).append(i)
-            elif origin_idx[i] in partner_origins:
-                partners.setdefault(w, []).append(i)
-        for ws in partners.values():
-            # departure order across origins (the corridor entry's alone is
-            # already in it: its ids follow its sorted departures)
-            ws.sort(key=lambda i: (departs[i], i))
-        n_before = sum(route_list[i] == rr for ws in entrants.values() for i in ws)
-        n_exit = sum(route_list[i] == rr for ws in entrants.values() for i in ws) + sum(
-            suffix_of(i) == to_j for ws in partners.values() for i in ws
-        )
-        n_cum, target_cum, to_exit, from_exit = 0, 0, 0, 0
-        for w in sorted(entrants):
-            ent, main = entrants[w], partners.get(w, [])
-            n_cum += len(ent)
-            target_prev, target_cum = target_cum, math.floor(share * n_cum + 0.5)
-            target = target_cum - target_prev
-            have = [i for i in ent if route_list[i] == rr]
-            to_exit_main = [i for i in main if suffix_of(i) == to_j]
-            t0, t1 = w * window, (w + 1) * window
-            exit_volume = len(have) + len(to_exit_main)
-            if target > exit_volume:
+        need = target - len(have)
+        if need > 0:
+            elsewhere = [i for i in ent if route_list[i] != rr]
+            pairs = zip(
+                _spread_pick(elsewhere, need), _spread_pick(to_exit_main, need), strict=True
+            )
+            for e, m in pairs:
+                route_list[m] = base_of(m) + route_list[e][len(on_base) :]
+                route_list[e] = rr
+            to_exit += need
+        elif need < 0:
+            through = [i for i in main if suffix_of(i) in passes_elsewhere]
+            if len(through) < -need:
                 raise ValueError(
-                    f"ramp {label}: ramp_to_ramp_share {share:g} asks {target} of the "
-                    f"{len(ent)} entrants departing in [{t0:g}, {t1:g}) s to take "
-                    f"{exit_label!r}, but the swap pool holds only {exit_volume} vehicles "
-                    "departing then bound for it (this entrance's, the corridor entry's and "
-                    "those of on-ramps upstream of it): the pool's exit volume must be at "
-                    "least the ramp-to-ramp volume (largest feasible share in this window "
-                    f"{exit_volume / len(ent):.3f})"
+                    f"ramp {label}: ramp_to_ramp_share {share:g} needs {-need} vehicles "
+                    f"departing in [{t0:g}, {t1:g}) s from the corridor entry or an "
+                    f"on-ramp upstream of it that pass the weave bound elsewhere to take "
+                    f"{exit_label!r}, but only {len(through)} depart then"
                 )
-            need = target - len(have)
-            if need > 0:
-                elsewhere = [i for i in ent if route_list[i] != rr]
-                pairs = zip(
-                    _spread_pick(elsewhere, need), _spread_pick(to_exit_main, need), strict=True
-                )
-                for e, m in pairs:
-                    route_list[m] = base_of(m) + route_list[e][len(on_base) :]
-                    route_list[e] = rr
-                to_exit += need
-            elif need < 0:
-                through = [i for i in main if suffix_of(i) in passes_elsewhere]
-                if len(through) < -need:
-                    raise ValueError(
-                        f"ramp {label}: ramp_to_ramp_share {share:g} needs {-need} vehicles "
-                        f"departing in [{t0:g}, {t1:g}) s from the corridor entry or an "
-                        f"on-ramp upstream of it that pass the weave bound elsewhere to take "
-                        f"{exit_label!r}, but only {len(through)} depart then"
-                    )
-                pairs = zip(_spread_pick(have, -need), _spread_pick(through, -need), strict=True)
-                for e, m in pairs:
-                    route_list[e] = on_base + suffix_of(m)
-                    route_list[m] = base_of(m) + to_j
-                from_exit -= need
-        n_entrants = n_cum
-        n_after = sum(route_list[i] == rr for ws in entrants.values() for i in ws)
-        records.append(
+            pairs = zip(_spread_pick(have, -need), _spread_pick(through, -need), strict=True)
+            for e, m in pairs:
+                route_list[e] = on_base + suffix_of(m)
+                route_list[m] = base_of(m) + to_j
+            from_exit -= need
+    n_entrants = n_cum
+    n_after = sum(route_list[i] == rr for ws in entrants.values() for i in ws)
+    return {
+        "ramp": label,
+        "exit_ramp": exit_label,
+        "share": share,
+        "window_s": window,
+        "n_entrants": n_entrants,
+        "n_ramp_to_ramp_drawn": n_before,
+        "share_drawn": n_before / n_entrants if n_entrants else None,
+        "n_ramp_to_ramp": n_after,
+        "share_realized": n_after / n_entrants if n_entrants else None,
+        "n_swapped_to_exit": to_exit,
+        "n_swapped_from_exit": from_exit,
+        "n_exit": n_exit,
+    }
+
+
+def _window_mean(
+    prob: Callable[[float], float], breaks: Iterable[float], t0: float, t1: float
+) -> float:
+    """Time average over ``[t0, t1)`` of a piecewise-constant ``prob`` whose steps start at ``breaks``."""
+    cuts = sorted({t0} | {float(b) for b in breaks if t0 < float(b) < t1})
+    edges = [*cuts, t1]
+    return sum(prob(a) * (b - a) for a, b in itertools.pairwise(edges)) / (t1 - t0)
+
+
+def _ramp_to_ramp_window(
+    k: int,
+    ramp: RampSpec,
+    spec: RampToRampRange,
+    route_list: list[str],
+    departs: Sequence[float],
+    origin_idx: Sequence[int],
+    ramps: Sequence[RampSpec],
+    pos: Mapping[str, int],
+    *,
+    corridor_edges: Sequence[str],
+    v0: Sequence[float],
+    speed_factor: Sequence[float],
+    edge_geometry: Mapping[str, tuple[float, float]] | None,
+) -> dict[str, Any]:
+    """Meet one entrance's per-window share (Amendment 3, rule 4) by swapping destinations (in place).
+
+    docs/FRISCO_PROTOCOL.md Amendment 3 and the adoption's range round, item 1;
+    docs/A3_RANGE_ROUND.md. For the weave entrance ``k`` and its paired exit
+    ``j``, with ``u`` and ``s_max`` from ``spec``:
+
+    * **Windows.** Every entrant of ``k`` and every swap partner (the vehicles
+      of the corridor entry and of every on-ramp attached upstream of the
+      entrance: :func:`_weave_pool`) is windowed by its free-flow arrival at
+      the weave, ``depart + τ``, where ``τ`` is the vehicle's free-flow time
+      from its insertion point (the start of its first edge) to the start of
+      the entrance's attach edge, ``Σ_e L_e / min(v0, f · v_limit,e)`` over
+      the edges of its route before it (``edge_geometry``: lane-0 length and
+      base limit, the largest over the lanes; ``f`` its ``speedFactor``)
+      (:data:`RAMP_TO_RAMP_RANGE_TIMING`). The window is ``floor((depart +
+      τ) / 300 s)``.
+    * **The proportional split** ``P_w`` is the entrants' probability of
+      drawing the exit, ``f_j(t) · Π (1 − f_m(t))`` over the off-ramps an
+      entrant passes before ``j`` (HCM 7th ed. ch. 13's simple estimate, as
+      :func:`build_corridor_plan` draws it), averaged over the window's
+      clock ``[300 w, 300 (w + 1))`` — the count data's window at the weave.
+    * **The share** ``s_w = P_w + u · (s_max − P_w)``, clipped to ``[0, 1]``
+      and then to what the window's pool allows: at most ``E_w / N_w`` (``E_w``
+      the window's vehicles bound for the exit: its entrants' and its
+      partners'; ``N_w`` its entrants — ``v_OFF,w / v_ON,w``, the clip
+      ``"exit_volume"``) and at least ``(D_w − T_w) / N_w`` (``D_w`` its
+      entrants bound for the exit, ``T_w`` its partners passing the weave
+      bound elsewhere; the clip ``"through_volume"``, which a share at or
+      above the drawn split never meets).
+    * **Counts.** Cumulative rounding over the windows in time order:
+      ``t_w = R(Σ s'_w N_w) − (ramp-to-ramp routes assigned so far)``,
+      ``R(x) = floor(x + 1/2)``, held inside the window's feasible range, so
+      the realized share is within half a vehicle of ``Σ s'_w N_w`` unless a
+      window had to hold it.
+    * **The swap** is :func:`_ramp_to_ramp_single`'s, within the window, with
+      both lists in arrival order: an entrant bound elsewhere and a partner
+      bound for the exit trade destinations (or the mirror below the drawn
+      split). Origins, departures, lanes, parameters and every other draw are
+      unchanged, and so is each window's count on every route suffix: in each
+      window of arrival the exit and every other leg keep their volume. No
+      random number is drawn.
+
+    ``u = 0`` asks ``P_w`` in every window: the rounded expectation of the
+    proportional draw, not the draw itself, so it is not the unset plan
+    (docs/A3_RANGE_ROUND.md §3).
+
+    Raises:
+        ValueError: ``edge_geometry`` is missing or lacks an edge of a route
+            before the weave.
+
+    Returns:
+        The entrance's record (``FleetPlan.ramp_to_ramp``; the per-window
+        rows and the count of clipped windows: docs/CONTRACTS.md, "Weave
+        ramp-to-ramp share").
+    """
+    window = RAMP_TO_RAMP_WINDOW_S
+    label = ramp.name or ramp.attach_edge
+    j, exit_label, entry, partner_origins, passes_elsewhere = _weave_pool(k, ramp, ramps, pos)
+    u, s_max = float(spec.u), float(spec.s_max)
+    if edge_geometry is None:
+        raise ValueError(
+            f"ramp {label}: ramp_to_ramp_share {{u: {u:g}}} windows its swap by the free-flow "
+            "arrival at the weave and needs the network's edge geometry "
+            "(build_corridor_plan(edge_geometry=...); microsim.runner passes the compiled net's)"
+        )
+    on_base, rr, to_j = f"on{k}", f"on{k}_off{j}", f"_off{j}"
+
+    def base_of(i: int) -> str:
+        return "main" if origin_idx[i] < 0 else f"on{origin_idx[i]}"
+
+    def suffix_of(i: int) -> str:
+        return route_list[i][len(base_of(i)) :]
+
+    # free-flow time of each origin's route to the start of the attach edge
+    origins = sorted(partner_origins | {k})
+    prefix: dict[int, tuple[np.ndarray, np.ndarray]] = {}
+    for o in origins:
+        start = 0 if o < 0 else pos[ramps[o].attach_edge]
+        edges = (list(ramps[o].edges) if o >= 0 else []) + list(corridor_edges[start:entry])
+        missing = [e for e in edges if e not in edge_geometry]
+        if missing:
+            raise ValueError(
+                f"ramp {label}: edge_geometry lacks {missing} of the route to the weave from "
+                f"{'the corridor entry' if o < 0 else ramps[o].name or ramps[o].attach_edge!r}"
+            )
+        prefix[o] = (
+            np.asarray([edge_geometry[e][0] for e in edges], dtype=np.float64),
+            np.asarray([edge_geometry[e][1] for e in edges], dtype=np.float64),
+        )
+    members = [i for i, o in enumerate(origin_idx) if o in prefix]
+    tau: dict[int, float] = {}
+    for i in members:
+        lengths, limits = prefix[origin_idx[i]]
+        f = float(speed_factor[i]) if speed_factor else 1.0
+        tau[i] = float(np.sum(lengths / np.minimum(float(v0[i]), f * limits)))
+    arrive = {i: float(departs[i]) + tau[i] for i in members}
+
+    entrants: dict[int, list[int]] = {}
+    partners: dict[int, list[int]] = {}
+    for i in members:
+        w = int(arrive[i] // window)
+        (entrants if origin_idx[i] == k else partners).setdefault(w, []).append(i)
+    for groups in (entrants, partners):
+        for ws in groups.values():
+            ws.sort(key=lambda i: (arrive[i], i))
+
+    # the entrants' probability of drawing the exit, as build_corridor_plan draws it
+    reach = [
+        m
+        for _, m in sorted(
+            (pos[r.attach_edge], m)
+            for m, r in enumerate(ramps)
+            if r.kind == "off" and pos[r.attach_edge] >= entry
+        )
+    ]
+    before = reach[: reach.index(j)]
+
+    def p_exit(t: float) -> float:
+        p = _step_value(ramps[j].exit_fraction, t)
+        for m in before:
+            p *= 1.0 - _step_value(ramps[m].exit_fraction, t)
+        return p
+
+    breaks = [ts for m in (j, *before) for ts, _ in ramps[m].exit_fraction]
+
+    n_before = sum(route_list[i] == rr for ws in entrants.values() for i in ws)
+    n_exit = sum(route_list[i] == rr for ws in entrants.values() for i in ws) + sum(
+        suffix_of(i) == to_j for ws in partners.values() for i in ws
+    )
+    x_cum, assigned, to_exit, from_exit = 0.0, 0, 0, 0
+    rows: list[dict[str, Any]] = []
+    for w in sorted(entrants):
+        ent, main = entrants[w], partners.get(w, [])
+        n_w = len(ent)
+        t0, t1 = w * window, (w + 1) * window
+        p_w = _window_mean(p_exit, breaks, t0, t1)
+        s_w = min(max(p_w + u * (s_max - p_w), 0.0), 1.0)
+        have = [i for i in ent if route_list[i] == rr]
+        to_exit_main = [i for i in main if suffix_of(i) == to_j]
+        through = [i for i in main if suffix_of(i) in passes_elsewhere]
+        hi = len(have) + len(to_exit_main)
+        lo = max(0, len(have) - len(through))
+        hi_share, lo_share = hi / n_w, lo / n_w
+        clip = "exit_volume" if s_w > hi_share else "through_volume" if s_w < lo_share else None
+        applied = min(max(s_w, lo_share), hi_share)
+        x_cum += applied * n_w
+        target = min(max(math.floor(x_cum + 0.5) - assigned, lo), hi)
+        assigned += target
+        need = target - len(have)
+        if need > 0:
+            elsewhere = [i for i in ent if route_list[i] != rr]
+            for e, m in zip(
+                _spread_pick(elsewhere, need), _spread_pick(to_exit_main, need), strict=True
+            ):
+                route_list[m] = base_of(m) + route_list[e][len(on_base) :]
+                route_list[e] = rr
+            to_exit += need
+        elif need < 0:
+            for e, m in zip(_spread_pick(have, -need), _spread_pick(through, -need), strict=True):
+                route_list[e] = on_base + suffix_of(m)
+                route_list[m] = base_of(m) + to_j
+            from_exit -= need
+        rows.append(
             {
-                "ramp": label,
-                "exit_ramp": exit_label,
-                "share": share,
-                "window_s": window,
-                "n_entrants": n_entrants,
-                "n_ramp_to_ramp_drawn": n_before,
-                "share_drawn": n_before / n_entrants if n_entrants else None,
-                "n_ramp_to_ramp": n_after,
-                "share_realized": n_after / n_entrants if n_entrants else None,
-                "n_swapped_to_exit": to_exit,
-                "n_swapped_from_exit": from_exit,
-                "n_exit": n_exit,
+                "t0_s": t0,
+                "t1_s": t1,
+                "n_entrants": n_w,
+                "p": p_w,
+                "s": s_w,
+                "s_applied": applied,
+                "clip": clip,
+                "max_share": hi_share,
+                "min_share": lo_share,
+                "n_partners": len(main),
+                "n_partners_to_exit": len(to_exit_main),
+                "n_ramp_to_ramp_drawn": len(have),
+                "n_ramp_to_ramp": target,
+                "share_realized": target / n_w,
+                "n_swapped_to_exit": max(need, 0),
+                "n_swapped_from_exit": max(-need, 0),
             }
         )
-    return tuple(records)
+    n_entrants = sum(len(ws) for ws in entrants.values())
+    n_after = sum(route_list[i] == rr for ws in entrants.values() for i in ws)
+    free_flow: dict[str, dict[str, float | int]] = {}
+    for o in origins:
+        ts = [tau[i] for i in members if origin_idx[i] == o]
+        if ts:
+            name = "corridor entry" if o < 0 else ramps[o].name or ramps[o].attach_edge
+            free_flow[name] = {
+                "n": len(ts),
+                "mean_s": float(np.mean(ts)),
+                "min_s": min(ts),
+                "max_s": max(ts),
+            }
+    clipped = [r["t0_s"] for r in rows if r["clip"] is not None]
+    return {
+        "ramp": label,
+        "exit_ramp": exit_label,
+        "form": "per_window",
+        "u": u,
+        "s_max": s_max,
+        "window_s": window,
+        "timing": RAMP_TO_RAMP_RANGE_TIMING,
+        "arrival_at": ramp.attach_edge,
+        "free_flow_s": free_flow,
+        "n_entrants": n_entrants,
+        "n_ramp_to_ramp_drawn": n_before,
+        "share_drawn": n_before / n_entrants if n_entrants else None,
+        "n_ramp_to_ramp": n_after,
+        "share_realized": n_after / n_entrants if n_entrants else None,
+        "n_swapped_to_exit": to_exit,
+        "n_swapped_from_exit": from_exit,
+        "n_exit": n_exit,
+        "n_windows": len(rows),
+        "n_clipped": len(clipped),
+        "clipped_windows_t0_s": clipped,
+        "windows": rows,
+    }
 
 
 def build_corridor_plan(
@@ -922,6 +1261,7 @@ def build_corridor_plan(
     ramps: Sequence[RampSpec] = (),
     corridor_edges: Sequence[str] = (),
     entry_lane_shares: Sequence[float] | None = None,
+    edge_geometry: Mapping[str, tuple[float, float]] | None = None,
 ) -> FleetPlan:
     """Fleet plan for a corridor/OSM demand profile, optionally with ramps.
 
@@ -956,6 +1296,16 @@ def build_corridor_plan(
         ramps: ``RampSpec`` list (``OSMNetwork.ramps``).
         corridor_edges: Corridor edge ids in driving order (needed to order
             ramps along the corridor; required when ``ramps`` is non-empty).
+        entry_lane_shares: Left-to-right departure-lane weights of the
+            corridor entry (``network.entry_lane_shares``), or None.
+        edge_geometry: Edge id → (lane-0 length [m], base speed limit [m/s],
+            the largest over its lanes) of the compiled network, for the
+            corridor's edges and the on-ramps'. Read only by a weave entrance
+            whose ``ramp_to_ramp_share`` is the per-window form
+            (:class:`flowstate_core.config.RampToRampRange`; its swap is
+            windowed by free-flow arrival at the weave,
+            :func:`_ramp_to_ramp_window`), which needs it; ignored otherwise,
+            so every other plan is the same with or without it.
 
     Returns:
         The :class:`FleetPlan` (``route`` populated iff ``ramps`` is given).
@@ -997,6 +1347,9 @@ def build_corridor_plan(
             entry_lane_shares=entry_lane_shares,
         )
 
+    # drawn from its own stream (draw_speed_factors), so drawing it here, before
+    # the exit draws, gives the values it had when drawn after them
+    speed_factor = draw_speed_factors(fleet, heavy_flags, n, rng)
     routes: tuple[str, ...] = ()
     ramp_to_ramp: tuple[dict[str, Any], ...] = ()
     if ramps:
@@ -1020,7 +1373,17 @@ def build_corridor_plan(
                     chosen = f"_off{j}"
                     break
             route_list.append(base + chosen)
-        ramp_to_ramp = _apply_ramp_to_ramp_shares(route_list, departs, origin_idx, ramps, pos)
+        ramp_to_ramp = _apply_ramp_to_ramp_shares(
+            route_list,
+            departs,
+            origin_idx,
+            ramps,
+            pos,
+            corridor_edges=corridor_edges,
+            v0=[p["v0"] for p in params],
+            speed_factor=speed_factor,
+            edge_geometry=edge_geometry,
+        )
         routes = tuple(route_list)
     return FleetPlan(
         params=tuple(params),
@@ -1033,7 +1396,7 @@ def build_corridor_plan(
         is_heavy=tuple(heavy_flags),
         heavy_lane_shares=heavy_lane_shares,
         is_hov=tuple(hov_flags),
-        speed_factor=draw_speed_factors(fleet, heavy_flags, n, rng),
+        speed_factor=speed_factor,
         ramp_to_ramp=ramp_to_ramp,
     )
 

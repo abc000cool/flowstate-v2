@@ -50,8 +50,12 @@ directory, so no parquet is left behind. ``--compare`` exits 0 when the two
 files agree at every step, 1 when they part, 2 when they are not the same
 fixture and step grid. ``--compare-records`` reads two ``FLOWSTATE_RECORD_STATE``
 files (tests/test_microsim/_platform_record.py) and prints, per test, both
-outcomes, the minute from which each run's trajectories part and the recorded
-numbers that differ; it exits 0 when every test agrees in all three, else 1.
+outcomes and how they relate (:func:`outcome_relation`: the same outcome; the
+same result under different marks; a result that differs by platform with each
+side as its own marks allow, which a per-platform strict mark asserts; or
+``OUTCOME DIFFERS``), the minute from which each run's trajectories part and
+the recorded numbers that differ, then a count per relation; it exits 0 when
+every test agrees in all three (outcome, numbers, trajectories), else 1.
 """
 
 from __future__ import annotations
@@ -672,10 +676,65 @@ def _flatten(value: Any, prefix: str = "") -> dict[str, Any]:
     return {prefix: value}
 
 
+#: Whether a recorded outcome (``_platform_record.outcome_of``) means the test's
+#: assertions held, whatever its mark: a pass, a non-strict mark's pass and a strict
+#: mark's pass held them; an xfail and a failure did not.
+ASSERTIONS_HELD: dict[str, bool] = {
+    "passed": True,
+    "xpassed": True,
+    "xpassed_strict": True,
+    "xfailed": False,
+    "failed": False,
+}
+#: Outcomes that fail their pytest run: a failure no mark covers and a strict mark's pass.
+RUN_FAILING: frozenset[str] = frozenset({"failed", "xpassed_strict"})
+#: The outcome relations of :func:`outcome_relation`, as :func:`records_report` prints them.
+OUTCOME_RELATIONS: dict[str, str] = {
+    "same": "same outcome",
+    "same_result": "same result, different marks",
+    "per_platform": "differs by platform, each as its own marks allow",
+    "differs": "OUTCOME DIFFERS",
+}
+
+
+def outcome_relation(ra: Mapping[str, Any], rb: Mapping[str, Any]) -> str:
+    """How two records' outcomes of one test relate (a key of :data:`OUTCOME_RELATIONS`).
+
+    E12 step 3 (docs/E12_PLATFORM_TESTS.md) marks a test whose result depends on
+    the platform with a per-platform strict mark (``condition=sys.platform ==
+    "linux"``): it passes on one platform and xfails on the other, each asserted.
+
+    - ``same``: the same outcome.
+    - ``same_result``: different outcomes, the assertions held on both sides or
+      on neither, and neither fails its run: the marks differ, not the run (a
+      non-strict mark's ``xpassed`` against ``passed`` once the mark is gone).
+    - ``per_platform``: the assertions held on one side and not on the other,
+      the records come from different platforms (``platform`` and ``machine``)
+      and neither outcome fails its run, so each side did what its own marks
+      allow: what a per-platform strict mark asserts.
+    - ``differs``: anything else: a different result on the same platform (the
+      run is not deterministic), an outcome that fails its run (``failed``,
+      ``xpassed_strict``), or one without a call outcome (``skipped``,
+      ``not_run``).
+    """
+    oa, ob = ra["outcome"], rb["outcome"]
+    if oa == ob:
+        return "same"
+    if oa not in ASSERTIONS_HELD or ob not in ASSERTIONS_HELD or {oa, ob} & RUN_FAILING:
+        return "differs"
+    if ASSERTIONS_HELD[oa] == ASSERTIONS_HELD[ob]:
+        return "same_result"
+    same_platform = (ra.get("platform"), ra.get("machine")) == (
+        rb.get("platform"),
+        rb.get("machine"),
+    )
+    return "differs" if same_platform else "per_platform"
+
+
 def compare_records(
     a: Mapping[str, Mapping[str, Any]], b: Mapping[str, Mapping[str, Any]]
 ) -> list[dict[str, Any]]:
-    """Per test id: both outcomes, where each run's trajectories part, the numbers that differ.
+    """Per test id: both outcomes and their relation, where the trajectories part, what differs.
 
     ``trajectories`` holds, per run, ``"identical"`` or the first 60-s window
     (``t // 60``) whose digest differs; ``differing`` the flattened keys of the
@@ -716,6 +775,7 @@ def compare_records(
                 "test_id": tid,
                 "outcome_a": ra["outcome"],
                 "outcome_b": rb["outcome"],
+                "outcome_relation": outcome_relation(ra, rb),
                 "n_runs": (len(ra.get("runs", [])), len(rb.get("runs", []))),
                 "trajectories": traj,
                 "differing": differing,
@@ -725,14 +785,19 @@ def compare_records(
 
 
 def records_report(rows: Sequence[Mapping[str, Any]], max_keys: int = 8) -> list[str]:
-    """The record comparison as printed lines, one block per test."""
+    """The record comparison as printed lines, one block per test, then a count per relation."""
     lines: list[str] = []
+    counts = dict.fromkeys(OUTCOME_RELATIONS, 0)
     for r in rows:
         tid = r["test_id"].split("/")[-1]
         if "missing_in" in r:
             lines.append(f"{tid}: missing in {r['missing_in']}")
             continue
-        same = "same outcome" if r["outcome_a"] == r["outcome_b"] else "OUTCOME DIFFERS"
+        relation = r.get("outcome_relation") or (
+            "same" if r["outcome_a"] == r["outcome_b"] else "differs"
+        )
+        counts[relation] += 1
+        same = OUTCOME_RELATIONS[relation]
         traj = ", ".join(
             "identical" if t == "identical" else f"part from minute {t}" for t in r["trajectories"]
         )
@@ -744,6 +809,9 @@ def records_report(rows: Sequence[Mapping[str, Any]], max_keys: int = 8) -> list
             lines.append(f"    {k}: {va!r} -> {vb!r}")
         if len(r["differing"]) > max_keys:
             lines.append(f"    ... {len(r['differing']) - max_keys} more")
+    lines.append(
+        "outcomes: " + "; ".join(f"{counts[k]} {text}" for k, text in OUTCOME_RELATIONS.items())
+    )
     return lines
 
 

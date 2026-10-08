@@ -26,8 +26,6 @@ import subprocess
 import tarfile
 from pathlib import Path
 
-import pytest
-
 from tests.test_scripts.test_p8c_stage import BASH, GCP, _stubs, _tgz
 from tests.test_scripts.test_p14_stage import UV_STUB
 
@@ -258,16 +256,23 @@ def test_p15_takes_the_arm_c7b_selects(tmp_path: Path) -> None:
 
 
 def test_p15_passes_its_section_lanes_setting_to_the_fit(tmp_path: Path) -> None:
-    """``--p15-section-lanes observed`` reaches the fit as ``--section-lanes observed``; the battery
-    and the readout lines are unchanged. Runs once the pipeline carries ``P15_SECTION_LANES``."""
-    if "P15_SECTION_LANES" not in (GCP / "pipeline_i24.sh").read_text():
-        pytest.skip("scripts/gcp/pipeline_i24.sh does not pass P15_SECTION_LANES yet")
+    """``--p15-section-lanes observed`` reaches the fit as ``--section-lanes observed`` and the
+    battery as ``--lane-crossings --section-lanes observed`` (so the fit's objective and the battery's
+    link-flow row, C3's input, count the same lanes; docs/I24_CONSISTENCY_C7B.md §3); the reduction and
+    the readout lines are unchanged. With ``all`` (the default) every call is as before."""
     stub, _, r = _run(tmp_path, "p15_i24_b5", "--p15-section-lanes", "observed")
     assert r.returncode == 0, r.stderr
     calls = _calls(stub)
     assert calls[0].count(" --section-lanes observed ") == 1, calls[0]
     assert calls[0].replace(" --section-lanes observed", "", 1) == P15_FIT
-    assert calls[1:] == P15_REST
+    assert calls[1] == P15_REST[0] + " --lane-crossings --section-lanes observed", calls[1]
+    assert calls[2:] == P15_REST[1:]
+
+
+def test_p15_refuses_an_unknown_section_lanes_setting(tmp_path: Path) -> None:
+    stub, _, r = _run(tmp_path, "p15_i24_b5", "--p15-section-lanes", "some")
+    assert r.returncode == 0, r.stderr
+    assert _calls(stub) == []
 
 
 def _p17(arm: str, name: str) -> list[str]:

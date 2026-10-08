@@ -5,6 +5,7 @@ from __future__ import annotations
 import importlib.util
 import json
 import math
+import sys
 from collections import deque
 from pathlib import Path
 from typing import ClassVar
@@ -1389,13 +1390,16 @@ class TestWeaveRun:
 
     @pytest.mark.xfail(
         strict=True,
-        reason="T.H.52 weave at capacity (docs/WEAVE_MODEL_PLAN.md, 2026-09-24 block 3, "
-        "the speed-aware acceptance): nothing locks at seeds 3-5, the entrance departs "
-        "395 / 401 / 373 of 466 against 420 required (90 % of 466 is 419.4; 398 / 365 / "
-        "389 under the cross-edge vacate window alone, 406 / 386 / 393 with the 150 m "
-        "window), and lane 1 at the section start reads 3.9 and 4.4 m/s in two minutes at "
-        "seed 3 (the ramp still queues over its first 100 m); one exit given up per seed, "
-        "no collision",
+        reason="T.H.52 weave at capacity, seed 3, measured 2026-10-07 under the W1b/W2 defaults "
+        "(docs/E12_PLATFORM_TESTS.md): fails on both platforms, on the entrance, lane 1 and "
+        "n_missed. macOS arm64: the entrance departs 391 of 466 (420 required), lane 1's first "
+        "60 m 3.92 m/s in minute 2 (4 minutes at or below 5; above 5 required), 1 exit missed "
+        "(0 required), 2 of 472 unfinished. Linux x86_64: 381 of 466, lane 1 3.92 m/s in minute "
+        "2 (5 minutes at or below 5), 1 missed, 3 of 460 unfinished. No collision on either. "
+        "The numbers differ because SUMO 1.27.1 arithmetic differs between arm64 macOS and "
+        "x86_64 Linux (not probed per step at this seed; the same fixture at seed 4 parts from "
+        "step 47; docs/E12_PLATFORM_TESTS.md). The derivations' readings: the docstring and "
+        "docs/WEAVE_MODEL_PLAN.md",
     )
     def test_th52_weave_at_capacity_flows(self, tmp_path):
         """Mirror of the T.H.52 weaving section on I-94 WB St. Paul
@@ -1566,18 +1570,24 @@ class TestWeaveRun:
                 4,
                 0,
                 marks=pytest.mark.xfail(
-                    strict=False,
+                    condition=sys.platform == "linux",
+                    strict=True,
                     reason=(
-                        "platform-sensitive at capacity: on the Linux CI runner (eclipse-sumo "
-                        "1.27.1 wheel, 2026-09-24) seed 4 locks — entrance 331 of 466, a lane-1 "
-                        "minute at or below 2 m/s — while it passed on macOS with 412; recorded in "
-                        "docs/WEAVE_MODEL_PLAN.md (block 3, CI note). With the cross-edge vacate "
-                        "window at 500 m (same date) it fails on macOS too, on the entrance pin "
-                        "alone: 365 of 466 (78 % against 80 %) with no lock — lane 1 never below "
-                        "4.1 m/s, 5 of 499 unfinished, nothing missed, 27 releases. Under the "
-                        "speed-aware acceptance (same date) it passes on macOS again: 401 of "
-                        "466, lane 1 never below 4.3 m/s, 2 of 496 unfinished, one exit given "
-                        "up, 23 releases, no collision"
+                        "T.H.52 weave at capacity, seed 4, per platform, measured 2026-10-07 "
+                        "under the W1b/W2 defaults (docs/E12_PLATFORM_TESTS.md): asserted to pass "
+                        "on macOS and to fail on Linux, in both arms. macOS arm64 meets every "
+                        "pin: off - the entrance 401 of 466 (372.8 required), lane 1's first 60 m "
+                        "never below 4.29 m/s (above 2), 1 exit missed (at most 1), 2 of 487 "
+                        "unfinished, 23 releases; on - 393 of 466, 4.37 m/s, 1 missed (at most "
+                        "4), 0 of 508, 8 releases. Linux x86_64: off fails on n_missed, 3 against "
+                        "at most 1 (385 of 466, 4.53 m/s, 5 of 489, 16 releases); on fails on the "
+                        "entrance, 367 of 466 against 372.8 (4.37 m/s, 2 missed, 3 of 487, 20 "
+                        "releases). No collision on either. SUMO 1.27.1 arithmetic differs "
+                        "between arm64 macOS and x86_64 Linux from step 47 in both arms "
+                        "(docs/E12_PLATFORM_TESTS.md); the runner's commands stay identical to "
+                        "step 76. Before the speed-aware acceptance the Linux runner locked this "
+                        "seed (2026-09-24: entrance 331 of 466, a lane-1 minute at or below 2 "
+                        "m/s; docs/WEAVE_MODEL_PLAN.md, block 3, CI note)"
                     ),
                 ),
             ),
@@ -1661,16 +1671,11 @@ class TestWeaveRun:
         assert on_meta["n_departed"] >= 0.8 * on_meta["n_planned"], state
         assert ws["n_pair_releases"] >= min_releases, state
 
-    @pytest.mark.xfail(
-        strict=False,
-        reason="T.H.52 weave at the corridor's demand, seed 3, under the speed-aware "
-        "acceptance (2026-09-24, block 3): lane 1's last 60 m reads 3.8 m/s in one minute "
-        "(the criterion is > 5 in every minute; 6.5 at the minimum before), 292 of 299 "
-        "exit, 1 given up, 2 unfinished, no collision; seeds 4 / 5 read 11.9 / 1.7 m/s at "
-        "the minimum with no collision (docs/WEAVE_MODEL_PLAN.md, dated section). Not "
-        "strict: one minute 1.2 m/s under the line, within the platform sensitivity of "
-        "the CI note",
-    )
+    # No mark since 2026-10-07: passes on both platforms under the W1b/W2 defaults
+    # (docs/E12_PLATFORM_TESTS.md). macOS arm64: lane 1's last 60 m never below 7.32 m/s,
+    # 296 of 304 exit, 2 of 435 unfinished; Linux x86_64: 5.70 m/s, 298 of 303, 1 of 433;
+    # no collision on either. Its non-strict mark (3.8 m/s in one minute under the
+    # speed-aware acceptance) was removed.
     def test_th52_weave_at_corridor_demand_exit_side(self, tmp_path):
         """The T.H.52 fixture under the corridor's own flows, judged on the
         exit side (2026-09-24, block 3, exit-side derivation).
@@ -1759,21 +1764,20 @@ class TestWeaveRun:
 
     @pytest.mark.xfail(
         strict=True,
-        reason="T.H.52 weave with the corridor's upstream entrance in front of it "
-        "(docs/WEAVE_MODEL_PLAN.md, 2026-09-24 block 3, the upstream-entrance fixture; "
-        "numbers of the cross-edge vacate window at 500 m, same date): at seed 3 the "
-        "entrance E1 departs 205 of 360 (0.57 against 0.90 required) and lane 1 over its "
-        "acceleration-lane end reads 1.2-13.9 m/s (above 5 m/s in 4 of 18 minutes); the "
-        "section's side passes — lane 1 over its last 60 m never below 7.4 m/s, 300 of 308 "
-        "exiters exit, 2 of 455 driven unfinished, nothing collides. The head has moved: "
-        "lane 1 of the 230 m before the gore is above 5 m/s in 10 of 18 minutes (was 2, at "
-        "1.3-3.8 m/s); lane 0 is the first lane below 2 m/s there (minute 4 at 50 m, lane 1 "
-        "minute 12), as it already was under the bound at 150 m (minute 2; lane 1 minute "
-        "6); the queue stands on E1's merge (way 110: the acceleration lane below 2 m/s "
-        "from minute 0, lane 1 beside it from minute 3). Under the speed-aware acceptance "
-        "(same date): E1 departs 216 of 360, its acceleration-lane end reads 0.2 m/s at "
-        "the minimum (16 of 18 minutes at or below 5), the gore's last 60 m 3.7 m/s in one "
-        "minute, 294 of 301 exit, 3 given up, 3 unfinished, no collision",
+        reason="T.H.52 weave with the corridor's upstream entrance in front of it, seed 3 "
+        "(docs/WEAVE_MODEL_PLAN.md, 2026-09-24 block 3, the upstream-entrance fixture), "
+        "measured 2026-10-07 under the W1b/W2 defaults (docs/E12_PLATFORM_TESTS.md): fails on "
+        "both platforms, on E1 and on lane 1 at both ends. macOS arm64: E1 departs 211 of 360 "
+        "(0.59 against 0.90 required), lane 1 over its acceleration-lane end 0.20 m/s in minute "
+        "12 (16 of 18 minutes at or below 5), the gore's last 60 m 3.58 m/s in minute 9 (4 "
+        "minutes at or below 5), 283 of 295 exiters exit, 4 given up, 5 of 453 unfinished. Linux "
+        "x86_64: E1 210 of 360, the acceleration-lane end 0.20 m/s (16 minutes at or below 5), "
+        "the gore 3.58 m/s (4 minutes), 284 of 295 exit, 3 given up, 3 of 446 unfinished. No "
+        "collision on either. The numbers differ because SUMO 1.27.1 arithmetic differs between "
+        "arm64 macOS and x86_64 Linux (this fixture is not probed per step; its trajectories "
+        "part in the first minute, as the probed fixtures' do from steps 20-47; "
+        "docs/E12_PLATFORM_TESTS.md). The queue stands on E1's merge (way 110); the lane order "
+        "before the gore under the 150 m and 500 m windows: docs/WEAVE_MODEL_PLAN.md",
     )
     def test_th52_with_upstream_entrance_at_corridor_demand(self, tmp_path):
         """The corridor's last 850 m (2026-09-24, block 3): the T.H.52 weave of
@@ -1825,19 +1829,19 @@ class TestWeaveRun:
         strict=True,
         reason="The two-entrance fixture on the corridor's own fleet block (EIDM, "
         "heterogeneity 0.15, the I-24 capacity calibration, lc_strategic 5.0, lc_keep_right "
-        "0.0; docs/WEAVE_MODEL_PLAN.md, 2026-09-24 block 3, the cross-edge vacate window at "
-        "500 m): at seed 3 E1 departs 272 of 360 (0.76 against 0.90) and lane 1 over its "
-        "acceleration-lane end reads 1.0-12.7 m/s (above 5 m/s in 2 of 18 minutes); the "
-        "section's side passes — lane 1 over its last 60 m never below 8.0 m/s, 307 of 316 "
-        "exiters exit, 4 of 378 driven unfinished, nothing collides. Lane 1 of the 230 m "
-        "before the gore is above 5 m/s in 10 of 18 minutes (was 4) and lane 0 is now the "
-        "first lane below 2 m/s there (minute 3 at 100 m; lane 1 minute 5) where at 150 m "
-        "lane 1 was (minute 4; lane 0 minute 7) — the cloud's lane order on this fleet. "
-        "Under the speed-aware acceptance (same date), with the exit link's class corrected "
-        "to the corridor's (2026-09-25 block 3, WP-83): E1 departs 273 of 360, its "
-        "acceleration-lane end 0.7 m/s at the minimum (16 minutes at or below 5), the "
-        "gore's last 60 m 3.2 m/s at the minimum (3 minutes at or below 5), 306 of 315 "
-        "exit, 4 given up, none unfinished, no collision",
+        "0.0), seed 3, measured 2026-10-07 under the W1b/W2 defaults "
+        "(docs/E12_PLATFORM_TESTS.md): fails on both platforms, on E1 and its acceleration-lane "
+        "end. macOS arm64: E1 departs 274 of 360 (0.76 against 0.90 required), its "
+        "acceleration-lane end 0.32 m/s in minute 7 (13 of 18 minutes at or below 5), the "
+        "gore's last 60 m 0.68 m/s in minute 12 (2 minutes at or below 5), 303 of 313 exiters "
+        "exit, 3 given up, 4 of 357 unfinished. Linux x86_64: E1 256 of 360 (0.71), the "
+        "acceleration-lane end 0.32 m/s (14 minutes at or below 5), the gore never below 8.39 "
+        "m/s (it passes there), 311 of 320 exit, 2 given up, 6 of 386 unfinished. No collision "
+        "on either. The numbers differ because SUMO 1.27.1 arithmetic differs between arm64 "
+        "macOS and x86_64 Linux (this fixture is not probed per step; its trajectories part in "
+        "the first minute, as the probed fixtures' do from steps 20-47; "
+        "docs/E12_PLATFORM_TESTS.md). The lane order before the gore under the 150 m and 500 m "
+        "windows: docs/WEAVE_MODEL_PLAN.md, the upstream-entrance section",
     )
     def test_th52_with_upstream_entrance_on_the_corridor_fleet(self, tmp_path):
         """:func:`test_th52_with_upstream_entrance_at_corridor_demand` with the
@@ -1914,17 +1918,23 @@ class TestWeaveRun:
     @pytest.mark.xfail(
         strict=True,
         reason="The T.H.52 section as the corridor compiles it, under the observed 05:30-05:50 "
-        "movements on the corridor's fleet (docs/WEAVE_MODEL_PLAN.md, 2026-09-24 block 3, "
-        "WP-61; the gore link's class corrected to the corridor's, 2026-09-25 block 3, WP-74, "
-        "and the 12th St / Jackson exit's, WP-83), scored with criterion (ii) at station "
-        "level as revised on 2026-10-04 (docs/FRISCO_PROTOCOL.md §9): the T.H.52 entrance "
-        "departs 370 / 329 / 323 of 407 at seeds 3 / 4 / 5 (387 required); the section's "
-        "exit end carries 4,100 / 3,813 / 3,697 veh/h after the fill against 4,877 observed "
-        "(GEH 11.6 / 16.1 / 18.0, under 5 required) at a station speed of 17.8 / 17.1 / 12.0 "
-        "m/s at its lowest 5-min window (above 20 required); the mainline departs 1,160 / "
-        "1,149 / 1,139 of 1,196 (1,137 required), 1 / 1 / 4 exits are given up of 360 / "
-        "377 / 380 reaching the section, no collision. The former per-lane reading (kept as "
-        "a diagnostic) is unchanged: 11 / 10 / 14 of 16 lane-windows below 20 m/s",
+        "movements on the corridor's fleet (docs/WEAVE_MODEL_PLAN.md, 2026-09-24 block 3, WP-61; "
+        "the gore link's class corrected to the corridor's, 2026-09-25 block 3, WP-74, and the "
+        "12th St / Jackson exit's, WP-83), scored with criterion (ii) at station level as "
+        "revised on 2026-10-04 (docs/FRISCO_PROTOCOL.md §9), seed 3, measured 2026-10-07 under "
+        "the W1b/W2 defaults (docs/E12_PLATFORM_TESTS.md): fails on both platforms, on the "
+        "entrance, (ii-a) and (ii-b). macOS arm64: the T.H.52 entrance departs 382 of 407 (387 "
+        "required); the section's exit end carries 4,276.7 veh/h after the fill against 4,877.0 "
+        "observed (GEH 8.87, under 5 required) at a lowest 5-min station speed of 14.22 m/s "
+        "(above 20 required; 2 of 4 windows below); the mainline departs 1,195 of 1,196; 1 of "
+        "370 exits given up. Linux x86_64: 382 of 407; 4,253.3 veh/h (GEH 9.23); 14.37 m/s (2 "
+        "of 4); 1,196 of 1,196; 1 of 370. No collision on either; the former per-lane reading "
+        "(a diagnostic) is 11 of 16 lane-windows below 20 m/s on both. The numbers differ "
+        "because SUMO 1.27.1 arithmetic differs between arm64 macOS and x86_64 Linux (this "
+        "fixture is not probed per step; its trajectories part in the first minute, as the "
+        "probed fixtures' do from steps 20-47; docs/E12_PLATFORM_TESTS.md). Before W1b/W2 "
+        "(2026-10-04, macOS) seeds 4 / 5 departed 329 / 323 of 407 at GEH 16.1 / 18.0 and a "
+        "lowest station speed of 17.1 / 12.0 m/s",
     )
     def test_th52_corridor_section_carries_free_flow_demand(self, tmp_path):
         """The corridor's T.H.52 weaving section carries its observed demand in

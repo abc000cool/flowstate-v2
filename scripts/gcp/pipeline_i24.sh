@@ -33,12 +33,15 @@
 #
 # Usage on the VM (from the repo root, under systemd-run so it survives logout):
 #   scripts/gcp/pipeline_i24.sh [--procs N] [--no-shutdown] [--quick] [--stages "name name ..."]
-#       [--p15-arm FROM:BASE:LABEL[:SCALE]] [--p17-arm STEM]
+#       [--p15-arm FROM:BASE:LABEL[:SCALE]] [--p15-section-lanes all|observed] [--p17-arm STEM]
 # --stages runs only the named stages (the others are skipped as not selected); the
 # committed artifacts and scenarios stand in for the skipped ones. --p15-arm names stage p15_i24_b5's from-arm
 # (scenarios/FROM.yaml, its base scenarios/BASE.yaml, its battery artifacts/i24_validation_LABEL.json, its level
 # when not the p4 fit's 0.925; default the B2 arm), --p17-arm stage p17_i94_b5's (scenarios/STEM.yaml, the arm
 # D10's rule selects; default mndot_i94_wb_stpaul_weave_dc_cal_w1b_w2).
+# --p15-section-lanes: how stage p15_i24_b5's fit and its battery count the sections, all (every lane; the default) or
+# observed (lanes 1-4; scripts/fit_demand_level.py --section-lanes and scripts/i24_validate.py --lane-crossings
+# --section-lanes observed, so C3 compares like with like; docs/I24_CONSISTENCY_C7B.md §3).
 set -u
 cd "$(dirname "$0")/../.."
 export PATH="$HOME/.local/bin:$PATH"
@@ -53,6 +56,7 @@ DIAG_SEED=677105600768189526   # the seed the mndot_weave_seed5 stage maps (VM L
 DIAG_REPS=5                    # its spawn index + 1: the battery runs the first DIAG_REPS replicates
 DIAG_WEAVE_PARAMS=""            # e.g. exit_prepare=1.0[,k=v]: the map runs a copy of the weave scenario with these weave_params
 P15_ARM_ARG=""                  # stage p15_i24_b5's from-arm (--p15-arm FROM:BASE:LABEL[:SCALE]); empty: the B2 arm
+P15_SECTION_LANES=all           # stage p15_i24_b5's fit and battery: sections on every lane (all) or lanes 1-4 (--p15-section-lanes observed)
 P17_ARM_ARG=""                  # stage p17_i94_b5's from-arm stem (--p17-arm); empty: its default
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -64,6 +68,7 @@ while [ $# -gt 0 ]; do
     --diag-reps) DIAG_REPS="$2"; shift 2 ;;
     --diag-weave-params) DIAG_WEAVE_PARAMS="$2"; shift 2 ;;
     --p15-arm) P15_ARM_ARG="$2"; shift 2 ;;
+    --p15-section-lanes) P15_SECTION_LANES="$2"; shift 2 ;;
     --p17-arm) P17_ARM_ARG="$2"; shift 2 ;;
     *) echo "unknown argument: $1" >&2; exit 2 ;;
   esac
@@ -1695,13 +1700,14 @@ P12_ARMS=(
   dc_refit:i24_replica_flow_speedcal_dc_refit:6d3b6abd9aaf:dc_refit
   dc:i24_replica_flow_speedcal_dc:651680edc811:dc
 )
-p12_battery() {  # p12_battery <label> <scenario>: one 20-seed battery through step 3's path, its braking counts, prune
+p12_battery() {  # p12_battery <label> <scenario> [validator args...]: one 20-seed battery through step 3's path, its braking counts, prune
   local label="$1" scn="$2" ok="logs/$1.battery.ok"
+  shift 2
   if [ -f "$ok" ] && [ -f "artifacts/i24_validation_$label.json" ]; then
     say "p12: battery $label done earlier, not repeated"; return 0
   fi
   $RUN scripts/i24_validate.py --scenario "$scn" --label "$label" --replicates "$REPS" --procs "$PROCS" \
-      --analysis-procs 8 --ring-seeds "$RING" || { say "p12: battery $label failed"; return 1; }
+      --analysis-procs 8 --ring-seeds "$RING" "$@" || { say "p12: battery $label failed"; return 1; }
   $RUN "$P12_H/hard_braking.py" --artifact "artifacts/i24_validation_$label.json" \
       --out "runs/i24_validation/$label/hard_braking.json" || { say "p12: braking counts of $label failed"; return 1; }
   p4_prune "runs/i24_validation/$label"
@@ -1974,17 +1980,23 @@ b5_fit() {  # b5_fit <stage> <marker> <fit artifact> <scenario> <fit args...>: t
 }
 p15_steps() {
   local rc=0 f
-  local -a carried=()
+  local -a carried=() lanes=()
   [ -n "$P15_CARRIED" ] && carried=(--carried-scale "$P15_CARRIED")
+  case "$P15_SECTION_LANES" in
+    all) ;;
+    observed) lanes=(--lane-crossings --section-lanes observed) ;;
+    *) say "p15: --p15-section-lanes must be all or observed, not $P15_SECTION_LANES"; return 1 ;;
+  esac
   for f in "scenarios/$P15_FROM.yaml" "scenarios/$P15_BASE.yaml" "artifacts/i24_validation_$P15_FROM_LABEL.json"; do
     [ -f "$f" ] || { say "p15: no $f; nothing run"; return 1; }
   done
-  say "p15: the from-arm is scenarios/$P15_FROM.yaml (base scenarios/$P15_BASE.yaml, battery artifacts/i24_validation_$P15_FROM_LABEL.json${P15_CARRIED:+, level $P15_CARRIED})"
+  say "p15: the from-arm is scenarios/$P15_FROM.yaml (base scenarios/$P15_BASE.yaml, battery artifacts/i24_validation_$P15_FROM_LABEL.json${P15_CARRIED:+, level $P15_CARRIED}); the fit and the battery count the sections on $P15_SECTION_LANES lanes"
   # ${carried[@]+...}: an empty array under set -u (bash 3.2 calls it unbound)
   b5_fit p15 "logs/p15_fit_$P15_FROM.ok" "$P15_FIT" "$P15_SCN" --corridor i24 --procs "$P15_FIT_PROCS" \
       --from-scenario "scenarios/$P15_FROM.yaml" --base-yaml "scenarios/$P15_BASE.yaml" \
-      --from-battery "artifacts/i24_validation_$P15_FROM_LABEL.json" ${carried[@]+"${carried[@]}"} || return 1
-  p12_battery "$P15_LABEL" "$P15_SCN" || rc=1
+      --from-battery "artifacts/i24_validation_$P15_FROM_LABEL.json" ${carried[@]+"${carried[@]}"} \
+      --section-lanes "$P15_SECTION_LANES" || return 1
+  p12_battery "$P15_LABEL" "$P15_SCN" ${lanes[@]+"${lanes[@]}"} || rc=1
   if [ -f "artifacts/i24_validation_$P15_LABEL.json" ]; then
     $RUN "$P13_H" reduce --battery "artifacts/i24_validation_$P15_LABEL.json" --out "artifacts/i24_b2_ramp_flows_$P15_LABEL.json" \
       || { say "p15: ramp flows of $P15_LABEL failed"; rc=1; }
@@ -2467,6 +2479,162 @@ p23_steps() {
 }
 if echo " $STAGES " | grep -q " p23_c7b "; then
   stage p23_c7b p23_steps || say "p23_c7b failed; continuing"
+fi
+
+# p24 (opt-in; docs/A3_RANGE_ROUND.md; not in the default list). Amendment 3's range round, pre-registered in
+#     docs/FRISCO_PROTOCOL.md ("Adoption of Amendment 3 — 2026-10-07", items 1-7; P-A3 of docs/DECISIONS_2026-10-07.md
+#     §A3.3) before any corridor run that varies the share: the T.H.52 ramp-to-ramp share (US 52 NB, on-ramp 769818012,
+#     to exit 242B, off-ramp 18207598) at u = 0, 0.5 and 1 of the per-window form of WeaveSpec.ramp_to_ramp_share
+#     ({u: U}, s_max 0.70: s_w = P_w + u (0.70 - P_w) per 5-min window, clipped to the window's exit volume, the clipped
+#     windows counted in meta.json["ramp_to_ramp_shares"]; every vehicle of the swap windowed by its free-flow arrival
+#     at the weave, docs/A3_RANGE_ROUND.md §2). Ruth St stays at the proportional split (reported as unexamined).
+#     Families (item 2):
+#       F1 scenarios/${MNDOT}_weave_dc_cal_w1b.yaml (policy-v4 hash 2dd495d173f4) with W2's three switches written at 0
+#          on both weaves (weave_handback, weave_close_leader, weave_resolve_opposing): p10's arm A, which ran when W2
+#          unset was off; Amendment 4 turned W2 on by default, so the committed file alone now runs W2;
+#       F2 scenarios/${MNDOT}_weave_dc_cal_w1b_w2.yaml (policy-v4 hash 395a111cb991) as committed: p10's arm B, the
+#          reference; its u0 arm is the committed file itself (Amendment 4's re-run of p10's arm B, read against it
+#          seed by seed).
+#     Every other arm runs a copy written here under runs/p24_a3/scenarios/ (never scenarios/: no archive or ingest
+#     carries it into the repository; each replicate's meta.json records its whole configuration). A copy differs from
+#     its committed source only in its name, the T.H.52 block's ramp_to_ramp_share {u: U} (u05, u1) and, for F1, the
+#     three switches; its header names the source, the source's policy-v4 hash and u. corridor_a3.py check-copy
+#     refuses any other difference and a source that no longer hashes as above; a refused copy runs nothing of its
+#     family. Steps:
+#     1. The copies, each checked (F2's u0: its committed file's hash only).
+#     2. Per arm, in this order, so that a cap cuts whole arms and F2's verdict, then F1's, is readable before the
+#        shape arms: F2 u0, F2 u1, F1 u0, F1 u1, F2 u05, F1 u05. Each: stage p8's sequence under the label
+#        <scenario name of the family>_a3<arm> — the 20-seed four-hour battery on step 3's seeds (spawn_seeds(42, 20),
+#        the same in every arm, so the arms pair), at --procs min($PROCS, 10), against the calibration-day targets
+#        (profile fhwa_tat3_2004), the baseline gate on the phase-1 day sets and the gated report — then corridor_a3.py
+#        lanes (per-lane hourly flows at S790 and at the T.H.52 gore from the battery's one kept trajectory, seed
+#        6914975401685141156, read here) and a light archive.
+#     3. corridor_a3.py evaluate -> artifacts/a3_range.json: items 4-6 (the readings, the paired contrasts against u0
+#        with 19 df, the material / not material / inconclusive rule M1-M4 at u1, u05 for shape only; no share is ever
+#        chosen); a recorded problem fails the stage after the readout is written.
+#     Outputs per label L: artifacts/validation_L.json, artifacts/baseline_gate_L.json, artifacts/validation_L_gated.json,
+#     artifacts/a3_lanes_L.json, docs/reports/L/, runs/L/baseline/<config hash>/<seed>/ (make_archive takes each
+#     replicate's metrics.json, meta.json, observed_scores.json and vehicles.parquet, so evaluate re-runs locally after
+#     the ingest; the lanes are read here); and artifacts/a3_range.json. Resumable: a battery whose artifact and
+#     logs/p24_L.battery.ok exist is not repeated. Needs no data set (every input is tracked): launch with
+#     --data-set none.
+#     Cost (protocol item 7, estimated from p10's batteries, 3,084 and 3,093 s on n2d-standard-16 at --procs 10,
+#     scoring included): about $2.0 per family, both families about $3.9; --cap-min 420. Example (us-central1, from a
+#     pushed commit):
+#       scripts/gcp/launch_i24_pipeline.sh --vm flowstate-p24 --machine n2d-standard-16 \
+#         --zone us-central1-a,us-central1-b,us-central1-c,us-central1-f --bucket gs://<bucket>/p24 \
+#         --self-delete --via-bucket --data-set none --cap-min 420 --pipeline-args '--stages "p24_i94_a3"'
+P24_DIR=runs/p24_a3/scenarios
+P24_H=artifacts/a3_range_2026-10-07/harness/corridor_a3.py
+P24_PROCS=$(( PROCS < 10 ? PROCS : 10 ))
+P24_ORDER="F2:u0 F2:u1 F1:u0 F1:u1 F2:u05 F1:u05"
+P24_TH52_EXIT_LINE="      exit_ramp: off-ramp 18207598"
+P24_W1B_KEYS="{exit_prepare: 1.0, entrant_giveup_m: 5.0, entrant_giveup_dwell_s: 60.0}"
+P24_W2_OFF_KEYS="{exit_prepare: 1.0, entrant_giveup_m: 5.0, entrant_giveup_dwell_s: 60.0, weave_handback: 0.0, weave_close_leader: 0.0, weave_resolve_opposing: 0.0}"
+p24_family() {  # p24_family F1|F2: "<committed stem> <scenario name> <policy-v4 hash> <W2 off: 1|0>"
+  case "$1" in
+    F1) echo "${MNDOT}_weave_dc_cal_w1b ${MNDOT}_weave_xlsfg_dc_cal_w1b 2dd495d173f4 1" ;;
+    F2) echo "${MNDOT}_weave_dc_cal_w1b_w2 ${MNDOT}_weave_xlsfg_dc_cal_w1b_w2 395a111cb991 0" ;;
+    *) return 1 ;;
+  esac
+}
+p24_u() {  # p24_u u0|u05|u1: the share's u (empty for u0: no share set, the proportional split)
+  case "$1" in u0) echo "" ;; u05) echo 0.5 ;; u1) echo 1.0 ;; *) return 1 ;; esac
+}
+p24_scenario() {  # p24_scenario <family> <arm>: the arm's scenario file (F2's u0 is the committed file)
+  local stem name hash w2off
+  read -r stem name hash w2off <<< "$(p24_family "$1")"
+  if [ "$1" = F2 ] && [ "$2" = u0 ]; then echo "scenarios/$stem.yaml"; else echo "$P24_DIR/${name}_a3$2.yaml"; fi
+}
+p24_copy() {  # p24_copy <family> <arm>: write the arm's copy from its committed source, then check it
+  local fam="$1" arm="$2" stem name hash w2off u src out n_share
+  read -r stem name hash w2off <<< "$(p24_family "$fam")"
+  u=$(p24_u "$arm"); src="scenarios/$stem.yaml"; out=$(p24_scenario "$fam" "$arm")
+  if [ "$out" = "$src" ]; then
+    $RUN "$P24_H" check-copy --source "$src" --source-hash "$hash" --copy "$src" \
+      || { say "p24: $src no longer hashes $hash (policy v4)"; return 1; }
+    return 0
+  fi
+  mkdir -p "$P24_DIR"
+  { echo "# ${name}_a3$arm: $src (config hash $hash, policy v4) in Amendment 3's range round (stage p24_i94_a3,"
+    echo "#   docs/A3_RANGE_ROUND.md): u = ${u:-0, no share set (the proportional split)} on the T.H.52 weave (on-ramp 769818012"
+    echo "#   to off-ramp 18207598; ramp_to_ramp_share {u: U}, s_max 0.70 by default); Ruth St proportional."
+    if [ "$w2off" = 1 ]; then
+      echo "#   W2's three switches (weave_handback, weave_close_leader, weave_resolve_opposing) at 0 on both weaves: p10's arm A."
+    fi
+    echo "#   Written by scripts/gcp/pipeline_i24.sh stage p24_i94_a3 on the VM, never committed; changed, nothing else:"
+    echo "#   the name, the T.H.52 block's share and (F1) the two weave_params lines. The source header applies otherwise."
+    if [ "$w2off" = 1 ]; then
+      sed -e '/^#/d' -e "s#^name: ${name}\$#name: ${name}_a3$arm#" \
+          -e "s#weave_params: ${P24_W1B_KEYS}\$#weave_params: ${P24_W2_OFF_KEYS}#" "$src"
+    else
+      sed -e '/^#/d' -e "s#^name: ${name}\$#name: ${name}_a3$arm#" "$src"
+    fi | awk -v u="$u" -v line="$P24_TH52_EXIT_LINE" \
+      '{ print } $0 == line && u != "" { print "      ramp_to_ramp_share: {u: " u "}" }'
+  } > "$out"
+  grep -qx "name: ${name}_a3$arm" "$out" || { say "p24: $out does not carry its name"; return 1; }
+  n_share=$(grep -c '^      ramp_to_ramp_share: ' "$out")
+  if [ -n "$u" ]; then [ "$n_share" -eq 1 ]; else [ "$n_share" -eq 0 ]; fi \
+    || { say "p24: $out: the share is not on exactly the T.H.52 block"; return 1; }
+  if [ "$w2off" = 1 ] && [ "$(grep -cF "weave_params: ${P24_W2_OFF_KEYS}" "$out")" -ne 2 ]; then
+    say "p24: $out: W2's switches are not at 0 on both weaves"; return 1
+  fi
+  if [ "$w2off" = 1 ]; then
+    $RUN "$P24_H" check-copy --source "$src" --source-hash "$hash" --copy "$out" ${u:+--u "$u"} --w2-off \
+      || { say "p24: $out is not the intended copy (corridor_a3.py check-copy)"; return 1; }
+  else
+    $RUN "$P24_H" check-copy --source "$src" --source-hash "$hash" --copy "$out" ${u:+--u "$u"} \
+      || { say "p24: $out is not the intended copy (corridor_a3.py check-copy)"; return 1; }
+  fi
+}
+p24_one() {  # p24_one <scenario> <label>: p8_one's battery, gate and gated report under <label>, then the lanes
+  local scn="$1" lab="$2" rc=0
+  local art="artifacts/validation_$2.json" rep="docs/reports/$2" out="runs/$2/baseline" ok="logs/p24_$2.battery.ok"
+  if [ -f "$ok" ] && [ -f "$art" ]; then
+    say "p24: $lab battery done earlier ($art), not repeated"
+  elif $RUN scripts/corridor_battery.py --scenario "$scn" --observations "$P1A/observations_calibration.json" \
+      --replicates "$REPS" --procs "$P24_PROCS" --out "$out" --artifact "$art" --report-dir "$rep" \
+      --criteria-profile fhwa_tat3_2004; then
+    touch "$ok"
+  else
+    say "p24: $lab battery failed; continuing"; rc=1
+  fi
+  [ -f "$art" ] || { say "p24: $lab has no battery artifact; gate, report and lanes skipped"; return 1; }
+  $RUN scripts/baseline_gate.py --battery-artifact "$art" \
+      --calibration-observations "$P1A/observations_calibration.json" \
+      --validation-observations "$P1A/observations_validation.json" \
+      --day-split "$P1A/day_split.json" --per-day "$P1A/per_day" \
+      --out-json "artifacts/baseline_gate_$lab.json" --out-md "$rep/baseline_gate.md" \
+    || { say "p24: $lab baseline gate failed; continuing"; rc=1; }
+  $RUN scripts/corridor_battery.py --scenario "$scn" --observations "$P1A/observations_calibration.json" \
+      --replicates "$REPS" --out "$out" --artifact "artifacts/validation_${lab}_gated.json" --report-dir "$rep" \
+      --criteria-profile fhwa_tat3_2004 --criteria-only --baseline-gate \
+      --gate-calibration-observations "$P1A/observations_calibration.json" \
+      --gate-validation-observations "$P1A/observations_validation.json" --gate-day-split "$P1A/day_split.json" \
+    || { say "p24: $lab gated report failed; continuing"; rc=1; }
+  $RUN "$P24_H" lanes --label "$lab" || { say "p24: $lab: the kept trajectory's lanes were not read"; rc=1; }
+  return $rc
+}
+p24_steps() {
+  local rc=0 item fam arm stem name hash w2off refused=""
+  for item in $P24_ORDER; do
+    fam=${item%%:*}; arm=${item##*:}
+    case " $refused " in *" $fam "*) continue ;; esac
+    p24_copy "$fam" "$arm" || { say "p24: the $fam $arm copy was refused; $fam runs nothing"; refused="$refused $fam"; rc=1; }
+  done
+  for item in $P24_ORDER; do
+    fam=${item%%:*}; arm=${item##*:}
+    case " $refused " in *" $fam "*) continue ;; esac
+    read -r stem name hash w2off <<< "$(p24_family "$fam")"
+    p24_one "$(p24_scenario "$fam" "$arm")" "${name}_a3$arm" || rc=1
+    make_archive light
+  done
+  $RUN "$P24_H" evaluate --out artifacts/a3_range.json \
+    || { say "p24: the readout recorded problems (artifacts/a3_range.json says which)"; rc=1; }
+  return $rc
+}
+if echo " $STAGES " | grep -q " p24_i94_a3 "; then
+  stage p24_i94_a3 p24_steps || say "p24_i94_a3 failed; continuing"
 fi
 
 # 9. Done marker; the EXIT trap builds the final archives (light, then full with the first-seed replicates).

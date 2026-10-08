@@ -300,14 +300,21 @@ class TestWeavingSection:
                 5,
                 marks=pytest.mark.xfail(
                     strict=True,
-                    reason="amendment A3 (docs/MERGE_MODEL.md, 2026-10-06, macOS): seed 5 "
-                    "on tests/fixtures/weave_th52.osm at capacity reads lane 1's first 60 m at "
+                    reason="amendment A3 (docs/MERGE_MODEL.md, 2026-10-06): seed 5 on "
+                    "tests/fixtures/weave_th52.osm at capacity reads lane 1's first 60 m at "
                     "1.35 m/s in minute 9 (above 2 m/s required; every other minute 3.8-8.7 "
                     "m/s): a stop wave on lane 1 from 60-90 m into the section at t = 510-540 s "
                     "reaches the section start at 540-570 s while the auxiliary lane runs at "
                     "0.8-1.6 m/s, and clears by 585 s; no collision, 6 of 502 driven vehicles "
-                    "unfinished, the entrance 316 of 466. Under A2 (with the ceiling's no-gap "
-                    "fallback) this seed passed; seed 4 passes under A3",
+                    "unfinished, the entrance 316 of 466. Measured 2026-10-07 on both platforms "
+                    "(docs/E12_PLATFORM_TESTS.md): macOS arm64 and Linux x86_64 read these "
+                    "numbers alike (the minute speeds within 3e-6 m/s; 2,283 against 2,282 "
+                    "changer easings), so it fails on both. SUMO 1.27.1 arithmetic differs "
+                    "between arm64 macOS and x86_64 Linux (not probed per step; the "
+                    "trajectories part in the first minute) without moving this run. Under A2 "
+                    "(with the ceiling's no-gap fallback) this seed passed; seed 4 passes under "
+                    "A3 on both platforms (lane 1 never below 3.92 m/s; 7 of 529 / 7 of 527 "
+                    "unfinished)",
                 ),
             ),
         ],
@@ -402,17 +409,23 @@ def _th52_state(paths) -> dict:
     reason="The T.H.52 section (tests/fixtures/weave_th52_corridor.osm, the observed "
     "05:30-05:50 movements, the corridor's fleet; the criteria of "
     "test_th52_corridor_section_carries_free_flow_demand, docs/FRISCO_PROTOCOL.md §9) on "
-    "merge: measured with amendment A3 (docs/MERGE_MODEL.md, 2026-10-06, macOS): the T.H.52 "
-    "entrance departs 372 / 331 / 345 of 407 at seeds 3 / 4 / 5 (387 required); the section's "
-    "exit end carries 4,133 / 3,763 / 3,790 veh/h after the fill against 4,877 observed (GEH "
-    "11.1 / 16.9 / 16.5, under 5 required) at a lowest 5-min station speed of 15.3 / 16.0 / "
-    "15.9 m/s (above 20 required); the mainline departs 1,178 / 1,116 / 1,110 of 1,196 (1,137 "
-    "required); 1 / 2 / 1 exits given up of 358 / 365 / 387 reaching the section; no "
-    "collision, no -9 m/s2 step. Seeds 3-22: no seed passes (i), (ii-a) or (ii-b); mean "
-    "3,832 veh/h (A2 3,653; A1 3,652; stage 1 3,769; the weave 3,873). The section's ceiling with no "
-    "crossing needed (A2.3, WP-76's relocated origins, seeds 3-12) carries 4,770-4,863 veh/h "
-    "(GEH under 5 at all ten) and passes (ii-b) at 7 of 10; at seed 3 its last window reads "
-    "19.97 m/s: at this seed (ii-b) fails even with nothing to cross",
+    "merge: measured with amendment A3 (docs/MERGE_MODEL.md, 2026-10-06), seed 3, measured "
+    "2026-10-07 on both platforms (docs/E12_PLATFORM_TESTS.md): fails on both, on (i) the "
+    "entrance, (ii-a) and (ii-b). macOS arm64: the T.H.52 entrance departs 372 of 407 (387 "
+    "required); the section's exit end carries 4,133.3 veh/h after the fill against 4,877 "
+    "observed (GEH 11.08, under 5 required) at a lowest 5-min station speed of 15.34 m/s "
+    "(above 20 required); the mainline departs 1,178 of 1,196 (1,137 required); 1 of 358 "
+    "exits given up. Linux x86_64: 356 of 407; 4,173.3 veh/h (GEH 10.46); 15.54 m/s; 1,195 "
+    "of 1,196; 2 of 360. No collision on either. The numbers differ because SUMO 1.27.1 "
+    "arithmetic differs between arm64 macOS and x86_64 Linux (this fixture is not probed per "
+    "step; its trajectories part in the first minute, as the probed fixtures' do from steps "
+    "20-47; docs/E12_PLATFORM_TESTS.md). On macOS under A3 (2026-10-06) seeds 4 / 5 depart "
+    "331 / 345, GEH 16.9 / 16.5, 16.0 / 15.9 m/s; seeds 3-22: no seed passes (i), (ii-a) or "
+    "(ii-b); mean 3,832 veh/h (A2 3,653; A1 3,652; stage 1 3,769; the weave 3,873). The "
+    "section's ceiling with no crossing needed (A2.3, WP-76's relocated origins, seeds 3-12) "
+    "carries 4,770-4,863 veh/h (GEH under 5 at all ten) and passes (ii-b) at 7 of 10; at "
+    "seed 3 its last window reads 19.97 m/s: at this seed (ii-b) fails even with nothing to "
+    "cross",
 )
 def test_th52_corridor_section_carries_free_flow_demand_measured(tmp_path):
     """The weave's acceptance test (3) on the measured model, seed 3 (the locked

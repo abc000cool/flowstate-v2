@@ -103,6 +103,12 @@ jobs:
 
       # The three runs' records against each other (the platform's own three-run agreement) and
       # against the committed macOS record; exit 1 there is a finding, not a failure of this step.
+      # Each test's two outcomes are labelled (platform_probe.outcome_relation): "differs by
+      # platform, each as its own marks allow" is what a per-platform strict mark asserts (E12
+      # step 3, docs/E12_PLATFORM_TESTS.md); "same result, different marks" is a mark changed since
+      # the committed record; "OUTCOME DIFFERS" is a difference no mark explains (between two runs
+      # of one platform: the run is not deterministic). The gate is the pytest exit above: with
+      # every mark strict, an outcome its platform's marks do not allow fails that run.
       - name: Compare the records
         if: always()
         shell: bash

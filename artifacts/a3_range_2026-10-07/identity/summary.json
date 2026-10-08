@@ -1,0 +1,259 @@
+{
+ "head_commit": "3856257379af3d53a826ab10b620caed798a9663",
+ "change": "HEAD tree with only packages/flowstate_core/flowstate_core/config.py, packages/microsim/microsim/vehicles.py and packages/microsim/microsim/runner.py of this build copied in",
+ "head_packages": {
+  "microsim": "<SCRATCH>/head/packages/microsim/microsim/__init__.py",
+  "flowstate_core": "<SCRATCH>/head/packages/flowstate_core/flowstate_core/__init__.py"
+ },
+ "change_packages": {
+  "microsim": "<SCRATCH>/change/packages/microsim/microsim/__init__.py",
+  "flowstate_core": "<SCRATCH>/change/packages/flowstate_core/flowstate_core/__init__.py"
+ },
+ "n_both": 40,
+ "n_identical": 40,
+ "not_identical": {},
+ "skipped_in_head": [
+  "th52_dc_u05:s3",
+  "th52_dc_u0:s3",
+  "th52_dc_u0:s4",
+  "th52_dc_u0:s5",
+  "th52_dc_u1:s3"
+ ],
+ "u0_against_unset": {
+  "th52_dc_u0:s3": {
+   "identical_to_unset": {
+    "parquet": false,
+    "routes_sha": false,
+    "meta_wo_config_sha": false,
+    "metrics_sha": false
+   },
+   "parquet_files_differing": [
+    "edges.parquet",
+    "journeys.parquet",
+    "trajectories.parquet",
+    "vehicles.parquet"
+   ],
+   "share_drawn_unset_plan": 0.3144963144963145,
+   "share_realized_u0": 0.28746928746928746,
+   "n_swapped_to_exit": 2,
+   "n_swapped_from_exit": 13,
+   "windows": [
+    [
+     0.0,
+     76,
+     0.3309,
+     31,
+     25
+    ],
+    [
+     300.0,
+     98,
+     0.3014,
+     36,
+     30
+    ],
+    [
+     600.0,
+     111,
+     0.2889,
+     30,
+     32
+    ],
+    [
+     900.0,
+     109,
+     0.2509,
+     28,
+     27
+    ],
+    [
+     1200.0,
+     13,
+     0.2509,
+     3,
+     3
+    ]
+   ]
+  },
+  "th52_dc_u0:s4": {
+   "identical_to_unset": {
+    "parquet": false,
+    "routes_sha": false,
+    "meta_wo_config_sha": false,
+    "metrics_sha": false
+   },
+   "parquet_files_differing": [
+    "edges.parquet",
+    "journeys.parquet",
+    "trajectories.parquet",
+    "vehicles.parquet"
+   ],
+   "share_drawn_unset_plan": 0.3046683046683047,
+   "share_realized_u0": 0.28746928746928746,
+   "n_swapped_to_exit": 4,
+   "n_swapped_from_exit": 11,
+   "windows": [
+    [
+     0.0,
+     76,
+     0.3309,
+     28,
+     25
+    ],
+    [
+     300.0,
+     98,
+     0.3014,
+     36,
+     30
+    ],
+    [
+     600.0,
+     111,
+     0.2889,
+     33,
+     32
+    ],
+    [
+     900.0,
+     108,
+     0.2509,
+     23,
+     27
+    ],
+    [
+     1200.0,
+     14,
+     0.2509,
+     4,
+     3
+    ]
+   ]
+  },
+  "th52_dc_u0:s5": {
+   "identical_to_unset": {
+    "parquet": false,
+    "routes_sha": false,
+    "meta_wo_config_sha": false,
+    "metrics_sha": false
+   },
+   "parquet_files_differing": [
+    "edges.parquet",
+    "journeys.parquet",
+    "trajectories.parquet",
+    "vehicles.parquet"
+   ],
+   "share_drawn_unset_plan": 0.35135135135135137,
+   "share_realized_u0": 0.28746928746928746,
+   "n_swapped_to_exit": 0,
+   "n_swapped_from_exit": 26,
+   "windows": [
+    [
+     0.0,
+     76,
+     0.3309,
+     34,
+     25
+    ],
+    [
+     300.0,
+     98,
+     0.3014,
+     37,
+     30
+    ],
+    [
+     600.0,
+     111,
+     0.2889,
+     38,
+     32
+    ],
+    [
+     900.0,
+     108,
+     0.2509,
+     31,
+     27
+    ],
+    [
+     1200.0,
+     14,
+     0.2509,
+     3,
+     3
+    ]
+   ]
+  }
+ },
+ "set_arms": {
+  "th52_dc_share05:s3": {
+   "u": null,
+   "s_max": null,
+   "share_drawn": 0.3144963144963145,
+   "share_realized": 0.5012285012285013,
+   "n_clipped": null,
+   "n_swapped_to_exit": 76,
+   "free_flow_s": null
+  },
+  "th52_dc_share05:s4": {
+   "u": null,
+   "s_max": null,
+   "share_drawn": 0.3046683046683047,
+   "share_realized": 0.5012285012285013,
+   "n_clipped": null,
+   "n_swapped_to_exit": 80,
+   "free_flow_s": null
+  },
+  "th52_dc_u05:s3": {
+   "u": 0.5,
+   "s_max": 0.7,
+   "share_drawn": 0.3144963144963145,
+   "share_realized": 0.49385749385749383,
+   "n_clipped": 0,
+   "n_swapped_to_exit": 73,
+   "free_flow_s": {
+    "corridor entry": {
+     "n": 1196,
+     "mean_s": 34.01821921153584,
+     "min_s": 33.7157381049207,
+     "max_s": 51.40934610491482
+    },
+    "th52": {
+     "n": 407,
+     "mean_s": 37.89131774306262,
+     "min_s": 37.769691527916514,
+     "max_s": 45.868167129535315
+    }
+   }
+  },
+  "th52_dc_u1:s3": {
+   "u": 1.0,
+   "s_max": 0.7,
+   "share_drawn": 0.3144963144963145,
+   "share_realized": 0.7002457002457002,
+   "n_clipped": 0,
+   "n_swapped_to_exit": 157,
+   "free_flow_s": {
+    "corridor entry": {
+     "n": 1196,
+     "mean_s": 34.01821921153584,
+     "min_s": 33.7157381049207,
+     "max_s": 51.40934610491482
+    },
+    "th52": {
+     "n": 407,
+     "mean_s": 37.89131774306262,
+     "min_s": 37.769691527916514,
+     "max_s": 45.868167129535315
+    }
+   }
+  }
+ },
+ "scenarios": {
+  "n": 56,
+  "same_hash_and_dump": 56,
+  "differing": [],
+  "weave_defaults_same": true
+ }
+}

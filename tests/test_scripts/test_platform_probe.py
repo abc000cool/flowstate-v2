@@ -481,3 +481,59 @@ class TestCompareRecords:
         out = capsys.readouterr().out
         assert "t::x: xpassed / xfailed (OUTCOME DIFFERS); trajectories: part from minute 1" in out
         assert "runs.0.weave_sections.0.n_missed_exit: 1 -> 7" in out
+
+    @pytest.mark.parametrize(
+        ("outcome_a", "where_a", "outcome_b", "where_b", "relation"),
+        [
+            ("xfailed", ("linux", "x86_64"), "xfailed", ("darwin", "arm64"), "same"),
+            # a per-platform strict mark: passes on macOS, xfails on Linux (E12 step 3)
+            ("passed", ("darwin", "arm64"), "xfailed", ("linux", "x86_64"), "per_platform"),
+            # step 1's non-strict xpass against the same platform's unmarked pass
+            ("xpassed", ("darwin", "arm64"), "passed", ("darwin", "arm64"), "same_result"),
+            ("xpassed", ("darwin", "arm64"), "xfailed", ("linux", "x86_64"), "per_platform"),
+            # on one platform a different result is non-determinism
+            ("passed", ("linux", "x86_64"), "xfailed", ("linux", "x86_64"), "differs"),
+            ("passed", ("linux", "x86_64"), "xfailed", ("linux", "aarch64"), "per_platform"),
+            # an outcome that fails its run never reads as expected
+            ("passed", ("darwin", "arm64"), "failed", ("linux", "x86_64"), "differs"),
+            ("xfailed", ("darwin", "arm64"), "xpassed_strict", ("linux", "x86_64"), "differs"),
+            ("passed", ("darwin", "arm64"), "xpassed_strict", ("darwin", "arm64"), "differs"),
+            ("passed", ("darwin", "arm64"), "skipped", ("linux", "x86_64"), "differs"),
+        ],
+    )
+    def test_outcome_relation(self, outcome_a, where_a, outcome_b, where_b, relation):
+        pp = _probe_module()
+        ra = {"outcome": outcome_a, "platform": where_a[0], "machine": where_a[1]}
+        rb = {"outcome": outcome_b, "platform": where_b[0], "machine": where_b[1]}
+        assert pp.outcome_relation(ra, rb) == relation
+        assert pp.outcome_relation(rb, ra) == relation
+
+    def test_per_platform_rows_and_report(self, tmp_path, capsys):
+        pp = _probe_module()
+        a = {**self._rec("t::x", "passed"), "platform": "darwin", "machine": "arm64"}
+        b = {
+            **self._rec("t::x", "xfailed", n_missed=3),
+            "platform": "linux",
+            "machine": "x86_64",
+        }
+        y_a = {**self._rec("t::y", "xpassed"), "platform": "darwin", "machine": "arm64"}
+        y_b = {**self._rec("t::y", "passed"), "platform": "linux", "machine": "x86_64"}
+        paths = {}
+        for name, recs in {"a": [a, y_a], "b": [b, y_b]}.items():
+            paths[name] = tmp_path / f"{name}.jsonl"
+            paths[name].write_text("".join(json.dumps(r) + "\n" for r in recs))
+        rows = {
+            r["test_id"]: r
+            for r in pp.compare_records(pp.read_records(paths["a"]), pp.read_records(paths["b"]))
+        }
+        assert rows["t::x"]["outcome_relation"] == "per_platform"
+        assert rows["t::y"]["outcome_relation"] == "same_result"
+        assert pp.main(["--compare-records", str(paths["a"]), str(paths["b"])]) == 1
+        out = capsys.readouterr().out
+        assert "t::x: passed / xfailed (differs by platform, each as its own marks allow)" in out
+        assert "t::y: xpassed / passed (same result, different marks)" in out
+        assert "OUTCOME DIFFERS)" not in out
+        assert out.rstrip().endswith(
+            "outcomes: 0 same outcome; 1 same result, different marks; "
+            "1 differs by platform, each as its own marks allow; 0 OUTCOME DIFFERS"
+        )

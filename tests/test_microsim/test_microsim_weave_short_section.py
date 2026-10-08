@@ -11,6 +11,7 @@ junction geometry) from the entrance (way 200) to the exit (way 201), about
 from __future__ import annotations
 
 import json
+import sys
 from pathlib import Path
 
 import pandas as pd
@@ -214,89 +215,100 @@ class TestRuthStWeave:
     @pytest.mark.parametrize(
         ("demand", "seed"),
         [
-            *(
-                pytest.param(
-                    "entrance_peak",
-                    seed,
-                    marks=pytest.mark.xfail(
-                        strict=False,
-                        reason="Ruth St twin, the corridor's fleet at the entrance's peak "
-                        "(2026-09-24, block 3, short sections; re-measured at the 500 m vacate "
-                        "window): one abreast pair at the gore's end costs 2 of the 41-45 exits "
-                        "that reach the section (4-5 % against 2 %) and which seed pays moves "
-                        "with the vacate rule and its window — on the runner of 01dd5ec seed 4 "
-                        "(39 of 41 exit, lane 1's last 60 m never below 13.4 m/s, 108 forced "
-                        "changes deferred, no collision), under the vacate rule re-derived "
-                        "beside this test (WP-44) at 150 m seed 3 (43 of 45), at the 500 m "
-                        "default seed 3 again (43 of 45, lane 1's last 60 m 2.9 m/s in one "
-                        "minute, 13 forced, 252 deferred, 7 releases, 60 vacated and 149 skipped "
-                        "by the bound, the entrance departs 128 of 128, no collision) while "
-                        "seeds 4 / 5 give up none with lane 1 never below 15.7 m/s — so the "
-                        "marks are not strict (docs/WEAVE_MODEL_PLAN.md, the short section at "
-                        "the 500 m window). Under the speed-aware acceptance (2026-09-24, "
-                        "block 3), with the exit link's class corrected to the corridor's "
-                        "(2026-09-25, block 3, WP-83), seed 3 gives up 1 of 45 (2.2 %; 44 exit, "
-                        "lane 1 4.3 m/s in one minute, 243 deferred, 6 releases), seed 4 gives "
-                        "up 1 of 41 (2.4 %; lane 1 2.6 m/s in one minute) and seed 5 reads "
-                        "1.1 m/s in one minute (32 of 34 exit, none given up); no collision at "
-                        "any",
-                    ),
-                )
-                for seed in (3, 4, 5)
+            pytest.param(
+                "entrance_peak",
+                3,
+                marks=pytest.mark.xfail(
+                    strict=True,
+                    reason="Ruth St twin, the corridor's fleet at the entrance's peak, seed 3, "
+                    "measured 2026-10-07 under the W1b/W2 defaults (docs/E12_PLATFORM_TESTS.md): "
+                    "fails on both platforms, on the give-ups and lane 1. macOS arm64: 1 of 45 "
+                    "exits given up (2.2 % against 2 %), lane 1's last 60 m 4.33 m/s in minute "
+                    "17 (above 5 required), 44 of 45 exit, 0 of 31 unfinished. Linux x86_64: 2 "
+                    "of 45 given up (4.4 %), lane 1's last 60 m 1.31 m/s in minute 19 (2 minutes "
+                    "at or below 5), 42 of 45 exit, 3 of 49 unfinished. Both: the entrance "
+                    "departs 128 of 128, no collision. The numbers differ because SUMO 1.27.1 "
+                    "arithmetic differs between arm64 macOS and x86_64 Linux (this fixture is "
+                    "not probed per step; its trajectories part in the first minute, as the "
+                    "probed fixtures' do from steps 20-47; docs/E12_PLATFORM_TESTS.md). Earlier "
+                    "readings: docs/WEAVE_MODEL_PLAN.md, short sections",
+                ),
             ),
-            *(
-                pytest.param(
-                    "exit_peak",
-                    seed,
-                    marks=pytest.mark.xfail(
-                        strict=True,
-                        reason="Ruth St twin, the corridor's fleet at the C-D split's exit "
-                        "peak (2026-09-24, block 3, short sections; re-measured at the 500 m "
-                        "vacate window): at the 500 m default seeds 3 / 4 / 5 give up 4 / 2 / 4 "
-                        "of 290 / 280 / 274 exits (1.4 / 0.7 / 1.5 %, within 2 % now that 135 / "
-                        "145 / 137 through vehicles vacate the weave lane 430-500 m upstream "
-                        "against 44 / 52 / 56 at 150 m; 9 / 9 / 15 changes forced against 33 / "
-                        "15 / 17, 252 / 111 / 275 deferred against 608 / 268 / 326, 2 / 1 / 2 "
-                        "pairs released against 14 / 3 / 7), but lane 1's last 60 m reads 4.6 / "
-                        "6.5 / 3.6 m/s in its worst minute with one minute empty at seed 3 (the "
-                        "weave lane carries 0.2 vehicles per sample there) and seed 4 collides "
-                        "once at 600.5 s: an exiter changes into the auxiliary lane 15 m into "
-                        "the section at 20 m/s onto a leader at 1 m/s 22 m ahead, the exit-side "
-                        "acceptance being a time gap at the changer's own speed. At 150 m: 8 / "
-                        "3 / 4 given up (2.8 / 1.1 / 1.5 %), lane 1 3.3 / 4.1 / 4.3 m/s, no "
-                        "collision (runner of 01dd5ec and the re-derived vacate rule alike). "
-                        "The entrance departs 73 of 73 at both. The trace, the "
-                        "measured-and-rejected scalings and the 2 L window: "
-                        "docs/WEAVE_MODEL_PLAN.md, short sections and the short section at "
-                        "the 500 m window. Under the speed-aware acceptance (2026-09-24, "
-                        "block 3; the collision's fix, TestExitSideAcceptance; the exit link's "
-                        "class corrected to the corridor's, 2026-09-25, block 3, WP-83) seeds "
-                        "3 / 4 / 5 give up 12 / 2 / 4 of 290 / 280 / 274 (4.1 / 0.7 / 1.5 %), "
-                        "lane 1's last 60 m reads 2.5 / 5.0 / 5.6 m/s at the minimum (3 / 1 / "
-                        "0 minutes at or below 5), 32 / 19 / 10 forced, 1,117 / 196 / 241 "
-                        "deferred, 29 / 8 / 0 releases, no collision: the exiters that used to "
-                        "drop in at speed now ease in lane 1 behind the auxiliary lane's queue, "
-                        "and more of them reach the gore's end still owing the change. Seed 5 "
-                        "meets every criterion under it on macOS and is marked not strict "
-                        "(its own reason)",
-                    ),
-                )
-                for seed in (3, 4)
+            # seed 4 passes on both platforms with the same counters (0 of 41 given up, lane
+            # 1's last 60 m never below 12.61 m/s, 41 of 41 exit; docs/E12_PLATFORM_TESTS.md):
+            # its non-strict mark was removed on 2026-10-07
+            ("entrance_peak", 4),
+            pytest.param(
+                "entrance_peak",
+                5,
+                marks=pytest.mark.xfail(
+                    strict=True,
+                    reason="Ruth St twin, the corridor's fleet at the entrance's peak, seed 5, "
+                    "measured 2026-10-07 under the W1b/W2 defaults (docs/E12_PLATFORM_TESTS.md): "
+                    "fails on both platforms with the same counters, macOS arm64 and Linux "
+                    "x86_64 alike: lane 1's last 60 m 1.09 m/s in minute 19 (above 5 required), "
+                    "3 of 29 driven vehicles unfinished (at most 2.9), 32 of 34 exit, none given "
+                    "up, the entrance departs 128 of 128, no collision. The minute speeds agree "
+                    "to 3e-14 m/s: SUMO 1.27.1 arithmetic differs between arm64 macOS and x86_64 "
+                    "Linux (not probed per step; the trajectories part in the first minute; "
+                    "docs/E12_PLATFORM_TESTS.md) without moving this run. Earlier readings: "
+                    "docs/WEAVE_MODEL_PLAN.md, short sections",
+                ),
+            ),
+            pytest.param(
+                "exit_peak",
+                3,
+                marks=pytest.mark.xfail(
+                    strict=True,
+                    reason="Ruth St twin, the corridor's fleet at the C-D split's exit peak, "
+                    "seed 3, measured 2026-10-07 under the W1b/W2 defaults "
+                    "(docs/E12_PLATFORM_TESTS.md): fails on both platforms with the same "
+                    "counters, macOS arm64 and Linux x86_64 alike: 15 of 290 exits given up "
+                    "(5.2 % against 2 %), lane 1's last 60 m 2.58 m/s in minute 12 (3 minutes at "
+                    "or below 5; above 5 required), 273 of 290 exit, 0 of 159 unfinished, the "
+                    "entrance departs 73 of 73, no collision. The minute speeds agree to 2e-13 "
+                    "m/s: SUMO 1.27.1 arithmetic differs between arm64 macOS and x86_64 Linux "
+                    "(not probed per step; the trajectories part in the first minute; "
+                    "docs/E12_PLATFORM_TESTS.md) without moving this run. The 500 m vacate "
+                    "window, the seed-4 collision and the speed-aware acceptance that removed "
+                    "it: docs/WEAVE_MODEL_PLAN.md, short sections, and TestExitSideAcceptance",
+                ),
+            ),
+            pytest.param(
+                "exit_peak",
+                4,
+                marks=pytest.mark.xfail(
+                    strict=True,
+                    reason="Ruth St twin, the corridor's fleet at the C-D split's exit peak, "
+                    "seed 4, measured 2026-10-07 under the W1b/W2 defaults "
+                    "(docs/E12_PLATFORM_TESTS.md): fails on both platforms with the same "
+                    "counters, macOS arm64 and Linux x86_64 alike: lane 1's last 60 m 4.97 m/s "
+                    "in minute 8 (above 5 required), 2 of 281 exits given up (0.7 %, within 2 "
+                    "%), 278 of 281 exit, 0 of 76 unfinished, the entrance departs 73 of 73, no "
+                    "collision. The minute speeds agree to 3e-14 m/s: SUMO 1.27.1 arithmetic "
+                    "differs between arm64 macOS and x86_64 Linux (not probed per step; the "
+                    "trajectories part in the first minute; docs/E12_PLATFORM_TESTS.md) without "
+                    "moving this run. Earlier readings: docs/WEAVE_MODEL_PLAN.md, short sections",
+                ),
             ),
             pytest.param(
                 "exit_peak",
                 5,
                 marks=pytest.mark.xfail(
-                    strict=False,
-                    reason="Ruth St twin, the corridor's fleet at the C-D split's exit "
-                    "peak, seed 5, with the exit link's class corrected to the "
-                    "corridor's (2026-09-25, block 3, WP-83): on macOS it gives up 4 of "
-                    "274 exits (1.5 %, within 2 %) and meets every criterion; on Linux "
-                    "(CI on 0b9ab40, SUMO 1.27.1 pinned on both) it gives up "
-                    "7 of 274 (2.6 %; 266 exit, the entrance departs 73 of 73). The two "
-                    "platforms' floating-point results part and the run lands on either "
-                    "side of the 2 % limit, as seeds 3 / 4 give up 12 / 2 on macOS; the "
-                    "criterion is unchanged, so the mark is not strict",
+                    condition=sys.platform == "linux",
+                    strict=True,
+                    reason="Ruth St twin, the corridor's fleet at the C-D split's exit peak, "
+                    "seed 5, per platform, measured 2026-10-07 under the W1b/W2 defaults "
+                    "(docs/E12_PLATFORM_TESTS.md): asserted to pass on macOS and to fail on "
+                    "Linux. macOS arm64 meets every criterion: 4 of 274 exits given up (1.5 %, "
+                    "within 2 %), lane 1's last 60 m never below 5.55 m/s, 266 of 274 exit, 2 "
+                    "of 71 unfinished. Linux x86_64 fails on the give-ups and lane 1: 6 of 274 "
+                    "given up (2.2 %), lane 1's last 60 m 4.29 m/s in minute 19 (above 5 "
+                    "required), 267 of 274 exit, 0 of 77 unfinished. Both: the entrance departs "
+                    "73 of 73, no collision. SUMO 1.27.1 arithmetic differs between arm64 macOS "
+                    "and x86_64 Linux from step 20 (docs/E12_PLATFORM_TESTS.md); the runner's "
+                    "commands stay identical to step 117. On 0b9ab40 the Linux runner gave up 7 "
+                    "of 274 (docs/WEAVE_MODEL_PLAN.md)",
                 ),
             ),
         ],

@@ -1,0 +1,886 @@
+{
+ "_packages": {
+  "microsim": "<SCRATCH>/head/packages/microsim/microsim/__init__.py",
+  "flowstate_core": "<SCRATCH>/head/packages/flowstate_core/flowstate_core/__init__.py"
+ },
+ "_knows_range": false,
+ "golden:corridor_10km_smoke": {
+  "parquet": {
+   "edges.parquet": "71d828811e782c07edc1f2b7ff88ad04cc73deb55ed38c014430a9d189ec5040",
+   "journeys.parquet": "e718d8b6277089b92af669ce867f18b4bf81cdd92a709995868f42b1320dc707",
+   "trajectories.parquet": "1f0ee8e86f61d3a3b46d3cfb40caf8f05c97843c62d30df464a5dbd9cbb87114",
+   "vehicles.parquet": "d1697222e36bdd940b5644080e0b5d907710623344bf956b2af5e964c132cf34"
+  },
+  "routes_sha": "30f5dfe12694d40f3216947de6f576d52e3e4efa51fd1fb9a858b25e8941fc19",
+  "meta_sha": "315d2640d45ecc141f16b770827b2e4279661e928298b5d455b178de01637803",
+  "meta_wo_config_sha": "17b4ff28cf07bdf062b63dc6b41f560130ccbabb1185c5804963d6730a7bf84f",
+  "metrics_sha": "7e3fda4a08c76fafbe0b836d80ca9c8e54f0d2a710ce842d443dc55bfb325471",
+  "config_hash": "d0b5d11eba6e",
+  "n_collisions": 0,
+  "ramp_to_ramp_shares": null,
+  "weave": [],
+  "wall_s": 1.2
+ },
+ "golden:corridor_10km_workzone": {
+  "parquet": {
+   "edges.parquet": "d0652e5752adcd1b850819a2182875dc1f21edb44eca66d952bd860b040426e7",
+   "journeys.parquet": "475e82d487aa1142ea11f437468f22ef4640a11242d0ca4d8e1b0c2d02963acd",
+   "trajectories.parquet": "4acf506bb617cce69a85664a8c52687b38ac2778430bda62d310578b8ebcad50",
+   "vehicles.parquet": "6857fd8894795d4f4e802eaebc263803b29cefef2bb27e7feda106105214489b"
+  },
+  "routes_sha": "af1b7a6c417b12326fff838f25e775188f4adb2cddac656cf75eef28e40a6d35",
+  "meta_sha": "fd2b0d55b8814352eb6c36e0ad8e5b8868a9c664ca8348704ee9886b6c83de2a",
+  "meta_wo_config_sha": "ba86ae7a422e3ee748da41891f99026e0760292e46f3e4cae3138d79e694fd0c",
+  "metrics_sha": "811ad7063c108662ae54c7744a19223890432820a61c98d3131d1060a835d500",
+  "config_hash": "946cce4e3f0d",
+  "n_collisions": 0,
+  "ramp_to_ramp_shares": null,
+  "weave": [],
+  "wall_s": 3.2
+ },
+ "golden:corridor_boundary_schedule": {
+  "parquet": {
+   "edges.parquet": "a466d2d2105b3bc946bf9f87106d04875d056a2368f73d8629269fc53bd9d416",
+   "journeys.parquet": "66699994d3f53a4b1f0f18bb5dd4119034c3c17c0a8ab16a4b3209e7eb48e1f4",
+   "trajectories.parquet": "05222bf0b1c92998b693269651ad28582e16bd1d6a12767a88b36e7346a85884",
+   "vehicles.parquet": "01fca3054dcedeb7a2cc74dc784658382697543c6dcc6f679253d4c01eb2d495"
+  },
+  "routes_sha": "aa18e4120a83c6d977706783b9c554cb2fb10ad4e2de2be0f4fef513b1a84716",
+  "meta_sha": "29e8c0e080f9d739d7c3c4c3bbf330c823154153c318301bfa0fe8024d476230",
+  "meta_wo_config_sha": "db73981075541dabf9fa2784093cfdaf3eed052226d9e25ffeb62812f12989be",
+  "metrics_sha": "bb2040748fda4c72dc872a2a56bed8bf28135378b3eeb54b80f781749a2109fc",
+  "config_hash": "3623c30d1563",
+  "n_collisions": 0,
+  "ramp_to_ramp_shares": null,
+  "weave": [],
+  "wall_s": 0.4
+ },
+ "golden:corridor_workzone_heavy": {
+  "parquet": {
+   "edges.parquet": "7a681dfa863cdcc727bcfef63f56898c719b1933c8f06107b9b46c32ed4ce248",
+   "journeys.parquet": "247191534f9e9739b68bea93fccc7cec1ea947ccdb709da605e2b6eb8e97e182",
+   "trajectories.parquet": "0b1dc048915de61ae2210506c5eac310b10dd16f75b133ed63a8dbe3eda3b232",
+   "vehicles.parquet": "2a67244d8afd6212a42e3165d106499b28b2a13e254e280c6dfb8b5d4837dcec"
+  },
+  "routes_sha": "254a343ff15a64629025592089386824b9b5438f4f725e06f62a462609a9ca68",
+  "meta_sha": "7e8a769f77192460d8d80d41a06b7f91aeee847101d502c1cae968bcfb4cddd9",
+  "meta_wo_config_sha": "14527ef7f3dee017f62b817b199b73826126e8e93282d3c80ad933aa08d8d4a8",
+  "metrics_sha": "b866b370bd3c7cd5e8f0a3dac2d00e71c6951b526e8126e6fde83c8bcdf4172c",
+  "config_hash": "6aa30e6dfd4b",
+  "n_collisions": 0,
+  "ramp_to_ramp_shares": null,
+  "weave": [],
+  "wall_s": 0.6
+ },
+ "golden:hov_corridor": {
+  "parquet": {
+   "edges.parquet": "417d2a1771087d4f74e493a52154fe279285aaf21d1eabc46c1918c5d49a385c",
+   "journeys.parquet": "9aa7710f8c8d637af39e914cc2ea5b8e1b11a43ac1242e3f3686f9628825e06b",
+   "trajectories.parquet": "5213cdfa71608f2ad7d51fd98d819fa391f89c2513ff92d91f206a50688e21f0",
+   "vehicles.parquet": "b444a3430c9b31a571d51f647f358ed7a8b6ca0fd5bd096f82fbaf487ad423e9"
+  },
+  "routes_sha": "7ef243eb904ea6b10b60833aca2f8fb5b756fbe213733a1f376e3c1f3b4e6f56",
+  "meta_sha": "aaedb23a7ece133ea5f4df737be99c389db15bc132a1a0df3e240d0a3079f1bf",
+  "meta_wo_config_sha": "9655dea2bd67c7da2cfb82ea93023fea2116f37e0ac4260001baa6343317004b",
+  "metrics_sha": "774a23a6ff2b5402dc2115b25b2f172f14061068851b6b101f5b9500f1a22ae4",
+  "config_hash": "69c0aa86f09e",
+  "n_collisions": 0,
+  "ramp_to_ramp_shares": null,
+  "weave": [],
+  "wall_s": 0.5
+ },
+ "golden:merge_measured": {
+  "parquet": {
+   "edges.parquet": "c3b0d99ae8009660e487a60ef31232412ccf3b02e7d21a8b2ed74e53d09ecd78",
+   "journeys.parquet": "9172eebd1f07324f569f5dc750d2f5511b7bead14caaa572feb93269d2d3456c",
+   "trajectories.parquet": "5888ecf7e4af984c2daf613a0c99a846bdfe78c9b79a0b6e1fe872b4821a3cd1",
+   "vehicles.parquet": "719be8e7488d80ff861e2072b322a8bbe65c13fd4a97dc8c47de69c6950eacf1"
+  },
+  "routes_sha": "b94e2f7f163c82082dd0d0e06a095e2cadb793b254e9ccddc0136319bc82f349",
+  "meta_sha": "70d7de5a82e449383f3f5363f50386a0ecbe0ea2c1ac4be6009347170ec2e9d2",
+  "meta_wo_config_sha": "54a98397b3646cf830584ed322f8531750d32ecaf56f96279aba8b5f9145aa8d",
+  "metrics_sha": "2078467dbd9f080369213704c0617a30fe9b0a1dc036d5b1edd8355123b63f7b",
+  "config_hash": "5266ec78821a",
+  "n_collisions": 0,
+  "ramp_to_ramp_shares": null,
+  "weave": [],
+  "wall_s": 0.5
+ },
+ "golden:merge_measured_accel": {
+  "parquet": {
+   "edges.parquet": "47cf4d4993ba5f5ab163e44285a025bb9a72de72b3e73572f5c94a0800e73f73",
+   "journeys.parquet": "0b2beb0827e5304350ebf255c79edcc1e5e62162ceb1a0f217cd07cacef24b69",
+   "trajectories.parquet": "487a56f00e58680c1cd1be06de0f18fd4a9c57a3a4568e6373e49b396289f7d3",
+   "vehicles.parquet": "388b7a7ff3bcc362f754ed544f8720face5e2a26c3390f00012bcab3b2801386"
+  },
+  "routes_sha": "0ee9e7bccd7265b9b056b4c069e149714d4489d3c2ec98a59b83ece389f780db",
+  "meta_sha": "6ff65b1e68b80eb60199b887f0f89cc019d0174b31d2e6264a6a15fe466b3240",
+  "meta_wo_config_sha": "01871652c127f317886c1793190c630063b6016326defb2fa34ef44435832646",
+  "metrics_sha": "036884d8567c67faabecc88c0eb7daa3790fbfb2a4be6bc74d2647dbd21ffd70",
+  "config_hash": "57f3b3d20314",
+  "n_collisions": 0,
+  "ramp_to_ramp_shares": null,
+  "weave": [],
+  "wall_s": 0.6
+ },
+ "golden:merge_meter_alinea": {
+  "parquet": {
+   "edges.parquet": "89761b15d07c4ff74c294d2210649292a7c33d6dc7be30029bd6ca709d2ba620",
+   "journeys.parquet": "3875a3fbc768918e55cfb2bbd49afeb08f8612bd0a45065921da0033cb62d7b1",
+   "trajectories.parquet": "2047eac4f1895571d68904628e2612551f42164de08ca0eaa524ded503a051da",
+   "vehicles.parquet": "f1cb0f6a9b1852b886a8c11326a6a4f2fa59f7dc040db1a9d24fa79cbd15b4d6"
+  },
+  "routes_sha": "758921d4e53c5d995e4ca599a880df8737e59bb989fe8091a5a1dd20c26647dc",
+  "meta_sha": "caab886fdd90bb3df959089f299cef07883e24f3c4c75b0cac0d108113569e41",
+  "meta_wo_config_sha": "7c525fc663bf04add59b576ad336b12c33175d1e6642eb051f50fd060ca639b5",
+  "metrics_sha": "8cb3fa32d8eedfd3b12e48bec043abeab566c71e88118fee2dbd8eee322f06c9",
+  "config_hash": "aa4c780cbd74",
+  "n_collisions": 0,
+  "ramp_to_ramp_shares": null,
+  "weave": [],
+  "wall_s": 0.5
+ },
+ "golden:merge_scripted": {
+  "parquet": {
+   "edges.parquet": "46261647f6e8e5ac064a0f89e20fb1fe0551806a3cd2e8ab7b763573cb796c7c",
+   "journeys.parquet": "170d3a1664b87ea81747b86edf4b4e258580b2d45a829fd43ed2f10b51611311",
+   "trajectories.parquet": "b287e8857697082635a4703061846e2af331345c771c61b73cf2b5b5d0c006ae",
+   "vehicles.parquet": "03b6b7752b6587e406064699d3d801b3a4b44588b0c317440836df56f8d6eeeb"
+  },
+  "routes_sha": "0ee9e7bccd7265b9b056b4c069e149714d4489d3c2ec98a59b83ece389f780db",
+  "meta_sha": "9dea69012932305dfdbc46d994e8a67b88f191c919fdb6d4ddb504427c4e09b1",
+  "meta_wo_config_sha": "7b50fa0aa286107bc3aafc48aa5f3a160c7c4f8c18d904186ce9d797ba681a3e",
+  "metrics_sha": "b60e1ace5f2351e91a3a1056fdd2964ebebc4cf801547d29ec2779d2ad48896c",
+  "config_hash": "61b1cbd0c9fe",
+  "n_collisions": 0,
+  "ramp_to_ramp_shares": null,
+  "weave": [],
+  "wall_s": 0.6
+ },
+ "golden:merge_weave": {
+  "parquet": {
+   "edges.parquet": "42fa90101a624e92cc6c75b0caf390a4b93fccfbde29ab30336a3b3d0f37db18",
+   "journeys.parquet": "0b9a671a1773855e3074be68d0cbbbb31bf29704ff42e9d1f66b647a449a00df",
+   "trajectories.parquet": "ddd08a3665b9e7d7c6f120c05ca6b062324dea5ae70dd7be2d9133a7fd61a267",
+   "vehicles.parquet": "3b78af677cbb41623945d3bbfa01310cd152ca9da9aa5270deae63ebce125c75"
+  },
+  "routes_sha": "b94e2f7f163c82082dd0d0e06a095e2cadb793b254e9ccddc0136319bc82f349",
+  "meta_sha": "2d5116a748ae730f24f2dd39e0b5055c6e66352de6cc011b993feb4214c46bb4",
+  "meta_wo_config_sha": "c69b294e87c76fc47e8d3d7ef6a2ede06ae60e6796c41c1e1d136cf0ccfc8d3d",
+  "metrics_sha": "6a4a4aa88e5eb3080277c33fa79969d6d778101a94f1ee2b4d4c4d172608be61",
+  "config_hash": "95579dce2b8e",
+  "n_collisions": 0,
+  "ramp_to_ramp_shares": null,
+  "weave": [
+   {
+    "ramp": "weave on-ramp",
+    "n_missed": 0,
+    "n_missed_exit": 0,
+    "n_entrant_took_exit": 0
+   }
+  ],
+  "wall_s": 0.4
+ },
+ "golden:merge_zipper": {
+  "parquet": {
+   "edges.parquet": "865b0e8c99f8b48bcd34ad64338427863fe13fab8dd93d800e93a5202ce26777",
+   "journeys.parquet": "9c6e5153710aa922bbfdcdb04afe00b9780fac765c5ab953d2ba11970c240ccd",
+   "trajectories.parquet": "ba22d56a625f2d4d7ac95a803e7c2b426e893dd10bbbbdbc0a7a11e99e444462",
+   "vehicles.parquet": "bd371fba647c57d49fd2f896bd3a5967f7c4e4c6c8ab71a990e939d885e144fb"
+  },
+  "routes_sha": "d5a497b67eca31e1b5bc75777b9300f600be662255e8eef557098f4f61378218",
+  "meta_sha": "266e682a6c75b554e4add5de2b9f8200fdfa5eb3f44cbabd362fa054fab5e45a",
+  "meta_wo_config_sha": "17256cc33f88e74c0c7ea2999f5f722fffb7d97b590c5e98e1836e5d461a3d31",
+  "metrics_sha": "85df0501e5694429fd23146ff4a20a21f527ef048b2cb3edb6c8adc56c21ccaa",
+  "config_hash": "b33e2b7bcda4",
+  "n_collisions": 0,
+  "ramp_to_ramp_shares": null,
+  "weave": [],
+  "wall_s": 0.6
+ },
+ "golden:ring_sugiyama": {
+  "parquet": {
+   "edges.parquet": "582a06106a852056ef8de8e22d7b343920999988d5140e51d3e3424bd4b26c8f",
+   "journeys.parquet": "f6d97606cff1e794d24d691ee5c1103b72da9bea6894b47ece1fbdfc2ad39f74",
+   "trajectories.parquet": "0fdc61c0e009f5f838ff4340a4e169b0eafc6045f36d9eef90bb98362aef2c37",
+   "vehicles.parquet": "834de32d94f26fbf372277886a485d8235926584d624e6cd5819fdefb31e036f"
+  },
+  "routes_sha": "6fec0c3d8dbe18f957c6f32d0dd96145139bab71d40be1522a1293f8f6ff6d48",
+  "meta_sha": "41fd1fbb6f72fd22663071f27067fd49cc337ea7b875232e59ae4966439a6c09",
+  "meta_wo_config_sha": "2f3c7f72a3c654c1124ac3a4f7a27010662322842d0bc724b1b37b3685f17609",
+  "metrics_sha": "706a215e1fb123cd773c46c3df3cade1b2986b92501eead7531edd26b672a6d2",
+  "config_hash": "258c09ac0074",
+  "n_collisions": 0,
+  "ramp_to_ramp_shares": null,
+  "weave": [],
+  "wall_s": 0.4
+ },
+ "fixture:th52_corridor:s3": {
+  "parquet": {
+   "edges.parquet": "8f620ed27825ba9011f792872c702569f02604c7acb2363c82e9ebc109ab2ae5",
+   "journeys.parquet": "8568de56baf49f8c9821fe933198cd736ca81e07d5023db2c7e574c268d1cb55",
+   "trajectories.parquet": "8060cc4490682a476f128c7aaabfec7b8ba44f823f02ee816eb6368045ea2f7a",
+   "vehicles.parquet": "5c7d020e7409f1f0f32b68a8acedfd92d801ed0dc5547da0eaeb858aed56bcbc"
+  },
+  "routes_sha": "65be9ac7cb3a9f31ae3463f4180f1e8c595a54d3f811254673becc759b8c80de",
+  "meta_sha": "729458144347c546d6d09fb87589424db51e76d4310323ef32d7acbc359119e7",
+  "meta_wo_config_sha": "01ed10ea8e958125226f3feef3a25e58481a4310bd140f246d74704f4509813d",
+  "metrics_sha": "4557e58ba5e970e897633f359f0b4da5c9239f5fa78bf2736f49a8bfa278f4a7",
+  "config_hash": "e49b9f881795",
+  "n_collisions": 0,
+  "ramp_to_ramp_shares": null,
+  "weave": [
+   {
+    "ramp": "th52",
+    "n_missed": 1,
+    "n_missed_exit": 1,
+    "n_entrant_took_exit": 0
+   }
+  ],
+  "wall_s": 4.2
+ },
+ "fixture:th52_corridor:s4": {
+  "parquet": {
+   "edges.parquet": "ecc668c68f05c7bf429cbdfe5e78de22b7fde610ecf1af15d49e4b349fc6dc48",
+   "journeys.parquet": "9d110378c88dee534549a66f4790ebadd0d76aff34958ce18363934a0c37ad00",
+   "trajectories.parquet": "2324aeb535578f8ebe2ab6df51dc485b183c4b13cb1d19c2c505faa4243347df",
+   "vehicles.parquet": "806d6cdefcfa3a09a4779ff0eb01aa804735b3eaa6e82d7f8d5f8da16c690d37"
+  },
+  "routes_sha": "54a7178da106354715839919e5b54ad72b89599a8f53567705014362afe5f258",
+  "meta_sha": "7e2d6e5b0df131ddf537195719fa993e3cc9dbffa1a18740b8eb1676a59e7dd2",
+  "meta_wo_config_sha": "5dad9c93344b0a68f20ea57e185782145fde9b2e3abb07ebbc141da59ea9593a",
+  "metrics_sha": "488ade4f13e1a55b9e4f038943fb6161a0e88735c8c965ebe8e9057baccf13d2",
+  "config_hash": "8f1d6df82b7c",
+  "n_collisions": 0,
+  "ramp_to_ramp_shares": null,
+  "weave": [
+   {
+    "ramp": "th52",
+    "n_missed": 0,
+    "n_missed_exit": 0,
+    "n_entrant_took_exit": 0
+   }
+  ],
+  "wall_s": 4.6
+ },
+ "fixture:th52_capacity:s4": {
+  "parquet": {
+   "edges.parquet": "4c73a5ffc8ad6fe5407b82038b854281bc23e4f8dc687f99390e1f0703ca9bfd",
+   "journeys.parquet": "d040ad280fe3de62c805dd6a71ed1a81ed8b108a2fb8d0618ab654418705e947",
+   "trajectories.parquet": "2ebd5e049df5488dddd451129b56f32b55388eaa306be8a3cd84c9362b150675",
+   "vehicles.parquet": "e6594612787bd17f858fe23f63fa3a6f404102b3e83b067e9a189328abb1287a"
+  },
+  "routes_sha": "c0c03f2b44f1dc1ad88443e4a24b4db81a231e084dd3683b2b2604ccd3aede55",
+  "meta_sha": "83372d6acbd33a8c373534fbc59f72ec5c634c3936f87deadb55778ab8f97103",
+  "meta_wo_config_sha": "d5a0c02e0eb8e41499fc439eae1e21a04d163cf14b652f13a082955ddee5ee1d",
+  "metrics_sha": "2ab8e51d96c030d582d96a8d08e4c0908ce10683a02cca397fce875c1540e4c6",
+  "config_hash": "aa00d8783d58",
+  "n_collisions": 0,
+  "ramp_to_ramp_shares": null,
+  "weave": [
+   {
+    "ramp": "th52",
+    "n_missed": 1,
+    "n_missed_exit": 1,
+    "n_entrant_took_exit": 0
+   }
+  ],
+  "wall_s": 4.4
+ },
+ "fixture:th52_capacity:s5": {
+  "parquet": {
+   "edges.parquet": "cd5134a50c12374a17d8dc549704c7e852e51b5e9b99e86a024194c40760562d",
+   "journeys.parquet": "e57024d0384f5e930ea72d5e6303c5f1b28fe9369e90d00133e6ccf710fc2a8a",
+   "trajectories.parquet": "9114245f18a680e725ba98bf2603453160e64846b0ee4846791ea9d131e50289",
+   "vehicles.parquet": "59dcf0ca9301dfc90c6f31f0fae0c5e7700a48b36ab3a19daf015896a9fd27ab"
+  },
+  "routes_sha": "dcf8decc2013506a0f190e7e8f20f938203ca918c59a0c34b3227d75264fe549",
+  "meta_sha": "52e776a64a2cd53608aa331080221f69903b30d0adf3ac2b5ec69ba4bcbc9953",
+  "meta_wo_config_sha": "110d9f2316d8b9cb053945aacf1717aad31aebe0749215158a23379fbcfc750b",
+  "metrics_sha": "958fbfb510bdb6cbe3b198ac38018e918388d1ee2f6d5a510ec0ad2ec7cc72bb",
+  "config_hash": "d0b9223a0f33",
+  "n_collisions": 0,
+  "ramp_to_ramp_shares": null,
+  "weave": [
+   {
+    "ramp": "th52",
+    "n_missed": 4,
+    "n_missed_exit": 4,
+    "n_entrant_took_exit": 0
+   }
+  ],
+  "wall_s": 4.3
+ },
+ "fixture:th52_corridor_demand:s3": {
+  "parquet": {
+   "edges.parquet": "b1e34b9acb0dca3348f1351c3336b94cb4bf947e73729b9fb8d52679ae96b3f6",
+   "journeys.parquet": "69d771254920d5b4a0c34d8466f536cb1f09876e3170a2aa7840972274f3de2c",
+   "trajectories.parquet": "49968000e86b6192dbd9e3d15e2fcf8b5cac105373b4c9d0d726ce8ba7dec884",
+   "vehicles.parquet": "0e56d7bb7760d5fcd0c7fd36e501b83269a8883c09e78043399004ae0d3af05a"
+  },
+  "routes_sha": "b1600d49e1aecf09f5ab395b233f6c0099361f024567e605942515449adf6160",
+  "meta_sha": "26d3422115e4745f9e7899a49120ec7456c485ef18f1cb911d8b1e1dd84e2db5",
+  "meta_wo_config_sha": "618b300aea889d17885be70618c39706ab3c8f99b1319248f873d43b7ce06f20",
+  "metrics_sha": "f686be19c52db6fe32c65e9fc265c2ffd1f3ad4e4bb302ba6d232e662db71c25",
+  "config_hash": "a4ffef365ec7",
+  "n_collisions": 0,
+  "ramp_to_ramp_shares": null,
+  "weave": [
+   {
+    "ramp": "th52",
+    "n_missed": 2,
+    "n_missed_exit": 2,
+    "n_entrant_took_exit": 0
+   }
+  ],
+  "wall_s": 4.5
+ },
+ "fixture:th52_upstream:s3": {
+  "parquet": {
+   "edges.parquet": "5f283fb3a3e3878b89e0276b63df94a9b0e64eca9122c8c2bf0aa56d3403748d",
+   "journeys.parquet": "f91c1830c3397312f3deecc2441e5085addf85e0ba431e56b43b47ca70ea2451",
+   "trajectories.parquet": "61aa4ca6e85381650d7a431a1449b9ffcc4904cd18f5640b9b4e990eb66d01fb",
+   "vehicles.parquet": "dbc2398725f8d2f805e362a12247c3ac6be166a637e0d3d34a0f94e52a7733c8"
+  },
+  "routes_sha": "b558f072b7967561fb0c88eaaf208432984364ca6902321636eeaf1f2b34e691",
+  "meta_sha": "0fc2cf8b0d84e74372d43f25d0859502bc2186b256290d18a6ff902ff304167b",
+  "meta_wo_config_sha": "63325c060cf1da92dcd5b7bd81fa0c204809cb9b4f486e808e261b287d2859ae",
+  "metrics_sha": "d0336f6375fc9d86e472dfac3b65d9a52cfd3379d6c78cc95dac11d8df46112e",
+  "config_hash": "95d8439db30c",
+  "n_collisions": 0,
+  "ramp_to_ramp_shares": null,
+  "weave": [
+   {
+    "ramp": "th52",
+    "n_missed": 4,
+    "n_missed_exit": 4,
+    "n_entrant_took_exit": 0
+   }
+  ],
+  "wall_s": 5.9
+ },
+ "fixture:th52_upstream_fleet:s3": {
+  "parquet": {
+   "edges.parquet": "23dc3c7f37be4d1a0a7d09454e85f0bfe7c54ef2150464adc016d214fea06743",
+   "journeys.parquet": "87ff40f71ac5b7d47b4bfc65fdf39ecc6a53cef4f6cb8d94af989eb644cb5287",
+   "trajectories.parquet": "4d7b5cdca20b32ba199096c2b3e67e4d6864e75e3f84189abf59cef4c6ed3c8a",
+   "vehicles.parquet": "6e64ac16715fa26ec72c5a445fedc5f0e99a4754983b86d9144749e6dd068b05"
+  },
+  "routes_sha": "fc451015fc197a3f1392fc5fb1b74b9de83dedf60f7033177ed26a3d1165a560",
+  "meta_sha": "ccc1341a3bce644585c36be3dc0379f2289cefe54847491abebbf23cb70208c1",
+  "meta_wo_config_sha": "79638594cf9b09f1538f1ac8294ad0a00b7074d7066ffb69748fe9127e8bf973",
+  "metrics_sha": "7d1f5560d5b2e9a85d13cd071f0602ddc6b1e37f4e46daaac90417a115e10ee7",
+  "config_hash": "29925c661509",
+  "n_collisions": 0,
+  "ramp_to_ramp_shares": null,
+  "weave": [
+   {
+    "ramp": "th52",
+    "n_missed": 4,
+    "n_missed_exit": 3,
+    "n_entrant_took_exit": 1
+   }
+  ],
+  "wall_s": 8.4
+ },
+ "fixture:ruth_entr:s3": {
+  "parquet": {
+   "edges.parquet": "3c7df58a87100acb22955c39f6d9361ef873dca37055fa723e4757a1e30c3e5c",
+   "journeys.parquet": "25daa6e96264dcfa2d0acfa9fd47b561a11c4857664b0f65389f3dd30dc00be1",
+   "trajectories.parquet": "99583b9ca7e85c2c5c54bf011d58d85ce80007379223bb217bde00ef1ac1cfe7",
+   "vehicles.parquet": "3ede3511a741592351881c32f0a46982ef35750f6dc6d1fdf9629d8d824b8982"
+  },
+  "routes_sha": "b769d2864293da388328c33e6c8bdb38599563b093d89d1661fd0efc4bd985f1",
+  "meta_sha": "a94267b49d47113069c07a76ab2c49d9fb02f7f525b00a100c1e37e5e009cccc",
+  "meta_wo_config_sha": "827af4922938f9ee0654ec54ca808d7f95b6ad75afbb008c58f0c81bf8df0777",
+  "metrics_sha": "77476e07ca1b747afcab95a5a31bb931d22620ca4cfb845428e04498aaf55940",
+  "config_hash": "16e2acb74ecb",
+  "n_collisions": 0,
+  "ramp_to_ramp_shares": null,
+  "weave": [
+   {
+    "ramp": "ruth",
+    "n_missed": 0,
+    "n_missed_exit": 0,
+    "n_entrant_took_exit": 0
+   }
+  ],
+  "wall_s": 3.1
+ },
+ "fixture:ruth_exit:s3": {
+  "parquet": {
+   "edges.parquet": "e9d2b8913f793524d6c6d6c52c562c043ea01eb0a1a61e58d20181802cdccb1c",
+   "journeys.parquet": "8589381f3a17fe5e0218629e2d6e61db8773d3ea7567d78ae232c5da937cdebb",
+   "trajectories.parquet": "8542ebf08578f9fc32a288f600b07d97e0ec1aee21dd6a28e6180a44f5bdf702",
+   "vehicles.parquet": "a62555cf8bbbb221e99f245f1d9cdaa6eaa52f6228a7049d63add062b77de4f8"
+  },
+  "routes_sha": "0e171fdf4cfea0b59ad6ffa43046fb43c7971bebb00f641bf4c594a9264a0c51",
+  "meta_sha": "c3c0df5ead84e753718547ab9e5f931cb5b5dda12d9ed112ddfa16c438f1ecb8",
+  "meta_wo_config_sha": "6c90c8403d755d207dd8ab210dbfb8c2d27a2a59d801e9293eac9bae1a142ee6",
+  "metrics_sha": "3476e8c519c06da68dcf8ed53e4008140501d21329fe401243c5fcc89fe08d4e",
+  "config_hash": "6576b0645463",
+  "n_collisions": 0,
+  "ramp_to_ramp_shares": null,
+  "weave": [
+   {
+    "ramp": "ruth",
+    "n_missed": 1,
+    "n_missed_exit": 1,
+    "n_entrant_took_exit": 0
+   }
+  ],
+  "wall_s": 1.2
+ },
+ "fixture:ruth_entr_fleet:s3": {
+  "parquet": {
+   "edges.parquet": "a3e764b4cadc9f3bbe7321dfae2e6246e2c2cd3d51b426ce59d2a8ee881a45c4",
+   "journeys.parquet": "1e380b739a759fb1fa67dfaa353e391328ff7fae9c643c459deeb9e31ae95bad",
+   "trajectories.parquet": "7177f80555fb663decf4fc458dd63967bb862ea969d0e0e82cdf58df17b941fb",
+   "vehicles.parquet": "06c8c547dc2ed9f91174d4329805e916f2c130183b5cd3f13336501c50873638"
+  },
+  "routes_sha": "05e1a84c52143430ef7103a6cda69098fd686ec52acac792885487ddcd6d1787",
+  "meta_sha": "aa286317269edb949c2593f4304dab851a7b66f5ba0e2a6fdfc505c04b5417b8",
+  "meta_wo_config_sha": "75278239abf14b862a5330a35c04b4648ecf541f69f13e7019f54e9e1698f9e7",
+  "metrics_sha": "d9551b61130b2ee8eee8f80ef72ab499c24da1dc2ed51d20f112cd8667f487e1",
+  "config_hash": "80630d3ced14",
+  "n_collisions": 0,
+  "ramp_to_ramp_shares": null,
+  "weave": [
+   {
+    "ramp": "ruth",
+    "n_missed": 1,
+    "n_missed_exit": 1,
+    "n_entrant_took_exit": 0
+   }
+  ],
+  "wall_s": 2.1
+ },
+ "fixture:ruth_exit_fleet:s3": {
+  "parquet": {
+   "edges.parquet": "586d464d8d11d842c788355fd335c3ba5234e75a5cd4cd1c6455c69bae3b23cb",
+   "journeys.parquet": "38f2bd6413aab4194be841e9157a3521149bae26ff09fd9bbe851d592bf73b33",
+   "trajectories.parquet": "b39cc43c49af2235b32655200f24cc46905c7a253f571396e9b8f19dda591410",
+   "vehicles.parquet": "58309aaf3c91e86ae9eb664b6a81f303b9be59dfa26d2d972fc8333c1117b7a6"
+  },
+  "routes_sha": "db0c9988ca56e4bda593569997c3676d64f6a6493dc6d0076961460aa642914a",
+  "meta_sha": "ffe2c69477d9130a46bb9c21a5b867751ec29926d009f2b5d9d3c3fa122b2a8b",
+  "meta_wo_config_sha": "7a66c097759dfcff6c7c01d424d9c019c0be5541bef9f4db1c35c14ffdbfdd94",
+  "metrics_sha": "0ef0cc62fc0e88eb6e18666511c788db539278163792030fe2e5cb29a04d00eb",
+  "config_hash": "b8d564d7b281",
+  "n_collisions": 0,
+  "ramp_to_ramp_shares": null,
+  "weave": [
+   {
+    "ramp": "ruth",
+    "n_missed": 15,
+    "n_missed_exit": 15,
+    "n_entrant_took_exit": 0
+   }
+  ],
+  "wall_s": 1.5
+ },
+ "fixture:ruth_exit_fleet_271:s3": {
+  "parquet": {
+   "edges.parquet": "f97d5b4c585e62a6f0d73758468092dd2a340452014b4853ddd69a3cb5373307",
+   "journeys.parquet": "28521bb9df24d93208dc2f372f34ca08f81b3d1bd5a1b9cd56f90cf35f7f5c9b",
+   "trajectories.parquet": "fccf0030a4b57e39efb2465cc4a7f0f6d43b1d1a06e25a1fe201271dd63648b0",
+   "vehicles.parquet": "fc84a741231c0327ead113220a6ef5b8690424f62d761b468edcd5b4c440a4f9"
+  },
+  "routes_sha": "db0c9988ca56e4bda593569997c3676d64f6a6493dc6d0076961460aa642914a",
+  "meta_sha": "45163f6267968d2651552fc45f4566c6c9021bf51157f98cd4f6adbfceb37e9f",
+  "meta_wo_config_sha": "c7b830839c18c19b633c351ff65037e8287e480af012b53b2fef697d55747dca",
+  "metrics_sha": "64e42231f8adbe70a7b33e4361c87bfc0a9ea38e24ab1400912205ede1ad19a9",
+  "config_hash": "af93b2db8a4f",
+  "n_collisions": 0,
+  "ramp_to_ramp_shares": null,
+  "weave": [
+   {
+    "ramp": "ruth",
+    "n_missed": 8,
+    "n_missed_exit": 8,
+    "n_entrant_took_exit": 0
+   }
+  ],
+  "wall_s": 1.4
+ },
+ "fixture:weave_moderate:s3": {
+  "parquet": {
+   "edges.parquet": "80e6dd6d3b07cfb45a5df19175f9986099bdb0787a75e637ca4bdbed30dc9b8d",
+   "journeys.parquet": "73a1937e294e1e3a61a1bc98c432267eae39f53e460fa873df24c5a67cb0c894",
+   "trajectories.parquet": "74db31e31081ead25028e3b818e6e4c86a3c09dd25c601fba8c2ac3694c881f4",
+   "vehicles.parquet": "4c3529be2b1cbb9de1f9240d755a06d81aafa1257cd906820fb50f98469c2cb0"
+  },
+  "routes_sha": "62f85f5cc93987215f6bb5ffa89c6939fb269db5f080c455f507e601959230f3",
+  "meta_sha": "b06b8ff8f8c7eed5011e343617a92bbda573c9e6013f6b3ac1938ad25c9c198f",
+  "meta_wo_config_sha": "98ed4c190305570efe49b259a3d5f4aa9a3c2aa3604ddac2cd11e00532363fbb",
+  "metrics_sha": "7640b076e302a659bbfaf9872191efaa7bad16d7a52bfb82bba307dbe7adb7e7",
+  "config_hash": "d70df12da0fb",
+  "n_collisions": 0,
+  "ramp_to_ramp_shares": null,
+  "weave": [
+   {
+    "ramp": "weave on-ramp",
+    "n_missed": 0,
+    "n_missed_exit": 0,
+    "n_entrant_took_exit": 0
+   }
+  ],
+  "wall_s": 0.4
+ },
+ "fixture:weave_golden:s3": {
+  "parquet": {
+   "edges.parquet": "42fa90101a624e92cc6c75b0caf390a4b93fccfbde29ab30336a3b3d0f37db18",
+   "journeys.parquet": "0b9a671a1773855e3074be68d0cbbbb31bf29704ff42e9d1f66b647a449a00df",
+   "trajectories.parquet": "ddd08a3665b9e7d7c6f120c05ca6b062324dea5ae70dd7be2d9133a7fd61a267",
+   "vehicles.parquet": "3b78af677cbb41623945d3bbfa01310cd152ca9da9aa5270deae63ebce125c75"
+  },
+  "routes_sha": "b94e2f7f163c82082dd0d0e06a095e2cadb793b254e9ccddc0136319bc82f349",
+  "meta_sha": "2d5116a748ae730f24f2dd39e0b5055c6e66352de6cc011b993feb4214c46bb4",
+  "meta_wo_config_sha": "c69b294e87c76fc47e8d3d7ef6a2ede06ae60e6796c41c1e1d136cf0ccfc8d3d",
+  "metrics_sha": "6a4a4aa88e5eb3080277c33fa79969d6d778101a94f1ee2b4d4c4d172608be61",
+  "config_hash": "95579dce2b8e",
+  "n_collisions": 0,
+  "ramp_to_ramp_shares": null,
+  "weave": [
+   {
+    "ramp": "weave on-ramp",
+    "n_missed": 0,
+    "n_missed_exit": 0,
+    "n_entrant_took_exit": 0
+   }
+  ],
+  "wall_s": 0.4
+ },
+ "fixture:mcknight:s3": {
+  "parquet": {
+   "edges.parquet": "4da9e979e63909e5faea42a48b0010986c5c01391f01dabd38e57e61ce2b5950",
+   "journeys.parquet": "20be20fc921697012c8c94f50a83d962570a4b6a95c29ab7c466fe08c79a18f8",
+   "trajectories.parquet": "d9553f3f91adf951d96af35c01838e87e808ae17c6a0ed401890799438f97ff5",
+   "vehicles.parquet": "4fd6093483794a62dc54cc8ef36c124213d3e234ef1897331941e3920ed11507"
+  },
+  "routes_sha": "818a3fbacf895013ec0d80f6024ee334ee8fd0f2e512a62ee4706f61c9d554cd",
+  "meta_sha": "ab718de00d8778bb11b5cae87f75b5a7863d7e3f258dae896f2f03eb86862203",
+  "meta_wo_config_sha": "9613a0b970e54f703877f9e6567965c4fdfe13ee237850bb6eae73c1eb34fbac",
+  "metrics_sha": "db86c997ea67307f5674a52d1b2027a8958865703ffd8c51f63e217ab77207ce",
+  "config_hash": "ea64ec7969a9",
+  "n_collisions": 0,
+  "ramp_to_ramp_shares": null,
+  "weave": [],
+  "wall_s": 2.4
+ },
+ "fixture:mcknight:s4": {
+  "parquet": {
+   "edges.parquet": "542ad5e35786fda6fd85b120a6486f08a923f46ecb4f8e032d5ef1d5596d956a",
+   "journeys.parquet": "ef791c402bdcd741d2fc2da9400cfb9a28235aba9f3cdd20fdc9e25903c3defc",
+   "trajectories.parquet": "49f867c1b3a7b2c813c9c4a8217edfc9b9190eabb7be9b74a3a4dd871271fa03",
+   "vehicles.parquet": "2e70ff1d0a4dc80b09a041f0a59dd0f53d96d52df10bedfdc333b24ddd5a3247"
+  },
+  "routes_sha": "658dc4ab145ddfc623991a91407761d4d6b0ba99f648efb31cecae4cbd2ccfcb",
+  "meta_sha": "862daceb769d64d302cd4b2bc4d1648598299c95ef8f4d16bc238326bf59bd23",
+  "meta_wo_config_sha": "f3c760404ac2ec125c45efbc937142e1a33aeaf2b6f323b18dde8dc7df76371d",
+  "metrics_sha": "0b318173ca3a90fb3932e055d4b86d48c5fd373838b7b99b430eccc5d9eb2d8e",
+  "config_hash": "c1e9ceba2181",
+  "n_collisions": 0,
+  "ramp_to_ramp_shares": null,
+  "weave": [],
+  "wall_s": 2.4
+ },
+ "fixture:mcknight:s5": {
+  "parquet": {
+   "edges.parquet": "ddd2b4d1350a1eb05d2a304f9ae957f3defb9805dc55953e3255425ff1961c8d",
+   "journeys.parquet": "89f90c9f2fa9507574ea725a3e76fd6864246f5357bdf27868634d57b3432002",
+   "trajectories.parquet": "2dd9663e8657bc20ef91f6487c589ece66774179946def1accec26c51cc61a4d",
+   "vehicles.parquet": "a95186d6931c1e47f892c976d2d5d1b442a5e5458816b61bdaae4b40d124cbf5"
+  },
+  "routes_sha": "07499c6e867e73594439859dd9a912db135942ed35dfbb8243f94f1e7d9ad1e7",
+  "meta_sha": "4dfee0c34c453c05e74490ffe58772d0d1ad7b226a18604714adab352e0dcb73",
+  "meta_wo_config_sha": "c634ef4eccf7904c02d59f8e963f54c43bdbe58a90905e2a5abf82141763d6f8",
+  "metrics_sha": "277186600a80048a4af53e74693a6582ff85204722855f04a0e2c976778946c2",
+  "config_hash": "071729635baa",
+  "n_collisions": 0,
+  "ramp_to_ramp_shares": null,
+  "weave": [],
+  "wall_s": 2.3
+ },
+ "fixture:th61:s3": {
+  "parquet": {
+   "edges.parquet": "d5c528a29b3bd5d8c1107fde241df51be2917559240e3d4f23afe0f514e803b9",
+   "journeys.parquet": "941118ce0f4cc7c08cdbbfd17b950e70cbcf2d519fd5ff96346e770c3f1f374c",
+   "trajectories.parquet": "c1806e1a8d2dfcdc773985f964ed7a85d61e9e9c75ff2ac0e50c7fa2f1e887b1",
+   "vehicles.parquet": "5831d2fd48d0afc6bcdfb106b185ee1b9cb0bac9b0be0f81354ee1df2ee24534"
+  },
+  "routes_sha": "e6bb89c05b3f97f4c5000c5633c8e1eaad3046db61ab7635af0d0dc9c99f7f88",
+  "meta_sha": "a6522cb2ffb9453ada888b514a7e881fcbe7b6a5a5dafe018f945fa10a4a7813",
+  "meta_wo_config_sha": "d2d7cc66abc8c56417f0e848c1f26fb6e37cee08510116387ce9d839603cdd10",
+  "metrics_sha": "202d7f8049e58d067e7ccce13585ef7b812b8d7e9eb1528fe91bc1b85141b6ee",
+  "config_hash": "3b3f6b35beb1",
+  "n_collisions": 0,
+  "ramp_to_ramp_shares": null,
+  "weave": [
+   {
+    "ramp": "th61",
+    "n_missed": 4,
+    "n_missed_exit": 4,
+    "n_entrant_took_exit": 0
+   }
+  ],
+  "wall_s": 32.6
+ },
+ "fixture:merge_golden:s3": {
+  "parquet": {
+   "edges.parquet": "46261647f6e8e5ac064a0f89e20fb1fe0551806a3cd2e8ab7b763573cb796c7c",
+   "journeys.parquet": "170d3a1664b87ea81747b86edf4b4e258580b2d45a829fd43ed2f10b51611311",
+   "trajectories.parquet": "b287e8857697082635a4703061846e2af331345c771c61b73cf2b5b5d0c006ae",
+   "vehicles.parquet": "03b6b7752b6587e406064699d3d801b3a4b44588b0c317440836df56f8d6eeeb"
+  },
+  "routes_sha": "0ee9e7bccd7265b9b056b4c069e149714d4489d3c2ec98a59b83ece389f780db",
+  "meta_sha": "9dea69012932305dfdbc46d994e8a67b88f191c919fdb6d4ddb504427c4e09b1",
+  "meta_wo_config_sha": "7b50fa0aa286107bc3aafc48aa5f3a160c7c4f8c18d904186ce9d797ba681a3e",
+  "metrics_sha": "b60e1ace5f2351e91a3a1056fdd2964ebebc4cf801547d29ec2779d2ad48896c",
+  "config_hash": "61b1cbd0c9fe",
+  "n_collisions": 0,
+  "ramp_to_ramp_shares": null,
+  "weave": [],
+  "wall_s": 0.6
+ },
+ "th52_dc:s3": {
+  "parquet": {
+   "edges.parquet": "f0ed4629afe03516431d61a9dba53f3dbb5a0e9501b1c0d20e35911b6e5e8aca",
+   "journeys.parquet": "27ff7f1b86e559d640b8f974af9e4c7e7b350fa69d68e38635aa020aefdda484",
+   "trajectories.parquet": "6196d2ed77ee3879ea18b804c3da4878de28620baad33f6db5dc31f6f08e6a30",
+   "vehicles.parquet": "6978a166aa6c7124bdc778f9e87f7c9c4256948efc4c7458fefb33d061d9907f"
+  },
+  "routes_sha": "0e9e0cb2b556a0a933fe3b624f67e6659963307888fa1e4cba163c1cfb2208bd",
+  "meta_sha": "742481c3b55b3bb988d9e3a1cc9cc87ff4a5a17e8443ba0de05a3ccbde4e4472",
+  "meta_wo_config_sha": "ba225ebf8d2674ded1240bc39aea4584ad59e3c1da597bd2a9f89b9cda1f6f8b",
+  "metrics_sha": "8ec541fd8599df36eaff4ce323202be8616c087552c60a26b744d64b1f0c85f1",
+  "config_hash": "fd7719a995d5",
+  "n_collisions": 0,
+  "ramp_to_ramp_shares": null,
+  "weave": [
+   {
+    "ramp": "th52",
+    "n_missed": 3,
+    "n_missed_exit": 3,
+    "n_entrant_took_exit": 0
+   }
+  ],
+  "wall_s": 3.5
+ },
+ "th52_dc:s4": {
+  "parquet": {
+   "edges.parquet": "72390929d6289c6bc194c3132bc1b281894cfcc98ee4164ec5eb70a9601e8a28",
+   "journeys.parquet": "85be203c873600c7122db68c53a9beac093c98820576a1de3680ef3b4415f1c7",
+   "trajectories.parquet": "b381be89858ae907a60d7a32920f1667e4abd2fb7ebca4529476e07aeb183c74",
+   "vehicles.parquet": "fe89268018080b851de8e58c6d744b6318ceea94f0fd6b08b672cae09e7ac6b3"
+  },
+  "routes_sha": "59cc128964c7c079fb54f38b48334c17a46f3d3a7e67b201452e7737a8c16528",
+  "meta_sha": "7795ce2260c38034ef8fabf484fb61874657ef296f58473f2fd9e6f346dd64b0",
+  "meta_wo_config_sha": "9d13b6980da11a4ec922093011522cced6d36bda8f08412125a3f3fbfec13778",
+  "metrics_sha": "5748dcd4127bc07eee32298b165a200a6062a9f8813f7ea64064b2ff2e174f02",
+  "config_hash": "3e824270fc00",
+  "n_collisions": 0,
+  "ramp_to_ramp_shares": null,
+  "weave": [
+   {
+    "ramp": "th52",
+    "n_missed": 7,
+    "n_missed_exit": 7,
+    "n_entrant_took_exit": 0
+   }
+  ],
+  "wall_s": 4.5
+ },
+ "th52_dc:s5": {
+  "parquet": {
+   "edges.parquet": "4dcd56e90664b7a48c5476ef1da51e6d7fdb49c4221f13cc448890943ff5976a",
+   "journeys.parquet": "9dee31cf0359826373b21da4e2ebe3472c128e05d1abaf685a4c030f5edee5d2",
+   "trajectories.parquet": "9d58d879efb62f6c4e4f2ad1879aef98b32c1ae4b026b8e0dfa61b340c51a05b",
+   "vehicles.parquet": "a44e4b9191d8a7a5deb17c613ad67ef1d1a20ce3d7cb52838707cd60899c8363"
+  },
+  "routes_sha": "3d3d8a68ae252491879de51017bb1bb9527106358fc79ca7bb99fb71fdd9e56f",
+  "meta_sha": "e4f32cd7be7806c34e3b0d24b0d4a0b8df3a1d864b21a919ee278aa4f808ad68",
+  "meta_wo_config_sha": "5f9720a64fb85b0a52b0f46214dafd934ac8b725ae424f475a5407d224c2ff97",
+  "metrics_sha": "407031f8689ae3bcf43b96e843e91070df979e7fdeefc0d13d92db130688e409",
+  "config_hash": "ffb7069019c7",
+  "n_collisions": 0,
+  "ramp_to_ramp_shares": null,
+  "weave": [
+   {
+    "ramp": "th52",
+    "n_missed": 0,
+    "n_missed_exit": 0,
+    "n_entrant_took_exit": 0
+   }
+  ],
+  "wall_s": 4.2
+ },
+ "measured:th52_corridor:s3": {
+  "parquet": {
+   "edges.parquet": "90fb2b4f62895408ed6b7e677e8304ff1b6a39e44e9363998b3e19acc11c8a6d",
+   "journeys.parquet": "b29491258abc3d450cf229c21ca0f2e1ce41dbc478a446fa57327e949abedaea",
+   "trajectories.parquet": "eea4a3dcc18b95e2640cffdc4dc4ef0264c1fccb47c46d7d1afcabf5bcf9dc8e",
+   "vehicles.parquet": "f7fd20ae5552f5dbd06950c9cd16543c61a183f5b3923ac869819c4a408d2cd9"
+  },
+  "routes_sha": "65be9ac7cb3a9f31ae3463f4180f1e8c595a54d3f811254673becc759b8c80de",
+  "meta_sha": "83cd79a0bb7e6faf98f5dc6cc28fd36747f5403cceb011a82b48b16ae8b1aeaa",
+  "meta_wo_config_sha": "4f292c132c1de20b72cf77807d3dfa9ae2d124aff1fb4c09ece9f4cdba59d387",
+  "metrics_sha": "b072eaac6a4b914b1585b6e290ec8b8239d80343a4bb31fef24fa94a72560e0a",
+  "config_hash": "31b5b484178e",
+  "n_collisions": 0,
+  "ramp_to_ramp_shares": null,
+  "weave": [],
+  "wall_s": 4.7
+ },
+ "measured:ruth_entr:s3": {
+  "parquet": {
+   "edges.parquet": "449b0e6775ff6c4a2d9a7803aa81c8870d547a382383214336c19f1c25221999",
+   "journeys.parquet": "ddb403355c6722f6599b13e78abb0407fa74e79615c55dc7d796db119cf6392e",
+   "trajectories.parquet": "75c3f3dcb8ad83ece702bf57a68b8a98c52766b8152df6e662acbdbe3723a694",
+   "vehicles.parquet": "35969c781c42c9787138d3b510e71ddb00a0c80673345bc17b56273f60899bb1"
+  },
+  "routes_sha": "b769d2864293da388328c33e6c8bdb38599563b093d89d1661fd0efc4bd985f1",
+  "meta_sha": "a557ed2f514bcd7d3cfca2c333989411fb870f9e30a4a88df417129e95440b41",
+  "meta_wo_config_sha": "5caab3ce0558e5fd85be6fb808d82024732e67684a337de29518a86fef04909a",
+  "metrics_sha": "492ee0c6f698962f1c159fa3362fd4fae6249721410139fb11a1e45f9ade71d4",
+  "config_hash": "fe6b664761d5",
+  "n_collisions": 0,
+  "ramp_to_ramp_shares": null,
+  "weave": [],
+  "wall_s": 2.0
+ },
+ "measured:mcknight:s3": {
+  "parquet": {
+   "edges.parquet": "ef075f5cfd42e849d401c2fe9f7e625c0f53ba7a862939c8e64fdd550a2a8e79",
+   "journeys.parquet": "828500151cb5d216b66dd09f29b4a75bf8bf940b79a51a3c6aa86fde013aa1b7",
+   "trajectories.parquet": "3f235f8c4f479d4924c0e036dc0b460798fcffac557b4400e2fa1e627e19c76a",
+   "vehicles.parquet": "e81da5c443560cdebfdc86ce02b78df4e0a528a76e9981c12ff36182f4fb8ca0"
+  },
+  "routes_sha": "818a3fbacf895013ec0d80f6024ee334ee8fd0f2e512a62ee4706f61c9d554cd",
+  "meta_sha": "b33730ac9c2110cedb316afff5fcbc107a5df683fd6a17370fe5016580b5dada",
+  "meta_wo_config_sha": "7645f2f71f629b1db44c61ccc7f4339089b13fdf69b2ec8ec9f74346eca2bd3b",
+  "metrics_sha": "89901cf7bec78a0a4605ccd0692fd75a7f38e26f5f3cc370331982825c394f85",
+  "config_hash": "799c5b176b0c",
+  "n_collisions": 0,
+  "ramp_to_ramp_shares": null,
+  "weave": [],
+  "wall_s": 2.6
+ },
+ "th52_dc_explicit_none:s3": {
+  "parquet": {
+   "edges.parquet": "f0ed4629afe03516431d61a9dba53f3dbb5a0e9501b1c0d20e35911b6e5e8aca",
+   "journeys.parquet": "27ff7f1b86e559d640b8f974af9e4c7e7b350fa69d68e38635aa020aefdda484",
+   "trajectories.parquet": "6196d2ed77ee3879ea18b804c3da4878de28620baad33f6db5dc31f6f08e6a30",
+   "vehicles.parquet": "6978a166aa6c7124bdc778f9e87f7c9c4256948efc4c7458fefb33d061d9907f"
+  },
+  "routes_sha": "0e9e0cb2b556a0a933fe3b624f67e6659963307888fa1e4cba163c1cfb2208bd",
+  "meta_sha": "742481c3b55b3bb988d9e3a1cc9cc87ff4a5a17e8443ba0de05a3ccbde4e4472",
+  "meta_wo_config_sha": "ba225ebf8d2674ded1240bc39aea4584ad59e3c1da597bd2a9f89b9cda1f6f8b",
+  "metrics_sha": "8ec541fd8599df36eaff4ce323202be8616c087552c60a26b744d64b1f0c85f1",
+  "config_hash": "fd7719a995d5",
+  "n_collisions": 0,
+  "ramp_to_ramp_shares": null,
+  "weave": [
+   {
+    "ramp": "th52",
+    "n_missed": 3,
+    "n_missed_exit": 3,
+    "n_entrant_took_exit": 0
+   }
+  ],
+  "wall_s": 3.6
+ },
+ "th52_dc_share05:s3": {
+  "parquet": {
+   "edges.parquet": "0da9db22f4a0810d56a810477e482fcd074ac385a12541348b113fefb974343c",
+   "journeys.parquet": "64252320134c0c4c73444062b98e11ea61c090efe2a91173bbba0196ec55df83",
+   "trajectories.parquet": "a1c84e21ac91eaba671f9e59cd88e1e1f81e4041fd5efbf14f7a536e11db38f0",
+   "vehicles.parquet": "dd91fedbe05970ffb2fe3f0494ceb7b7eae81b1d350bf669e3fb918523644177"
+  },
+  "routes_sha": "07d9c1297ca4a593d53afd413f2757d5a1ecf625c37f434d703b5f1798985082",
+  "meta_sha": "e98233a81ea5cf30e0be9bf6d05bc6daca77688c1ba8d9c6e4123d30a974acbb",
+  "meta_wo_config_sha": "7129ac986c5c62ddea941441204df14288bf1304d46cca8e327ecc5fe2170125",
+  "metrics_sha": "0a46117c74d763cd488e04ed9e0e5fa737de690a79f6c02672074a3855a802a9",
+  "config_hash": "515f4d54e2ec",
+  "n_collisions": 0,
+  "ramp_to_ramp_shares": [
+   {
+    "ramp": "th52",
+    "exit_ramp": "th52 exit",
+    "share": 0.5,
+    "window_s": 300.0,
+    "n_entrants": 407,
+    "n_ramp_to_ramp_drawn": 128,
+    "share_drawn": 0.3144963144963145,
+    "n_ramp_to_ramp": 204,
+    "share_realized": 0.5012285012285013,
+    "n_swapped_to_exit": 76,
+    "n_swapped_from_exit": 0,
+    "n_exit": 435
+   }
+  ],
+  "weave": [
+   {
+    "ramp": "th52",
+    "n_missed": 1,
+    "n_missed_exit": 1,
+    "n_entrant_took_exit": 0
+   }
+  ],
+  "wall_s": 3.3
+ },
+ "th52_dc_share05:s4": {
+  "parquet": {
+   "edges.parquet": "4ebea3dbb4b66df3a0f5d26d1ade7054a9c28b20a3e6f84628c210febd62a71e",
+   "journeys.parquet": "9813a062b0d3b7ab6fb2e441c5646feb9be7287bee434c1e13766664cdacc893",
+   "trajectories.parquet": "746a8504bba7b8fa0124e73c0ef938b6fdf8e723400a5d74481a1b26ff91d611",
+   "vehicles.parquet": "d07ba51ce57d5ca3e21bcf4b0fcd04e170b0de8b271297be2ae7a7a62db21fd4"
+  },
+  "routes_sha": "2842b33afbd421b89bad7214edb2499375cee23a14ed85587202ea0d9cc171ec",
+  "meta_sha": "64b22f4cb0af8c1a7e5f707badf1046e48ec945e8acc8d0d85ce0aa871d2d19e",
+  "meta_wo_config_sha": "afe0fa5128bbaabe3012f138b06be2f9d0d0f86f1e0fe01b0f6f6bf451eaf16a",
+  "metrics_sha": "07534c2517b01c9e386babdeeb5552b46278119e60552a53f21629e3a56a7abb",
+  "config_hash": "68650384b645",
+  "n_collisions": 0,
+  "ramp_to_ramp_shares": [
+   {
+    "ramp": "th52",
+    "exit_ramp": "th52 exit",
+    "share": 0.5,
+    "window_s": 300.0,
+    "n_entrants": 407,
+    "n_ramp_to_ramp_drawn": 124,
+    "share_drawn": 0.3046683046683047,
+    "n_ramp_to_ramp": 204,
+    "share_realized": 0.5012285012285013,
+    "n_swapped_to_exit": 80,
+    "n_swapped_from_exit": 0,
+    "n_exit": 485
+   }
+  ],
+  "weave": [
+   {
+    "ramp": "th52",
+    "n_missed": 5,
+    "n_missed_exit": 5,
+    "n_entrant_took_exit": 0
+   }
+  ],
+  "wall_s": 3.4
+ },
+ "th52_dc_u0:s3": {
+  "skipped": "these packages have no per-window form (RampToRampRange)"
+ },
+ "th52_dc_u0:s4": {
+  "skipped": "these packages have no per-window form (RampToRampRange)"
+ },
+ "th52_dc_u0:s5": {
+  "skipped": "these packages have no per-window form (RampToRampRange)"
+ },
+ "th52_dc_u05:s3": {
+  "skipped": "these packages have no per-window form (RampToRampRange)"
+ },
+ "th52_dc_u1:s3": {
+  "skipped": "these packages have no per-window form (RampToRampRange)"
+ }
+}
