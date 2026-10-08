@@ -1530,6 +1530,18 @@ scripts/gcp/launch_i24_pipeline.sh --vm flowstate-p25 --machine n2d-standard-16 
 - I-24 has no weaving section, so Amendment 4's weave defaults do not act on these runs. Their hashes moved by the
   policy version alone, and the reference re-run checks this.
 
+#### 8.4.8 C7b round (p23) — 2026-10-08
+
+Stage `p23_c7b` (04:18–06:31 UTC, code 8ea59ec, policy 4); readout `artifacts/i24_consistency_c7b.json`, written up in
+docs/I24_CONSISTENCY_C7B.md §11. The B2 re-run reproduces p13's battery exactly (every `reference_reproduces_p13`
+check true). By §8.4.3's R1–R5 against it, the insertion shift (`rcs`, 75.7 s) holds all five. The coverage-consistent
+demand at B2's planned level (`rcc`, `rccs`) fails R2 (realised 0.956 / 0.958 against 0.967) and R4 (2-h GEH at
+2,200 / 3,200 m 4.09 / 4.88 and 3.92 / 4.68 against 3.86 / 4.63). All 80 runs: 0 collisions, no locks. On the
+observed lane set B2's 2-h GEH is 2.43 at 1,000 m (8.30 on every lane) and 8.21 at 4,800 m (1.28): the fifth lane
+hid a 628 veh/h shortfall there. The fixed rule selects `rcs` (pooled lane-set station-hour share 54.58 % against
+B2's 53.75 %, two of 240 comparisons), so B5 (p15) refits `rcs`. Nothing is adopted, and every arm still fails the
+gate (`rcs`: 5-min GEH row 31.25 %, speed RMSPE 0.360, no backward wave).
+
 ### 8.5 Corrections the record needs (owner's call)
 
 - docs/DISCHARGE_CALIBRATION.md §1: "The I-24 fixture's 1,460–1,470 × 4 lanes =

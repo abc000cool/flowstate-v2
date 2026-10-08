@@ -1983,7 +1983,7 @@ p15_steps() {
   local -a carried=() lanes=()
   [ -n "$P15_CARRIED" ] && carried=(--carried-scale "$P15_CARRIED")
   case "$P15_SECTION_LANES" in
-    all) ;;
+    all) lanes=(--lane-crossings) ;;   # crossings recorded by lane either way (the lane-set share is reported beside the row)
     observed) lanes=(--lane-crossings --section-lanes observed) ;;
     *) say "p15: --p15-section-lanes must be all or observed, not $P15_SECTION_LANES"; return 1 ;;
   esac

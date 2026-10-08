@@ -1,0 +1,2371 @@
+{
+ "schema": "flowstate.i24_consistency_c7b/1",
+ "created_at": "2026-10-08T06:31:30+00:00",
+ "code": "8ea59ec94ecddec569337c116a8116c5d475883a",
+ "vm_snapshot": "264b7ceb9fa4f901cf0d89cb11287616de7c7283",
+ "code_dirty_paths": [],
+ "code_sha256": {
+  "artifacts/i24_consistency_2026-10-07/harness/corridor_c7b.py": "f473cee7cc01aecbbd1c124f4272d30931c6c1e4aedd958b5bb99599bdf63d03",
+  "artifacts/i24_discharge_2026-10-07/harness_b2/corridor_b2.py": "5febc94cf36b6557d81ddea0027a43eef51c3902c8d950494cb75b3810fa2ffa",
+  "scripts/i24_fit_demand_scale.py": "27eb88d45bb6150245a692376081e1737184762e32d29606c14c6e200c733f98",
+  "scripts/i24_geh_diagnosis.py": "abaadd11aaf60d472ff4b6397bb0d48ad92de2ee48c9bbde46a69c9925f1f162",
+  "scripts/i24_build_replica.py": "da9e5855033ae3d0cb36999c430e0c062747071b79842a281d0ab4a9ba521205",
+  "scripts/i24_validate.py": "b941574d6a3f83ce4cd96605b9587eeab9516337274046b24fe1c71b360ccdad",
+  "packages/flowstate_core/flowstate_core/config.py": "24348b900923fd095a7d2f47ccd0df94268b6b4d52ea93e7e926cbfc2d555029"
+ },
+ "config_hash_policy": 4,
+ "spec": "docs/I24_CONSISTENCY_C7B.md (pre-registered 2026-10-07, before any run of the round)",
+ "status": "PROPOSED corrections, none adopted; the selection names the arm B5 refits, adoption is the owner's",
+ "level": "b2",
+ "labels": {
+  "b2": "dc_refit_rc_p23",
+  "rcs": "dc_refit_rcs",
+  "rcc": "dc_refit_rcc",
+  "rccs": "dc_refit_rccs"
+ },
+ "inputs": {
+  "p13_battery": {
+   "path": "artifacts/i24_validation_dc_refit_rc.json",
+   "sha256": "9b40c583edd129629446e1c606fabda8be5a49a19123cb741f04d87ea7162be3"
+  },
+  "count_check": {
+   "path": "artifacts/i24_count_consistency.json",
+   "sha256": "ea403bcf1b90b446688d2406c373ac0be6ec77944e385d2557985eedf81ab2a0"
+  },
+  "rc_inputs": {
+   "path": "artifacts/i24_replica_inputs_flow_rc.json",
+   "sha256": "5b497b0a050b2bd521740790a202aa3cd5cb45442b01e11a2a16bbd90161658b"
+  },
+  "coverage": {
+   "path": "artifacts/i24_coverage.json",
+   "sha256": "e5fd9b3979e5542e1029aa547697a9e27ada837c06b35b808841b6bd217fdaa5"
+  }
+ },
+ "batteries": {
+  "b2": {
+   "path": "artifacts/i24_validation_dc_refit_rc_p23.json",
+   "sha256": "14771142d57bcefb888f27620e7b3db652ce51d8f5d6f2861996ac9352cdbf1b"
+  },
+  "rcs": {
+   "path": "artifacts/i24_validation_dc_refit_rcs.json",
+   "sha256": "240a13c72dcfc8f96daa0356911363124a11d03e91f604c0e4b6ad167e04985b"
+  },
+  "rcc": {
+   "path": "artifacts/i24_validation_dc_refit_rcc.json",
+   "sha256": "fdc692c7c631e6f021ccf3c561c7f69fa542813407e4a6134d660f5391a34637"
+  },
+  "rccs": {
+   "path": "artifacts/i24_validation_dc_refit_rccs.json",
+   "sha256": "f8927c1807e9f201551d5ac0df1be8fbec6312dbe919720b5c17db6c70abdf05"
+  }
+ },
+ "shift": {
+  "shift_s": 75.7,
+  "exact_s": 75.69550762865678,
+  "distance_m": 2452.5043879248387,
+  "v0_ms": 32.39960289263415
+ },
+ "planned_over_target": {
+  "b2": {
+   "per_5min": [
+    1.0022878387600693,
+    1.002288417962514,
+    1.002289562172571,
+    1.046466617653214,
+    1.0464656804130548,
+    1.0464661919403242,
+    1.0618469951006355,
+    1.0618470092618517,
+    1.061848121507375,
+    1.1079849833973192,
+    1.107985085549994,
+    1.107985194298055,
+    1.1523903143649066,
+    1.1523898872446818,
+    1.1523905937367496,
+    1.1065693049363334,
+    1.1065675516765454,
+    1.106567281858927,
+    1.076470113870851,
+    1.0764707266297342,
+    1.076471794020133,
+    1.1168548586509752,
+    1.116856348035967,
+    1.1168553956234197
+   ],
+   "scale": 0.925
+  },
+  "rcs": {
+   "per_5min": [
+    1.0022878387600693,
+    1.002288417962514,
+    1.002289562172571,
+    1.046466617653214,
+    1.0464656804130548,
+    1.0464661919403242,
+    1.0618469951006355,
+    1.0618470092618517,
+    1.061848121507375,
+    1.1079849833973192,
+    1.107985085549994,
+    1.107985194298055,
+    1.1523903143649066,
+    1.1523898872446818,
+    1.1523905937367496,
+    1.1065693049363334,
+    1.1065675516765454,
+    1.106567281858927,
+    1.076470113870851,
+    1.0764707266297342,
+    1.076471794020133,
+    1.1168548586509752,
+    1.116856348035967,
+    1.1168553956234197
+   ],
+   "scale": 0.925
+  },
+  "rcc": {
+   "per_5min": [
+    1.0804119366362963,
+    1.0804121606756225,
+    1.0804132720767894,
+    1.0804125013374355,
+    1.0804132621835874,
+    1.0804124919696703,
+    1.0804123495544822,
+    1.0804121666387727,
+    1.080412438521012,
+    1.0804128756838018,
+    1.0804135886677777,
+    1.0804126728946326,
+    1.0804133666173947,
+    1.0804128356030613,
+    1.0804126644528704,
+    1.0804135890022863,
+    1.0804127452834122,
+    1.080412592595923,
+    1.0804121052395332,
+    1.0804130811147912,
+    1.080413695100419,
+    1.0804131910635029,
+    1.080413255819372,
+    1.0804124108217736
+   ],
+   "scale": 1.080412746822078
+  },
+  "rccs": {
+   "per_5min": [
+    1.0804119366362963,
+    1.0804121606756225,
+    1.0804132720767894,
+    1.0804125013374355,
+    1.0804132621835874,
+    1.0804124919696703,
+    1.0804123495544822,
+    1.0804121666387727,
+    1.080412438521012,
+    1.0804128756838018,
+    1.0804135886677777,
+    1.0804126728946326,
+    1.0804133666173947,
+    1.0804128356030613,
+    1.0804126644528704,
+    1.0804135890022863,
+    1.0804127452834122,
+    1.080412592595923,
+    1.0804121052395332,
+    1.0804130811147912,
+    1.080413695100419,
+    1.0804131910635029,
+    1.080413255819372,
+    1.0804124108217736
+   ],
+   "scale": 1.080412746822078
+  }
+ },
+ "reference_reproduces_p13": {
+  "committed": {
+   "path": "artifacts/i24_validation_dc_refit_rc.json",
+   "sha256": "9b40c583edd129629446e1c606fabda8be5a49a19123cb741f04d87ea7162be3"
+  },
+  "checks": {
+   "config_hash": true,
+   "scenario": true,
+   "seeds": true,
+   "counts_per_replicate": true,
+   "demand_realized_fraction": true,
+   "n_collisions_per_replicate": true,
+   "segment_speeds_ms_per_replicate": true,
+   "backward_fronts": true,
+   "criteria_rows_but_no_locks": true,
+   "observed": true
+  },
+  "exact": true,
+  "differs": [],
+  "observed_fields_differing": [],
+  "no_locks": {
+   "status": "not recorded by p13; recorded here (reported, not part of the reproduction)",
+   "row": {
+    "value": 0.0,
+    "passed": true,
+    "evaluated": true
+   },
+   "locked_per_replicate": [
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false
+   ],
+   "p14_sidecar": "artifacts/i24_locks_p14_b2_ref.json",
+   "same_as_p14_sidecar": true
+  }
+ },
+ "readings": {
+  "b2": {
+   "summary": {
+    "scenario": "i24_replica_flow_rc_speedcal_dc_refit",
+    "config_hash": "7082bcea5442",
+    "scenario_file": {
+     "path": "scenarios/i24_replica_flow_rc_speedcal_dc_refit.yaml",
+     "sha256": "f5d59576a0e39daaf4cd0daeb60a697dc8261873cbdddb855f99a21af43b8ddb"
+    },
+    "collisions_total": 0,
+    "n_runs": 20,
+    "n_runs_recorded": 20,
+    "zero_collisions": true,
+    "realized_mean": 0.9665900000000001,
+    "realized_min": 0.9598,
+    "peak_sections": {
+     "2200": {
+      "model_veh_h": 6315.774999999999,
+      "target_veh_h": 6626.170833333333,
+      "geh": 3.858611832177049
+     },
+     "3200": {
+      "model_veh_h": 6267.05,
+      "target_veh_h": 6639.020833333333,
+      "geh": 4.630489069213626
+     }
+    },
+    "ramps": {
+     "Old Hickory Blvd on-ramp": {
+      "kind": "on",
+      "model_veh_h": 970.425,
+      "model_veh_h_ci": {
+       "mean": 970.425,
+       "lo95": 963.2435388340369,
+       "hi95": 977.606461165963,
+       "n": 20
+      },
+      "target_corrected_pooled_veh_h": 915.1424319348195,
+      "geh_vs_corrected": 1.8004545926925006,
+      "recorded_pooled_veh_h": 1064.7537041063672,
+      "geh_vs_recorded": 2.9570426681910065
+     },
+     "Hickory Hollow Pkwy off-ramp": {
+      "kind": "off",
+      "model_veh_h": 552.325,
+      "model_veh_h_ci": {
+       "mean": 552.325,
+       "lo95": 544.3730034920844,
+       "hi95": 560.2769965079157,
+       "n": 20
+      },
+      "target_corrected_pooled_veh_h": 581.1923237368231,
+      "geh_vs_corrected": 1.2125717320705107,
+      "recorded_pooled_veh_h": 593.8242433172837,
+      "geh_vs_recorded": 1.7335428849036962
+     },
+     "Hickory Hollow Pkwy on-ramp": {
+      "kind": "on",
+      "model_veh_h": 470.15,
+      "model_veh_h_ci": {
+       "mean": 470.15,
+       "lo95": 470.03997862436216,
+       "hi95": 470.2600213756378,
+       "n": 20
+      },
+      "target_corrected_pooled_veh_h": 442.6168182212329,
+      "geh_vs_corrected": 1.2888176588942262,
+      "recorded_pooled_veh_h": 686.721427028011,
+      "geh_vs_recorded": 9.00479040426737
+     },
+     "Bell Road off-ramp (collector road)": {
+      "kind": "off",
+      "model_veh_h": 275.0,
+      "model_veh_h_ci": {
+       "mean": 275.0,
+       "lo95": 270.2873311052806,
+       "hi95": 279.7126688947194,
+       "n": 20
+      },
+      "target_corrected_pooled_veh_h": 309.02513325198856,
+      "geh_vs_corrected": 1.9911274696483923,
+      "recorded_pooled_veh_h": 328.4030958999402,
+      "geh_vs_recorded": 3.074522428784228
+     }
+    },
+    "wave_speed_row": {
+     "value": null,
+     "passed": false,
+     "evaluated": true,
+     "detail": "detector: stack: slant-stack peak of the two-way demeaned field on 15 s x 75 m bins over front speeds [-40, -2] km/h in 0.25 km/h steps, peak/median contrast >= 3, edge peaks rejected; no backward wave detected"
+    },
+    "rmspe_5min": 0.3429117918496909,
+    "rmspe_15min": 0.25412709845352993
+   },
+   "all_lanes": {
+    "row_5min_share": 0.3056,
+    "station_hour_pooled_share": 0.6458333333333334,
+    "station_hour_pooled_per_replicate": {
+     "mean": 0.6458333333333333,
+     "lo95": 0.6178948077525676,
+     "hi95": 0.673771858914099,
+     "min": 0.5833333333333334,
+     "max": 0.75
+    },
+    "station_hour_replicate_mean_share": 0.5833333333333334,
+    "station_hour_table": [
+     {
+      "section_m": 200.0,
+      "hour": "06:30-07:30",
+      "obs_veh_h": 6003.7,
+      "sim_mean_veh_h": 5735.0,
+      "geh_replicate_mean": 3.508,
+      "replicates_passing": 20
+     },
+     {
+      "section_m": 200.0,
+      "hour": "07:30-08:30",
+      "obs_veh_h": 4831.4,
+      "sim_mean_veh_h": 5232.2,
+      "geh_replicate_mean": 5.65,
+      "replicates_passing": 4
+     },
+     {
+      "section_m": 1000.0,
+      "hour": "06:30-07:30",
+      "obs_veh_h": 6176.8,
+      "sim_mean_veh_h": 6581.6,
+      "geh_replicate_mean": 5.068,
+      "replicates_passing": 11
+     },
+     {
+      "section_m": 1000.0,
+      "hour": "07:30-08:30",
+      "obs_veh_h": 5326.4,
+      "sim_mean_veh_h": 6215.1,
+      "geh_replicate_mean": 11.699,
+      "replicates_passing": 0
+     },
+     {
+      "section_m": 2200.0,
+      "hour": "06:30-07:30",
+      "obs_veh_h": 7145.9,
+      "sim_mean_veh_h": 6506.2,
+      "geh_replicate_mean": 7.743,
+      "replicates_passing": 0
+     },
+     {
+      "section_m": 2200.0,
+      "hour": "07:30-08:30",
+      "obs_veh_h": 6106.4,
+      "sim_mean_veh_h": 6125.3,
+      "geh_replicate_mean": 0.242,
+      "replicates_passing": 20
+     },
+     {
+      "section_m": 3200.0,
+      "hour": "06:30-07:30",
+      "obs_veh_h": 6956.7,
+      "sim_mean_veh_h": 6432.4,
+      "geh_replicate_mean": 6.407,
+      "replicates_passing": 0
+     },
+     {
+      "section_m": 3200.0,
+      "hour": "07:30-08:30",
+      "obs_veh_h": 6321.3,
+      "sim_mean_veh_h": 6101.7,
+      "geh_replicate_mean": 2.787,
+      "replicates_passing": 20
+     },
+     {
+      "section_m": 4800.0,
+      "hour": "06:30-07:30",
+      "obs_veh_h": 6659.9,
+      "sim_mean_veh_h": 6391.8,
+      "geh_replicate_mean": 3.319,
+      "replicates_passing": 20
+     },
+     {
+      "section_m": 4800.0,
+      "hour": "07:30-08:30",
+      "obs_veh_h": 5681.1,
+      "sim_mean_veh_h": 5748.7,
+      "geh_replicate_mean": 0.894,
+      "replicates_passing": 20
+     },
+     {
+      "section_m": 5400.0,
+      "hour": "06:30-07:30",
+      "obs_veh_h": 6331.3,
+      "sim_mean_veh_h": 6059.4,
+      "geh_replicate_mean": 3.455,
+      "replicates_passing": 20
+     },
+     {
+      "section_m": 5400.0,
+      "hour": "07:30-08:30",
+      "obs_veh_h": 5686.0,
+      "sim_mean_veh_h": 5485.3,
+      "geh_replicate_mean": 2.685,
+      "replicates_passing": 20
+     }
+    ],
+    "two_hour": [
+     {
+      "section_m": 200.0,
+      "obs_veh_h": 5417.554166666667,
+      "sim_veh_h": 5483.575,
+      "geh": 0.8942526933455627
+     },
+     {
+      "section_m": 1000.0,
+      "obs_veh_h": 5751.579166666667,
+      "sim_veh_h": 6398.349999999999,
+      "geh": 8.298097849236482
+     },
+     {
+      "section_m": 2200.0,
+      "obs_veh_h": 6626.170833333333,
+      "sim_veh_h": 6315.774999999999,
+      "geh": 3.858611832177049
+     },
+     {
+      "section_m": 3200.0,
+      "obs_veh_h": 6639.020833333333,
+      "sim_veh_h": 6267.05,
+      "geh": 4.630489069213626
+     },
+     {
+      "section_m": 4800.0,
+      "obs_veh_h": 6170.5,
+      "sim_veh_h": 6070.25,
+      "geh": 1.2814314099264532
+     },
+     {
+      "section_m": 5400.0,
+      "obs_veh_h": 6008.683333333334,
+      "sim_veh_h": 5772.375,
+      "geh": 3.0789446507273595
+     }
+    ]
+   },
+   "lane_set": {
+    "row_5min_share": 0.2639,
+    "station_hour_pooled_share": 0.5375,
+    "station_hour_pooled_per_replicate": {
+     "mean": 0.5375000000000001,
+     "lo95": 0.5175930935897598,
+     "hi95": 0.5574069064102404,
+     "min": 0.5,
+     "max": 0.5833333333333334
+    },
+    "station_hour_replicate_mean_share": 0.5,
+    "station_hour_table": [
+     {
+      "section_m": 200.0,
+      "hour": "06:30-07:30",
+      "obs_veh_h": 6003.7,
+      "sim_mean_veh_h": 5735.0,
+      "geh_replicate_mean": 3.508,
+      "replicates_passing": 20
+     },
+     {
+      "section_m": 200.0,
+      "hour": "07:30-08:30",
+      "obs_veh_h": 4831.4,
+      "sim_mean_veh_h": 5232.2,
+      "geh_replicate_mean": 5.65,
+      "replicates_passing": 4
+     },
+     {
+      "section_m": 1000.0,
+      "hour": "06:30-07:30",
+      "obs_veh_h": 6176.8,
+      "sim_mean_veh_h": 5762.5,
+      "geh_replicate_mean": 5.362,
+      "replicates_passing": 5
+     },
+     {
+      "section_m": 1000.0,
+      "hour": "07:30-08:30",
+      "obs_veh_h": 5326.4,
+      "sim_mean_veh_h": 5375.6,
+      "geh_replicate_mean": 0.672,
+      "replicates_passing": 20
+     },
+     {
+      "section_m": 2200.0,
+      "hour": "06:30-07:30",
+      "obs_veh_h": 7145.9,
+      "sim_mean_veh_h": 6506.2,
+      "geh_replicate_mean": 7.743,
+      "replicates_passing": 0
+     },
+     {
+      "section_m": 2200.0,
+      "hour": "07:30-08:30",
+      "obs_veh_h": 6106.4,
+      "sim_mean_veh_h": 6125.3,
+      "geh_replicate_mean": 0.242,
+      "replicates_passing": 20
+     },
+     {
+      "section_m": 3200.0,
+      "hour": "06:30-07:30",
+      "obs_veh_h": 6956.7,
+      "sim_mean_veh_h": 6432.4,
+      "geh_replicate_mean": 6.407,
+      "replicates_passing": 0
+     },
+     {
+      "section_m": 3200.0,
+      "hour": "07:30-08:30",
+      "obs_veh_h": 6321.3,
+      "sim_mean_veh_h": 6101.7,
+      "geh_replicate_mean": 2.787,
+      "replicates_passing": 20
+     },
+     {
+      "section_m": 4800.0,
+      "hour": "06:30-07:30",
+      "obs_veh_h": 6659.9,
+      "sim_mean_veh_h": 5876.2,
+      "geh_replicate_mean": 9.899,
+      "replicates_passing": 0
+     },
+     {
+      "section_m": 4800.0,
+      "hour": "07:30-08:30",
+      "obs_veh_h": 5681.1,
+      "sim_mean_veh_h": 5208.2,
+      "geh_replicate_mean": 6.409,
+      "replicates_passing": 0
+     },
+     {
+      "section_m": 5400.0,
+      "hour": "06:30-07:30",
+      "obs_veh_h": 6331.3,
+      "sim_mean_veh_h": 6059.4,
+      "geh_replicate_mean": 3.455,
+      "replicates_passing": 20
+     },
+     {
+      "section_m": 5400.0,
+      "hour": "07:30-08:30",
+      "obs_veh_h": 5686.0,
+      "sim_mean_veh_h": 5485.3,
+      "geh_replicate_mean": 2.685,
+      "replicates_passing": 20
+     }
+    ],
+    "two_hour": [
+     {
+      "section_m": 200.0,
+      "obs_veh_h": 5417.554166666667,
+      "sim_veh_h": 5483.575,
+      "geh": 0.8942526933455627
+     },
+     {
+      "section_m": 1000.0,
+      "obs_veh_h": 5751.579166666667,
+      "sim_veh_h": 5569.025000000001,
+      "geh": 2.4264533439044356
+     },
+     {
+      "section_m": 2200.0,
+      "obs_veh_h": 6626.170833333333,
+      "sim_veh_h": 6315.774999999999,
+      "geh": 3.858611832177049
+     },
+     {
+      "section_m": 3200.0,
+      "obs_veh_h": 6639.020833333333,
+      "sim_veh_h": 6267.05,
+      "geh": 4.630489069213626
+     },
+     {
+      "section_m": 4800.0,
+      "obs_veh_h": 6170.5,
+      "sim_veh_h": 5542.200000000001,
+      "geh": 8.210196427726338
+     },
+     {
+      "section_m": 5400.0,
+      "obs_veh_h": 6008.683333333334,
+      "sim_veh_h": 5772.375,
+      "geh": 3.0789446507273595
+     }
+    ]
+   },
+   "breakdown": {
+    "rule": "a replicate realising < 0.9 of its planned demand while the battery's mean realised share is >= 0.95 (reported only)",
+    "seeds": []
+   },
+   "no_locks": {
+    "value": 0.0,
+    "passed": true,
+    "evaluated": true
+   },
+   "criteria": [
+    {
+     "name": "link_flows_geh",
+     "value": 0.3055555555555556,
+     "passed": false,
+     "evaluated": true
+    },
+    {
+     "name": "speeds_rmspe",
+     "value": 0.3429117918496909,
+     "passed": false,
+     "evaluated": true
+    },
+    {
+     "name": "wave_speed",
+     "value": null,
+     "passed": false,
+     "evaluated": true
+    },
+    {
+     "name": "ring_emergence",
+     "value": 1.0,
+     "passed": true,
+     "evaluated": true
+    },
+    {
+     "name": "ring_dampening",
+     "value": 1.0,
+     "passed": true,
+     "evaluated": true
+    },
+    {
+     "name": "n_seeds",
+     "value": 20.0,
+     "passed": true,
+     "evaluated": true
+    },
+    {
+     "name": "sensitivity_grid",
+     "value": 1.0,
+     "passed": true,
+     "evaluated": true
+    },
+    {
+     "name": "no_collisions",
+     "value": 0.0,
+     "passed": true,
+     "evaluated": true
+    },
+    {
+     "name": "no_locks",
+     "value": 0.0,
+     "passed": true,
+     "evaluated": true
+    }
+   ]
+  },
+  "rcs": {
+   "summary": {
+    "scenario": "i24_replica_flow_rcs_speedcal_dc_refit",
+    "config_hash": "921fb1f42c67",
+    "scenario_file": {
+     "path": "scenarios/i24_replica_flow_rcs_speedcal_dc_refit.yaml",
+     "sha256": "570f037fb4f8ebb429e714f866fa7132a7f3efea9ec86df1384c5a50f8639d00"
+    },
+    "collisions_total": 0,
+    "n_runs": 20,
+    "n_runs_recorded": 20,
+    "zero_collisions": true,
+    "realized_mean": 0.96696,
+    "realized_min": 0.9594,
+    "peak_sections": {
+     "2200": {
+      "model_veh_h": 6329.7,
+      "target_veh_h": 6626.170833333333,
+      "geh": 3.68352538517573
+     },
+     "3200": {
+      "model_veh_h": 6276.774999999999,
+      "target_veh_h": 6639.020833333333,
+      "geh": 4.507729126064416
+     }
+    },
+    "ramps": {
+     "Old Hickory Blvd on-ramp": {
+      "kind": "on",
+      "model_veh_h": 967.05,
+      "model_veh_h_ci": {
+       "mean": 967.05,
+       "lo95": 958.1710571792277,
+       "hi95": 975.9289428207722,
+       "n": 20
+      },
+      "target_corrected_pooled_veh_h": 915.1424319348195,
+      "geh_vs_corrected": 1.6920518555148356,
+      "recorded_pooled_veh_h": 1064.7537041063672,
+      "geh_vs_recorded": 3.0653858815063817
+     },
+     "Hickory Hollow Pkwy off-ramp": {
+      "kind": "off",
+      "model_veh_h": 558.4,
+      "model_veh_h_ci": {
+       "mean": 558.4,
+       "lo95": 549.0247596691513,
+       "hi95": 567.7752403308486,
+       "n": 20
+      },
+      "target_corrected_pooled_veh_h": 581.1923237368231,
+      "geh_vs_corrected": 0.9548361327244325,
+      "recorded_pooled_veh_h": 593.8242433172837,
+      "geh_vs_recorded": 1.4758665023276047
+     },
+     "Hickory Hollow Pkwy on-ramp": {
+      "kind": "on",
+      "model_veh_h": 470.25,
+      "model_veh_h_ci": {
+       "mean": 470.25,
+       "lo95": 470.1299568376373,
+       "hi95": 470.3700431623627,
+       "n": 20
+      },
+      "target_corrected_pooled_veh_h": 442.6168182212329,
+      "geh_vs_corrected": 1.2934277703705714,
+      "recorded_pooled_veh_h": 686.721427028011,
+      "geh_vs_recorded": 9.00024353723481
+     },
+     "Bell Road off-ramp (collector road)": {
+      "kind": "off",
+      "model_veh_h": 277.025,
+      "model_veh_h_ci": {
+       "mean": 277.025,
+       "lo95": 272.6580185002836,
+       "hi95": 281.39198149971634,
+       "n": 20
+      },
+      "target_corrected_pooled_veh_h": 309.02513325198856,
+      "geh_vs_corrected": 1.8693877828719776,
+      "recorded_pooled_veh_h": 328.4030958999402,
+      "geh_vs_recorded": 2.952988238754257
+     }
+    },
+    "wave_speed_row": {
+     "value": null,
+     "passed": false,
+     "evaluated": true,
+     "detail": "detector: stack: slant-stack peak of the two-way demeaned field on 15 s x 75 m bins over front speeds [-40, -2] km/h in 0.25 km/h steps, peak/median contrast >= 3, edge peaks rejected; no backward wave detected"
+    },
+    "rmspe_5min": 0.35994526199467025,
+    "rmspe_15min": 0.2666590785688735
+   },
+   "all_lanes": {
+    "row_5min_share": 0.3125,
+    "station_hour_pooled_share": 0.6375,
+    "station_hour_pooled_per_replicate": {
+     "mean": 0.6375,
+     "lo95": 0.6184143535933594,
+     "hi95": 0.6565856464066405,
+     "min": 0.5833333333333334,
+     "max": 0.6666666666666666
+    },
+    "station_hour_replicate_mean_share": 0.5833333333333334,
+    "station_hour_table": [
+     {
+      "section_m": 200.0,
+      "hour": "06:30-07:30",
+      "obs_veh_h": 6003.7,
+      "sim_mean_veh_h": 5734.3,
+      "geh_replicate_mean": 3.516,
+      "replicates_passing": 20
+     },
+     {
+      "section_m": 200.0,
+      "hour": "07:30-08:30",
+      "obs_veh_h": 4831.4,
+      "sim_mean_veh_h": 5247.6,
+      "geh_replicate_mean": 5.862,
+      "replicates_passing": 5
+     },
+     {
+      "section_m": 1000.0,
+      "hour": "06:30-07:30",
+      "obs_veh_h": 6176.8,
+      "sim_mean_veh_h": 6590.8,
+      "geh_replicate_mean": 5.181,
+      "replicates_passing": 8
+     },
+     {
+      "section_m": 1000.0,
+      "hour": "07:30-08:30",
+      "obs_veh_h": 5326.4,
+      "sim_mean_veh_h": 6204.2,
+      "geh_replicate_mean": 11.561,
+      "replicates_passing": 0
+     },
+     {
+      "section_m": 2200.0,
+      "hour": "06:30-07:30",
+      "obs_veh_h": 7145.9,
+      "sim_mean_veh_h": 6509.7,
+      "geh_replicate_mean": 7.7,
+      "replicates_passing": 0
+     },
+     {
+      "section_m": 2200.0,
+      "hour": "07:30-08:30",
+      "obs_veh_h": 6106.4,
+      "sim_mean_veh_h": 6149.8,
+      "geh_replicate_mean": 0.554,
+      "replicates_passing": 20
+     },
+     {
+      "section_m": 3200.0,
+      "hour": "06:30-07:30",
+      "obs_veh_h": 6956.7,
+      "sim_mean_veh_h": 6435.6,
+      "geh_replicate_mean": 6.368,
+      "replicates_passing": 0
+     },
+     {
+      "section_m": 3200.0,
+      "hour": "07:30-08:30",
+      "obs_veh_h": 6321.3,
+      "sim_mean_veh_h": 6117.9,
+      "geh_replicate_mean": 2.579,
+      "replicates_passing": 20
+     },
+     {
+      "section_m": 4800.0,
+      "hour": "06:30-07:30",
+      "obs_veh_h": 6659.9,
+      "sim_mean_veh_h": 6400.0,
+      "geh_replicate_mean": 3.217,
+      "replicates_passing": 20
+     },
+     {
+      "section_m": 4800.0,
+      "hour": "07:30-08:30",
+      "obs_veh_h": 5681.1,
+      "sim_mean_veh_h": 5751.6,
+      "geh_replicate_mean": 0.932,
+      "replicates_passing": 20
+     },
+     {
+      "section_m": 5400.0,
+      "hour": "06:30-07:30",
+      "obs_veh_h": 6331.3,
+      "sim_mean_veh_h": 6073.3,
+      "geh_replicate_mean": 3.276,
+      "replicates_passing": 20
+     },
+     {
+      "section_m": 5400.0,
+      "hour": "07:30-08:30",
+      "obs_veh_h": 5686.0,
+      "sim_mean_veh_h": 5479.2,
+      "geh_replicate_mean": 2.768,
+      "replicates_passing": 20
+     }
+    ],
+    "two_hour": [
+     {
+      "section_m": 200.0,
+      "obs_veh_h": 5417.554166666667,
+      "sim_veh_h": 5490.974999999999,
+      "geh": 0.9941483790323179
+     },
+     {
+      "section_m": 1000.0,
+      "obs_veh_h": 5751.579166666667,
+      "sim_veh_h": 6397.4749999999985,
+      "geh": 8.287169974716829
+     },
+     {
+      "section_m": 2200.0,
+      "obs_veh_h": 6626.170833333333,
+      "sim_veh_h": 6329.7,
+      "geh": 3.68352538517573
+     },
+     {
+      "section_m": 3200.0,
+      "obs_veh_h": 6639.020833333333,
+      "sim_veh_h": 6276.774999999999,
+      "geh": 4.507729126064416
+     },
+     {
+      "section_m": 4800.0,
+      "obs_veh_h": 6170.5,
+      "sim_veh_h": 6075.774999999999,
+      "geh": 1.2105357172247895
+     },
+     {
+      "section_m": 5400.0,
+      "obs_veh_h": 6008.683333333334,
+      "sim_veh_h": 5776.275000000001,
+      "geh": 3.0276290832061834
+     }
+    ]
+   },
+   "lane_set": {
+    "row_5min_share": 0.25,
+    "station_hour_pooled_share": 0.5458333333333333,
+    "station_hour_pooled_per_replicate": {
+     "mean": 0.5458333333333333,
+     "lo95": 0.5112376612847245,
+     "hi95": 0.5804290053819421,
+     "min": 0.5,
+     "max": 0.6666666666666666
+    },
+    "station_hour_replicate_mean_share": 0.5,
+    "station_hour_table": [
+     {
+      "section_m": 200.0,
+      "hour": "06:30-07:30",
+      "obs_veh_h": 6003.7,
+      "sim_mean_veh_h": 5734.3,
+      "geh_replicate_mean": 3.516,
+      "replicates_passing": 20
+     },
+     {
+      "section_m": 200.0,
+      "hour": "07:30-08:30",
+      "obs_veh_h": 4831.4,
+      "sim_mean_veh_h": 5247.6,
+      "geh_replicate_mean": 5.862,
+      "replicates_passing": 5
+     },
+     {
+      "section_m": 1000.0,
+      "hour": "06:30-07:30",
+      "obs_veh_h": 6176.8,
+      "sim_mean_veh_h": 5762.8,
+      "geh_replicate_mean": 5.358,
+      "replicates_passing": 6
+     },
+     {
+      "section_m": 1000.0,
+      "hour": "07:30-08:30",
+      "obs_veh_h": 5326.4,
+      "sim_mean_veh_h": 5389.7,
+      "geh_replicate_mean": 0.866,
+      "replicates_passing": 20
+     },
+     {
+      "section_m": 2200.0,
+      "hour": "06:30-07:30",
+      "obs_veh_h": 7145.9,
+      "sim_mean_veh_h": 6509.7,
+      "geh_replicate_mean": 7.7,
+      "replicates_passing": 0
+     },
+     {
+      "section_m": 2200.0,
+      "hour": "07:30-08:30",
+      "obs_veh_h": 6106.4,
+      "sim_mean_veh_h": 6149.8,
+      "geh_replicate_mean": 0.554,
+      "replicates_passing": 20
+     },
+     {
+      "section_m": 3200.0,
+      "hour": "06:30-07:30",
+      "obs_veh_h": 6956.7,
+      "sim_mean_veh_h": 6435.6,
+      "geh_replicate_mean": 6.368,
+      "replicates_passing": 0
+     },
+     {
+      "section_m": 3200.0,
+      "hour": "07:30-08:30",
+      "obs_veh_h": 6321.3,
+      "sim_mean_veh_h": 6117.9,
+      "geh_replicate_mean": 2.579,
+      "replicates_passing": 20
+     },
+     {
+      "section_m": 4800.0,
+      "hour": "06:30-07:30",
+      "obs_veh_h": 6659.9,
+      "sim_mean_veh_h": 5926.8,
+      "geh_replicate_mean": 9.242,
+      "replicates_passing": 0
+     },
+     {
+      "section_m": 4800.0,
+      "hour": "07:30-08:30",
+      "obs_veh_h": 5681.1,
+      "sim_mean_veh_h": 5221.7,
+      "geh_replicate_mean": 6.223,
+      "replicates_passing": 0
+     },
+     {
+      "section_m": 5400.0,
+      "hour": "06:30-07:30",
+      "obs_veh_h": 6331.3,
+      "sim_mean_veh_h": 6073.3,
+      "geh_replicate_mean": 3.276,
+      "replicates_passing": 20
+     },
+     {
+      "section_m": 5400.0,
+      "hour": "07:30-08:30",
+      "obs_veh_h": 5686.0,
+      "sim_mean_veh_h": 5479.2,
+      "geh_replicate_mean": 2.768,
+      "replicates_passing": 20
+     }
+    ],
+    "two_hour": [
+     {
+      "section_m": 200.0,
+      "obs_veh_h": 5417.554166666667,
+      "sim_veh_h": 5490.974999999999,
+      "geh": 0.9941483790323179
+     },
+     {
+      "section_m": 1000.0,
+      "obs_veh_h": 5751.579166666667,
+      "sim_veh_h": 5576.2750000000015,
+      "geh": 2.329342827775067
+     },
+     {
+      "section_m": 2200.0,
+      "obs_veh_h": 6626.170833333333,
+      "sim_veh_h": 6329.7,
+      "geh": 3.68352538517573
+     },
+     {
+      "section_m": 3200.0,
+      "obs_veh_h": 6639.020833333333,
+      "sim_veh_h": 6276.774999999999,
+      "geh": 4.507729126064416
+     },
+     {
+      "section_m": 4800.0,
+      "obs_veh_h": 6170.5,
+      "sim_veh_h": 5574.2,
+      "geh": 7.781419755677663
+     },
+     {
+      "section_m": 5400.0,
+      "obs_veh_h": 6008.683333333334,
+      "sim_veh_h": 5776.275000000001,
+      "geh": 3.0276290832061834
+     }
+    ]
+   },
+   "breakdown": {
+    "rule": "a replicate realising < 0.9 of its planned demand while the battery's mean realised share is >= 0.95 (reported only)",
+    "seeds": []
+   },
+   "no_locks": {
+    "value": 0.0,
+    "passed": true,
+    "evaluated": true
+   },
+   "criteria": [
+    {
+     "name": "link_flows_geh",
+     "value": 0.3125,
+     "passed": false,
+     "evaluated": true
+    },
+    {
+     "name": "speeds_rmspe",
+     "value": 0.35994526199467025,
+     "passed": false,
+     "evaluated": true
+    },
+    {
+     "name": "wave_speed",
+     "value": null,
+     "passed": false,
+     "evaluated": true
+    },
+    {
+     "name": "ring_emergence",
+     "value": 1.0,
+     "passed": true,
+     "evaluated": true
+    },
+    {
+     "name": "ring_dampening",
+     "value": 1.0,
+     "passed": true,
+     "evaluated": true
+    },
+    {
+     "name": "n_seeds",
+     "value": 20.0,
+     "passed": true,
+     "evaluated": true
+    },
+    {
+     "name": "sensitivity_grid",
+     "value": 1.0,
+     "passed": true,
+     "evaluated": true
+    },
+    {
+     "name": "no_collisions",
+     "value": 0.0,
+     "passed": true,
+     "evaluated": true
+    },
+    {
+     "name": "no_locks",
+     "value": 0.0,
+     "passed": true,
+     "evaluated": true
+    }
+   ]
+  },
+  "rcc": {
+   "summary": {
+    "scenario": "i24_replica_flow_rcc_speedcal_dc_refit",
+    "config_hash": "e17c205d725d",
+    "scenario_file": {
+     "path": "scenarios/i24_replica_flow_rcc_speedcal_dc_refit.yaml",
+     "sha256": "5581c8b05fc78ceb2e6ca47c435b2b0bd24e9ae442def225e7d5ee431862e0ea"
+    },
+    "collisions_total": 0,
+    "n_runs": 20,
+    "n_runs_recorded": 20,
+    "zero_collisions": true,
+    "realized_mean": 0.9561249999999999,
+    "realized_min": 0.948,
+    "peak_sections": {
+     "2200": {
+      "model_veh_h": 6297.45,
+      "target_veh_h": 6626.170833333333,
+      "geh": 4.089310834650752
+     },
+     "3200": {
+      "model_veh_h": 6247.2,
+      "target_veh_h": 6639.020833333333,
+      "geh": 4.8813476242770015
+     }
+    },
+    "ramps": {
+     "Old Hickory Blvd on-ramp": {
+      "kind": "on",
+      "model_veh_h": 967.825,
+      "model_veh_h_ci": {
+       "mean": 967.825,
+       "lo95": 961.0384619759044,
+       "hi95": 974.6115380240957,
+       "n": 20
+      },
+      "target_corrected_pooled_veh_h": 915.1424319348195,
+      "geh_vs_corrected": 1.7169613955901646,
+      "recorded_pooled_veh_h": 1064.7537041063672,
+      "geh_vs_recorded": 3.040490975812447
+     },
+     "Hickory Hollow Pkwy off-ramp": {
+      "kind": "off",
+      "model_veh_h": 548.825,
+      "model_veh_h_ci": {
+       "mean": 548.825,
+       "lo95": 539.6562560250705,
+       "hi95": 557.9937439749295,
+       "n": 20
+      },
+      "target_corrected_pooled_veh_h": 581.1923237368231,
+      "geh_vs_corrected": 1.3616931060281618,
+      "recorded_pooled_veh_h": 593.8242433172837,
+      "geh_vs_recorded": 1.882624649280044
+     },
+     "Hickory Hollow Pkwy on-ramp": {
+      "kind": "on",
+      "model_veh_h": 473.325,
+      "model_veh_h_ci": {
+       "mean": 473.325,
+       "lo95": 473.21048612156017,
+       "hi95": 473.4395138784398,
+       "n": 20
+      },
+      "target_corrected_pooled_veh_h": 442.6168182212329,
+      "geh_vs_corrected": 1.4349446744849674,
+      "recorded_pooled_veh_h": 686.721427028011,
+      "geh_vs_recorded": 8.860627026814663
+     },
+     "Bell Road off-ramp (collector road)": {
+      "kind": "off",
+      "model_veh_h": 274.825,
+      "model_veh_h_ci": {
+       "mean": 274.825,
+       "lo95": 268.74305135517943,
+       "hi95": 280.90694864482055,
+       "n": 20
+      },
+      "target_corrected_pooled_veh_h": 309.02513325198856,
+      "geh_vs_corrected": 2.001668266716199,
+      "recorded_pooled_veh_h": 328.4030958999402,
+      "geh_vs_recorded": 3.0850449242398046
+     }
+    },
+    "wave_speed_row": {
+     "value": null,
+     "passed": false,
+     "evaluated": true,
+     "detail": "detector: stack: slant-stack peak of the two-way demeaned field on 15 s x 75 m bins over front speeds [-40, -2] km/h in 0.25 km/h steps, peak/median contrast >= 3, edge peaks rejected; no backward wave detected"
+    },
+    "rmspe_5min": 0.34770602615993446,
+    "rmspe_15min": 0.2628144225850676
+   },
+   "all_lanes": {
+    "row_5min_share": 0.2569,
+    "station_hour_pooled_share": 0.6458333333333334,
+    "station_hour_pooled_per_replicate": {
+     "mean": 0.6458333333333333,
+     "lo95": 0.6178948077525676,
+     "hi95": 0.673771858914099,
+     "min": 0.5833333333333334,
+     "max": 0.75
+    },
+    "station_hour_replicate_mean_share": 0.6666666666666666,
+    "station_hour_table": [
+     {
+      "section_m": 200.0,
+      "hour": "06:30-07:30",
+      "obs_veh_h": 6003.7,
+      "sim_mean_veh_h": 5654.9,
+      "geh_replicate_mean": 4.568,
+      "replicates_passing": 14
+     },
+     {
+      "section_m": 200.0,
+      "hour": "07:30-08:30",
+      "obs_veh_h": 4831.4,
+      "sim_mean_veh_h": 5199.1,
+      "geh_replicate_mean": 5.191,
+      "replicates_passing": 8
+     },
+     {
+      "section_m": 1000.0,
+      "hour": "06:30-07:30",
+      "obs_veh_h": 6176.8,
+      "sim_mean_veh_h": 6529.2,
+      "geh_replicate_mean": 4.421,
+      "replicates_passing": 13
+     },
+     {
+      "section_m": 1000.0,
+      "hour": "07:30-08:30",
+      "obs_veh_h": 5326.4,
+      "sim_mean_veh_h": 6169.7,
+      "geh_replicate_mean": 11.123,
+      "replicates_passing": 0
+     },
+     {
+      "section_m": 2200.0,
+      "hour": "06:30-07:30",
+      "obs_veh_h": 7145.9,
+      "sim_mean_veh_h": 6459.7,
+      "geh_replicate_mean": 8.32,
+      "replicates_passing": 0
+     },
+     {
+      "section_m": 2200.0,
+      "hour": "07:30-08:30",
+      "obs_veh_h": 6106.4,
+      "sim_mean_veh_h": 6135.2,
+      "geh_replicate_mean": 0.368,
+      "replicates_passing": 20
+     },
+     {
+      "section_m": 3200.0,
+      "hour": "06:30-07:30",
+      "obs_veh_h": 6956.7,
+      "sim_mean_veh_h": 6379.4,
+      "geh_replicate_mean": 7.069,
+      "replicates_passing": 0
+     },
+     {
+      "section_m": 3200.0,
+      "hour": "07:30-08:30",
+      "obs_veh_h": 6321.3,
+      "sim_mean_veh_h": 6115.0,
+      "geh_replicate_mean": 2.617,
+      "replicates_passing": 20
+     },
+     {
+      "section_m": 4800.0,
+      "hour": "06:30-07:30",
+      "obs_veh_h": 6659.9,
+      "sim_mean_veh_h": 6367.8,
+      "geh_replicate_mean": 3.618,
+      "replicates_passing": 20
+     },
+     {
+      "section_m": 4800.0,
+      "hour": "07:30-08:30",
+      "obs_veh_h": 5681.1,
+      "sim_mean_veh_h": 5750.8,
+      "geh_replicate_mean": 0.922,
+      "replicates_passing": 20
+     },
+     {
+      "section_m": 5400.0,
+      "hour": "06:30-07:30",
+      "obs_veh_h": 6331.3,
+      "sim_mean_veh_h": 6047.7,
+      "geh_replicate_mean": 3.606,
+      "replicates_passing": 20
+     },
+     {
+      "section_m": 5400.0,
+      "hour": "07:30-08:30",
+      "obs_veh_h": 5686.0,
+      "sim_mean_veh_h": 5478.5,
+      "geh_replicate_mean": 2.778,
+      "replicates_passing": 20
+     }
+    ],
+    "two_hour": [
+     {
+      "section_m": 200.0,
+      "obs_veh_h": 5417.554166666667,
+      "sim_veh_h": 5427.0,
+      "geh": 0.12827718623238837
+     },
+     {
+      "section_m": 1000.0,
+      "obs_veh_h": 5751.579166666667,
+      "sim_veh_h": 6349.424999999999,
+      "geh": 7.6858782278186615
+     },
+     {
+      "section_m": 2200.0,
+      "obs_veh_h": 6626.170833333333,
+      "sim_veh_h": 6297.45,
+      "geh": 4.089310834650752
+     },
+     {
+      "section_m": 3200.0,
+      "obs_veh_h": 6639.020833333333,
+      "sim_veh_h": 6247.2,
+      "geh": 4.8813476242770015
+     },
+     {
+      "section_m": 4800.0,
+      "obs_veh_h": 6170.5,
+      "sim_veh_h": 6059.349999999999,
+      "geh": 1.421392107609837
+     },
+     {
+      "section_m": 5400.0,
+      "obs_veh_h": 6008.683333333334,
+      "sim_veh_h": 5763.05,
+      "geh": 3.201710733413363
+     }
+    ]
+   },
+   "lane_set": {
+    "row_5min_share": 0.2222,
+    "station_hour_pooled_share": 0.5208333333333334,
+    "station_hour_pooled_per_replicate": {
+     "mean": 0.5208333333333334,
+     "lo95": 0.4901628861249723,
+     "hi95": 0.5515037805416945,
+     "min": 0.4166666666666667,
+     "max": 0.6666666666666666
+    },
+    "station_hour_replicate_mean_share": 0.5,
+    "station_hour_table": [
+     {
+      "section_m": 200.0,
+      "hour": "06:30-07:30",
+      "obs_veh_h": 6003.7,
+      "sim_mean_veh_h": 5654.9,
+      "geh_replicate_mean": 4.568,
+      "replicates_passing": 14
+     },
+     {
+      "section_m": 200.0,
+      "hour": "07:30-08:30",
+      "obs_veh_h": 4831.4,
+      "sim_mean_veh_h": 5199.1,
+      "geh_replicate_mean": 5.191,
+      "replicates_passing": 8
+     },
+     {
+      "section_m": 1000.0,
+      "hour": "06:30-07:30",
+      "obs_veh_h": 6176.8,
+      "sim_mean_veh_h": 5699.3,
+      "geh_replicate_mean": 6.196,
+      "replicates_passing": 2
+     },
+     {
+      "section_m": 1000.0,
+      "hour": "07:30-08:30",
+      "obs_veh_h": 5326.4,
+      "sim_mean_veh_h": 5361.4,
+      "geh_replicate_mean": 0.48,
+      "replicates_passing": 20
+     },
+     {
+      "section_m": 2200.0,
+      "hour": "06:30-07:30",
+      "obs_veh_h": 7145.9,
+      "sim_mean_veh_h": 6459.7,
+      "geh_replicate_mean": 8.32,
+      "replicates_passing": 0
+     },
+     {
+      "section_m": 2200.0,
+      "hour": "07:30-08:30",
+      "obs_veh_h": 6106.4,
+      "sim_mean_veh_h": 6135.2,
+      "geh_replicate_mean": 0.368,
+      "replicates_passing": 20
+     },
+     {
+      "section_m": 3200.0,
+      "hour": "06:30-07:30",
+      "obs_veh_h": 6956.7,
+      "sim_mean_veh_h": 6379.4,
+      "geh_replicate_mean": 7.069,
+      "replicates_passing": 0
+     },
+     {
+      "section_m": 3200.0,
+      "hour": "07:30-08:30",
+      "obs_veh_h": 6321.3,
+      "sim_mean_veh_h": 6115.0,
+      "geh_replicate_mean": 2.617,
+      "replicates_passing": 20
+     },
+     {
+      "section_m": 4800.0,
+      "hour": "06:30-07:30",
+      "obs_veh_h": 6659.9,
+      "sim_mean_veh_h": 5829.9,
+      "geh_replicate_mean": 10.503,
+      "replicates_passing": 0
+     },
+     {
+      "section_m": 4800.0,
+      "hour": "07:30-08:30",
+      "obs_veh_h": 5681.1,
+      "sim_mean_veh_h": 5220.9,
+      "geh_replicate_mean": 6.233,
+      "replicates_passing": 1
+     },
+     {
+      "section_m": 5400.0,
+      "hour": "06:30-07:30",
+      "obs_veh_h": 6331.3,
+      "sim_mean_veh_h": 6047.7,
+      "geh_replicate_mean": 3.606,
+      "replicates_passing": 20
+     },
+     {
+      "section_m": 5400.0,
+      "hour": "07:30-08:30",
+      "obs_veh_h": 5686.0,
+      "sim_mean_veh_h": 5478.5,
+      "geh_replicate_mean": 2.778,
+      "replicates_passing": 20
+     }
+    ],
+    "two_hour": [
+     {
+      "section_m": 200.0,
+      "obs_veh_h": 5417.554166666667,
+      "sim_veh_h": 5427.0,
+      "geh": 0.12827718623238837
+     },
+     {
+      "section_m": 1000.0,
+      "obs_veh_h": 5751.579166666667,
+      "sim_veh_h": 5530.400000000001,
+      "geh": 2.9448729887077425
+     },
+     {
+      "section_m": 2200.0,
+      "obs_veh_h": 6626.170833333333,
+      "sim_veh_h": 6297.45,
+      "geh": 4.089310834650752
+     },
+     {
+      "section_m": 3200.0,
+      "obs_veh_h": 6639.020833333333,
+      "sim_veh_h": 6247.2,
+      "geh": 4.8813476242770015
+     },
+     {
+      "section_m": 4800.0,
+      "obs_veh_h": 6170.5,
+      "sim_veh_h": 5525.425,
+      "geh": 8.435443512382866
+     },
+     {
+      "section_m": 5400.0,
+      "obs_veh_h": 6008.683333333334,
+      "sim_veh_h": 5763.05,
+      "geh": 3.201710733413363
+     }
+    ]
+   },
+   "breakdown": {
+    "rule": "a replicate realising < 0.9 of its planned demand while the battery's mean realised share is >= 0.95 (reported only)",
+    "seeds": []
+   },
+   "no_locks": {
+    "value": 0.0,
+    "passed": true,
+    "evaluated": true
+   },
+   "criteria": [
+    {
+     "name": "link_flows_geh",
+     "value": 0.2569444444444444,
+     "passed": false,
+     "evaluated": true
+    },
+    {
+     "name": "speeds_rmspe",
+     "value": 0.34770602615993446,
+     "passed": false,
+     "evaluated": true
+    },
+    {
+     "name": "wave_speed",
+     "value": null,
+     "passed": false,
+     "evaluated": true
+    },
+    {
+     "name": "ring_emergence",
+     "value": 1.0,
+     "passed": true,
+     "evaluated": true
+    },
+    {
+     "name": "ring_dampening",
+     "value": 1.0,
+     "passed": true,
+     "evaluated": true
+    },
+    {
+     "name": "n_seeds",
+     "value": 20.0,
+     "passed": true,
+     "evaluated": true
+    },
+    {
+     "name": "sensitivity_grid",
+     "value": 1.0,
+     "passed": true,
+     "evaluated": true
+    },
+    {
+     "name": "no_collisions",
+     "value": 0.0,
+     "passed": true,
+     "evaluated": true
+    },
+    {
+     "name": "no_locks",
+     "value": 0.0,
+     "passed": true,
+     "evaluated": true
+    }
+   ]
+  },
+  "rccs": {
+   "summary": {
+    "scenario": "i24_replica_flow_rccs_speedcal_dc_refit",
+    "config_hash": "a35b0f3b8b10",
+    "scenario_file": {
+     "path": "scenarios/i24_replica_flow_rccs_speedcal_dc_refit.yaml",
+     "sha256": "998751a55d1e66514b645f397013f27da8d5812e4c07bfdddf612ace82859278"
+    },
+    "collisions_total": 0,
+    "n_runs": 20,
+    "n_runs_recorded": 20,
+    "zero_collisions": true,
+    "realized_mean": 0.9583699999999998,
+    "realized_min": 0.9477,
+    "peak_sections": {
+     "2200": {
+      "model_veh_h": 6311.275000000001,
+      "target_veh_h": 6626.170833333333,
+      "geh": 3.91523324519133
+     },
+     "3200": {
+      "model_veh_h": 6263.125,
+      "target_veh_h": 6639.020833333333,
+      "geh": 4.680061244088654
+     }
+    },
+    "ramps": {
+     "Old Hickory Blvd on-ramp": {
+      "kind": "on",
+      "model_veh_h": 970.075,
+      "model_veh_h_ci": {
+       "mean": 970.075,
+       "lo95": 964.3408684694623,
+       "hi95": 975.8091315305378,
+       "n": 20
+      },
+      "target_corrected_pooled_veh_h": 915.1424319348195,
+      "geh_vs_corrected": 1.7892217830934747,
+      "recorded_pooled_veh_h": 1064.7537041063672,
+      "geh_vs_recorded": 2.968269811517438
+     },
+     "Hickory Hollow Pkwy off-ramp": {
+      "kind": "off",
+      "model_veh_h": 551.7,
+      "model_veh_h_ci": {
+       "mean": 551.7,
+       "lo95": 544.0452738264083,
+       "hi95": 559.3547261735918,
+       "n": 20
+      },
+      "target_corrected_pooled_veh_h": 581.1923237368231,
+      "geh_vs_corrected": 1.2391665262979923,
+      "recorded_pooled_veh_h": 593.8242433172837,
+      "geh_vs_recorded": 1.760130903339066
+     },
+     "Hickory Hollow Pkwy on-ramp": {
+      "kind": "on",
+      "model_veh_h": 473.25,
+      "model_veh_h_ci": {
+       "mean": 473.25,
+       "lo95": 473.1299568376373,
+       "hi95": 473.3700431623627,
+       "n": 20
+      },
+      "target_corrected_pooled_veh_h": 442.6168182212329,
+      "geh_vs_corrected": 1.4314986521815307,
+      "recorded_pooled_veh_h": 686.721427028011,
+      "geh_vs_recorded": 8.864027715774013
+     },
+     "Bell Road off-ramp (collector road)": {
+      "kind": "off",
+      "model_veh_h": 275.475,
+      "model_veh_h_ci": {
+       "mean": 275.475,
+       "lo95": 270.61511962114037,
+       "hi95": 280.3348803788597,
+       "n": 20
+      },
+      "target_corrected_pooled_veh_h": 309.02513325198856,
+      "geh_vs_corrected": 1.9625328727677391,
+      "recorded_pooled_veh_h": 328.4030958999402,
+      "geh_vs_recorded": 3.045977070738218
+     }
+    },
+    "wave_speed_row": {
+     "value": null,
+     "passed": false,
+     "evaluated": true,
+     "detail": "detector: stack: slant-stack peak of the two-way demeaned field on 15 s x 75 m bins over front speeds [-40, -2] km/h in 0.25 km/h steps, peak/median contrast >= 3, edge peaks rejected; no backward wave detected"
+    },
+    "rmspe_5min": 0.35589930286570975,
+    "rmspe_15min": 0.257972889490567
+   },
+   "all_lanes": {
+    "row_5min_share": 0.2431,
+    "station_hour_pooled_share": 0.6541666666666667,
+    "station_hour_pooled_per_replicate": {
+     "mean": 0.6541666666666666,
+     "lo95": 0.6280038659865627,
+     "hi95": 0.6803294673467705,
+     "min": 0.5833333333333334,
+     "max": 0.75
+    },
+    "station_hour_replicate_mean_share": 0.6666666666666666,
+    "station_hour_table": [
+     {
+      "section_m": 200.0,
+      "hour": "06:30-07:30",
+      "obs_veh_h": 6003.7,
+      "sim_mean_veh_h": 5683.1,
+      "geh_replicate_mean": 4.194,
+      "replicates_passing": 16
+     },
+     {
+      "section_m": 200.0,
+      "hour": "07:30-08:30",
+      "obs_veh_h": 4831.4,
+      "sim_mean_veh_h": 5195.9,
+      "geh_replicate_mean": 5.148,
+      "replicates_passing": 9
+     },
+     {
+      "section_m": 1000.0,
+      "hour": "06:30-07:30",
+      "obs_veh_h": 6176.8,
+      "sim_mean_veh_h": 6544.1,
+      "geh_replicate_mean": 4.606,
+      "replicates_passing": 12
+     },
+     {
+      "section_m": 1000.0,
+      "hour": "07:30-08:30",
+      "obs_veh_h": 5326.4,
+      "sim_mean_veh_h": 6189.5,
+      "geh_replicate_mean": 11.375,
+      "replicates_passing": 0
+     },
+     {
+      "section_m": 2200.0,
+      "hour": "06:30-07:30",
+      "obs_veh_h": 7145.9,
+      "sim_mean_veh_h": 6478.6,
+      "geh_replicate_mean": 8.085,
+      "replicates_passing": 0
+     },
+     {
+      "section_m": 2200.0,
+      "hour": "07:30-08:30",
+      "obs_veh_h": 6106.4,
+      "sim_mean_veh_h": 6143.9,
+      "geh_replicate_mean": 0.48,
+      "replicates_passing": 20
+     },
+     {
+      "section_m": 3200.0,
+      "hour": "06:30-07:30",
+      "obs_veh_h": 6956.7,
+      "sim_mean_veh_h": 6398.4,
+      "geh_replicate_mean": 6.832,
+      "replicates_passing": 0
+     },
+     {
+      "section_m": 3200.0,
+      "hour": "07:30-08:30",
+      "obs_veh_h": 6321.3,
+      "sim_mean_veh_h": 6127.9,
+      "geh_replicate_mean": 2.452,
+      "replicates_passing": 20
+     },
+     {
+      "section_m": 4800.0,
+      "hour": "06:30-07:30",
+      "obs_veh_h": 6659.9,
+      "sim_mean_veh_h": 6377.2,
+      "geh_replicate_mean": 3.501,
+      "replicates_passing": 20
+     },
+     {
+      "section_m": 4800.0,
+      "hour": "07:30-08:30",
+      "obs_veh_h": 5681.1,
+      "sim_mean_veh_h": 5765.8,
+      "geh_replicate_mean": 1.119,
+      "replicates_passing": 20
+     },
+     {
+      "section_m": 5400.0,
+      "hour": "06:30-07:30",
+      "obs_veh_h": 6331.3,
+      "sim_mean_veh_h": 6056.0,
+      "geh_replicate_mean": 3.498,
+      "replicates_passing": 20
+     },
+     {
+      "section_m": 5400.0,
+      "hour": "07:30-08:30",
+      "obs_veh_h": 5686.0,
+      "sim_mean_veh_h": 5488.9,
+      "geh_replicate_mean": 2.637,
+      "replicates_passing": 20
+     }
+    ],
+    "two_hour": [
+     {
+      "section_m": 200.0,
+      "obs_veh_h": 5417.554166666667,
+      "sim_veh_h": 5439.525000000001,
+      "geh": 0.29819820518016565
+     },
+     {
+      "section_m": 1000.0,
+      "obs_veh_h": 5751.579166666667,
+      "sim_veh_h": 6366.8,
+      "geh": 7.903578352605774
+     },
+     {
+      "section_m": 2200.0,
+      "obs_veh_h": 6626.170833333333,
+      "sim_veh_h": 6311.275000000001,
+      "geh": 3.91523324519133
+     },
+     {
+      "section_m": 3200.0,
+      "obs_veh_h": 6639.020833333333,
+      "sim_veh_h": 6263.125,
+      "geh": 4.680061244088654
+     },
+     {
+      "section_m": 4800.0,
+      "obs_veh_h": 6170.5,
+      "sim_veh_h": 6071.475000000001,
+      "geh": 1.2657096894037068
+     },
+     {
+      "section_m": 5400.0,
+      "obs_veh_h": 6008.683333333334,
+      "sim_veh_h": 5772.475000000001,
+      "geh": 3.077628653705992
+     }
+    ]
+   },
+   "lane_set": {
+    "row_5min_share": 0.2083,
+    "station_hour_pooled_share": 0.525,
+    "station_hour_pooled_per_replicate": {
+     "mean": 0.5250000000000001,
+     "lo95": 0.49642401158835986,
+     "hi95": 0.5535759884116404,
+     "min": 0.4166666666666667,
+     "max": 0.6666666666666666
+    },
+    "station_hour_replicate_mean_share": 0.5,
+    "station_hour_table": [
+     {
+      "section_m": 200.0,
+      "hour": "06:30-07:30",
+      "obs_veh_h": 6003.7,
+      "sim_mean_veh_h": 5683.1,
+      "geh_replicate_mean": 4.194,
+      "replicates_passing": 16
+     },
+     {
+      "section_m": 200.0,
+      "hour": "07:30-08:30",
+      "obs_veh_h": 4831.4,
+      "sim_mean_veh_h": 5195.9,
+      "geh_replicate_mean": 5.148,
+      "replicates_passing": 9
+     },
+     {
+      "section_m": 1000.0,
+      "hour": "06:30-07:30",
+      "obs_veh_h": 6176.8,
+      "sim_mean_veh_h": 5719.2,
+      "geh_replicate_mean": 5.934,
+      "replicates_passing": 1
+     },
+     {
+      "section_m": 1000.0,
+      "hour": "07:30-08:30",
+      "obs_veh_h": 5326.4,
+      "sim_mean_veh_h": 5360.7,
+      "geh_replicate_mean": 0.47,
+      "replicates_passing": 20
+     },
+     {
+      "section_m": 2200.0,
+      "hour": "06:30-07:30",
+      "obs_veh_h": 7145.9,
+      "sim_mean_veh_h": 6478.6,
+      "geh_replicate_mean": 8.085,
+      "replicates_passing": 0
+     },
+     {
+      "section_m": 2200.0,
+      "hour": "07:30-08:30",
+      "obs_veh_h": 6106.4,
+      "sim_mean_veh_h": 6143.9,
+      "geh_replicate_mean": 0.48,
+      "replicates_passing": 20
+     },
+     {
+      "section_m": 3200.0,
+      "hour": "06:30-07:30",
+      "obs_veh_h": 6956.7,
+      "sim_mean_veh_h": 6398.4,
+      "geh_replicate_mean": 6.832,
+      "replicates_passing": 0
+     },
+     {
+      "section_m": 3200.0,
+      "hour": "07:30-08:30",
+      "obs_veh_h": 6321.3,
+      "sim_mean_veh_h": 6127.9,
+      "geh_replicate_mean": 2.452,
+      "replicates_passing": 20
+     },
+     {
+      "section_m": 4800.0,
+      "hour": "06:30-07:30",
+      "obs_veh_h": 6659.9,
+      "sim_mean_veh_h": 5846.1,
+      "geh_replicate_mean": 10.291,
+      "replicates_passing": 0
+     },
+     {
+      "section_m": 4800.0,
+      "hour": "07:30-08:30",
+      "obs_veh_h": 5681.1,
+      "sim_mean_veh_h": 5235.0,
+      "geh_replicate_mean": 6.039,
+      "replicates_passing": 0
+     },
+     {
+      "section_m": 5400.0,
+      "hour": "06:30-07:30",
+      "obs_veh_h": 6331.3,
+      "sim_mean_veh_h": 6056.0,
+      "geh_replicate_mean": 3.498,
+      "replicates_passing": 20
+     },
+     {
+      "section_m": 5400.0,
+      "hour": "07:30-08:30",
+      "obs_veh_h": 5686.0,
+      "sim_mean_veh_h": 5488.9,
+      "geh_replicate_mean": 2.637,
+      "replicates_passing": 20
+     }
+    ],
+    "two_hour": [
+     {
+      "section_m": 200.0,
+      "obs_veh_h": 5417.554166666667,
+      "sim_veh_h": 5439.525000000001,
+      "geh": 0.29819820518016565
+     },
+     {
+      "section_m": 1000.0,
+      "obs_veh_h": 5751.579166666667,
+      "sim_veh_h": 5539.925,
+      "geh": 2.8168642678580595
+     },
+     {
+      "section_m": 2200.0,
+      "obs_veh_h": 6626.170833333333,
+      "sim_veh_h": 6311.275000000001,
+      "geh": 3.91523324519133
+     },
+     {
+      "section_m": 3200.0,
+      "obs_veh_h": 6639.020833333333,
+      "sim_veh_h": 6263.125,
+      "geh": 4.680061244088654
+     },
+     {
+      "section_m": 4800.0,
+      "obs_veh_h": 6170.5,
+      "sim_veh_h": 5540.575,
+      "geh": 8.232001887594052
+     },
+     {
+      "section_m": 5400.0,
+      "obs_veh_h": 6008.683333333334,
+      "sim_veh_h": 5772.475000000001,
+      "geh": 3.077628653705992
+     }
+    ]
+   },
+   "breakdown": {
+    "rule": "a replicate realising < 0.9 of its planned demand while the battery's mean realised share is >= 0.95 (reported only)",
+    "seeds": []
+   },
+   "no_locks": {
+    "value": 0.0,
+    "passed": true,
+    "evaluated": true
+   },
+   "criteria": [
+    {
+     "name": "link_flows_geh",
+     "value": 0.24305555555555555,
+     "passed": false,
+     "evaluated": true
+    },
+    {
+     "name": "speeds_rmspe",
+     "value": 0.35589930286570975,
+     "passed": false,
+     "evaluated": true
+    },
+    {
+     "name": "wave_speed",
+     "value": null,
+     "passed": false,
+     "evaluated": true
+    },
+    {
+     "name": "ring_emergence",
+     "value": 1.0,
+     "passed": true,
+     "evaluated": true
+    },
+    {
+     "name": "ring_dampening",
+     "value": 1.0,
+     "passed": true,
+     "evaluated": true
+    },
+    {
+     "name": "n_seeds",
+     "value": 20.0,
+     "passed": true,
+     "evaluated": true
+    },
+    {
+     "name": "sensitivity_grid",
+     "value": 1.0,
+     "passed": true,
+     "evaluated": true
+    },
+    {
+     "name": "no_collisions",
+     "value": 0.0,
+     "passed": true,
+     "evaluated": true
+    },
+    {
+     "name": "no_locks",
+     "value": 0.0,
+     "passed": true,
+     "evaluated": true
+    }
+   ]
+  }
+ },
+ "criteria": {
+  "rcs": {
+   "R1": {
+    "passed": true,
+    "collisions": 0,
+    "runs_recorded": 20
+   },
+   "R2": {
+    "passed": true,
+    "realized_mean": 0.96696,
+    "ref": 0.9665900000000001
+   },
+   "R3": {
+    "passed": true,
+    "geh_vs_corrected": {
+     "Old Hickory Blvd on-ramp": 1.6920518555148356,
+     "Hickory Hollow Pkwy off-ramp": 0.9548361327244325,
+     "Hickory Hollow Pkwy on-ramp": 1.2934277703705714,
+     "Bell Road off-ramp (collector road)": 1.8693877828719776
+    }
+   },
+   "R4": {
+    "passed": true,
+    "geh": {
+     "2200": 3.68352538517573,
+     "3200": 4.507729126064416
+    },
+    "ref_geh": {
+     "2200": 3.858611832177049,
+     "3200": 4.630489069213626
+    }
+   },
+   "R5": {
+    "passed": true,
+    "wave": {
+     "ref_passes": false,
+     "arm_passes": false,
+     "binds": false,
+     "passed": true
+    },
+    "rmspe_15min": {
+     "arm": 0.2666590785688735,
+     "ref": 0.25412709845352993,
+     "bound": 0.27412709845352995,
+     "passed": true
+    }
+   },
+   "all_pass": true
+  },
+  "rcc": {
+   "R1": {
+    "passed": true,
+    "collisions": 0,
+    "runs_recorded": 20
+   },
+   "R2": {
+    "passed": false,
+    "realized_mean": 0.9561249999999999,
+    "ref": 0.9665900000000001
+   },
+   "R3": {
+    "passed": true,
+    "geh_vs_corrected": {
+     "Old Hickory Blvd on-ramp": 1.7169613955901646,
+     "Hickory Hollow Pkwy off-ramp": 1.3616931060281618,
+     "Hickory Hollow Pkwy on-ramp": 1.4349446744849674,
+     "Bell Road off-ramp (collector road)": 2.001668266716199
+    }
+   },
+   "R4": {
+    "passed": false,
+    "geh": {
+     "2200": 4.089310834650752,
+     "3200": 4.8813476242770015
+    },
+    "ref_geh": {
+     "2200": 3.858611832177049,
+     "3200": 4.630489069213626
+    }
+   },
+   "R5": {
+    "passed": true,
+    "wave": {
+     "ref_passes": false,
+     "arm_passes": false,
+     "binds": false,
+     "passed": true
+    },
+    "rmspe_15min": {
+     "arm": 0.2628144225850676,
+     "ref": 0.25412709845352993,
+     "bound": 0.27412709845352995,
+     "passed": true
+    }
+   },
+   "all_pass": false
+  },
+  "rccs": {
+   "R1": {
+    "passed": true,
+    "collisions": 0,
+    "runs_recorded": 20
+   },
+   "R2": {
+    "passed": false,
+    "realized_mean": 0.9583699999999998,
+    "ref": 0.9665900000000001
+   },
+   "R3": {
+    "passed": true,
+    "geh_vs_corrected": {
+     "Old Hickory Blvd on-ramp": 1.7892217830934747,
+     "Hickory Hollow Pkwy off-ramp": 1.2391665262979923,
+     "Hickory Hollow Pkwy on-ramp": 1.4314986521815307,
+     "Bell Road off-ramp (collector road)": 1.9625328727677391
+    }
+   },
+   "R4": {
+    "passed": false,
+    "geh": {
+     "2200": 3.91523324519133,
+     "3200": 4.680061244088654
+    },
+    "ref_geh": {
+     "2200": 3.858611832177049,
+     "3200": 4.630489069213626
+    }
+   },
+   "R5": {
+    "passed": true,
+    "wave": {
+     "ref_passes": false,
+     "arm_passes": false,
+     "binds": false,
+     "passed": true
+    },
+    "rmspe_15min": {
+     "arm": 0.257972889490567,
+     "ref": 0.25412709845352993,
+     "bound": 0.27412709845352995,
+     "passed": true
+    }
+   },
+   "all_pass": false
+  }
+ },
+ "paired_arm_minus_b2": {
+  "rcs": {
+   "realized": {
+    "mean": 0.000369999999999987,
+    "lo95": -0.001960153739898444,
+    "hi95": 0.002700153739898418,
+    "n": 20
+   },
+   "flow_200_veh_h": {
+    "mean": 7.4,
+    "lo95": -12.549512268380868,
+    "hi95": 27.34951226838087,
+    "n": 20
+   },
+   "flow_1000_veh_h": {
+    "mean": -0.8750000000000455,
+    "lo95": -19.072985157408024,
+    "hi95": 17.32298515740793,
+    "n": 20
+   },
+   "flow_2200_veh_h": {
+    "mean": 13.925000000000182,
+    "lo95": 3.1568473022290693,
+    "hi95": 24.693152697771296,
+    "n": 20
+   },
+   "flow_3200_veh_h": {
+    "mean": 9.724999999999635,
+    "lo95": -0.11633583590595364,
+    "hi95": 19.566335835905225,
+    "n": 20
+   },
+   "flow_4800_veh_h": {
+    "mean": 5.525,
+    "lo95": -4.986689715215304,
+    "hi95": 16.036689715215303,
+    "n": 20
+   },
+   "flow_5400_veh_h": {
+    "mean": 3.9,
+    "lo95": -7.20839755329523,
+    "hi95": 15.00839755329523,
+    "n": 20
+   }
+  },
+  "rcc": {
+   "realized": {
+    "mean": -0.010465000000000007,
+    "lo95": -0.013948296808873325,
+    "hi95": -0.006981703191126689,
+    "n": 20
+   },
+   "flow_200_veh_h": {
+    "mean": -56.575,
+    "lo95": -86.9848759082956,
+    "hi95": -26.1651240917044,
+    "n": 20
+   },
+   "flow_1000_veh_h": {
+    "mean": -48.924999999999955,
+    "lo95": -76.17614896944531,
+    "hi95": -21.673851030554598,
+    "n": 20
+   },
+   "flow_2200_veh_h": {
+    "mean": -18.324999999999953,
+    "lo95": -38.312136064729785,
+    "hi95": 1.6621360647298822,
+    "n": 20
+   },
+   "flow_3200_veh_h": {
+    "mean": -19.849999999999774,
+    "lo95": -38.60535252721213,
+    "hi95": -1.0946474727874111,
+    "n": 20
+   },
+   "flow_4800_veh_h": {
+    "mean": -10.9,
+    "lo95": -27.665969133386476,
+    "hi95": 5.865969133386477,
+    "n": 20
+   },
+   "flow_5400_veh_h": {
+    "mean": -9.325,
+    "lo95": -23.46061630807123,
+    "hi95": 4.81061630807123,
+    "n": 20
+   }
+  },
+  "rccs": {
+   "realized": {
+    "mean": -0.008220000000000015,
+    "lo95": -0.011095011434029613,
+    "hi95": -0.005344988565970418,
+    "n": 20
+   },
+   "flow_200_veh_h": {
+    "mean": -44.05,
+    "lo95": -61.966440977247096,
+    "hi95": -26.133559022752898,
+    "n": 20
+   },
+   "flow_1000_veh_h": {
+    "mean": -31.549999999999773,
+    "lo95": -54.07873410354392,
+    "hi95": -9.02126589645562,
+    "n": 20
+   },
+   "flow_2200_veh_h": {
+    "mean": -4.499999999999727,
+    "lo95": -24.606996774835117,
+    "hi95": 15.606996774835665,
+    "n": 20
+   },
+   "flow_3200_veh_h": {
+    "mean": -3.9249999999999545,
+    "lo95": -24.07699359277341,
+    "hi95": 16.2269935927735,
+    "n": 20
+   },
+   "flow_4800_veh_h": {
+    "mean": 1.225,
+    "lo95": -16.93074552969933,
+    "hi95": 19.380745529699333,
+    "n": 20
+   },
+   "flow_5400_veh_h": {
+    "mean": 0.1,
+    "lo95": -16.803100324840184,
+    "hi95": 17.003100324840187,
+    "n": 20
+   }
+  }
+ },
+ "problems": [],
+ "selection": {
+  "candidates": [
+   "b2",
+   "rcs"
+  ],
+  "metric": {
+   "b2": 0.5375,
+   "rcs": 0.5458333333333333
+  },
+  "chosen": "rcs",
+  "tie": false,
+  "b5": {
+   "p15_arm": "i24_replica_flow_rcs_speedcal_dc_refit:i24_replica_flow_rcs_corrected_dc:dc_refit_rcs",
+   "pipeline_args": "--stages \"p15_i24_b5\" --p15-arm i24_replica_flow_rcs_speedcal_dc_refit:i24_replica_flow_rcs_corrected_dc:dc_refit_rcs",
+   "from_scenario": "scenarios/i24_replica_flow_rcs_speedcal_dc_refit.yaml",
+   "from_hash": "921fb1f42c67",
+   "base_yaml": "scenarios/i24_replica_flow_rcs_corrected_dc.yaml",
+   "base_hash": "18b52caef8a9",
+   "carried_scale": 0.925,
+   "from_battery": "artifacts/i24_validation_dc_refit_rcs.json",
+   "note": "commit the family's scenarios, inputs and battery from the archive before p15 launches"
+  }
+ },
+ "definitions": {
+  "R1-R5": "docs/I24_DISCHARGE_DIAGNOSIS.md \u00a78.4.3, read as stage p13's corridor_b2.py score reads them (R3 against the corrected counts at the pooled recommended coverage; R5's wave half binds only where the reference's wave row passes), each arm against the B2 re-run on the same 20 seeds",
+  "station_hour": "C1's form (docs/FRISCO_PROTOCOL.md \u00a74): hours anchored at 06:30 (windows 0-11, 12-23); a station-hour's flow is its twelve 5-min crossings summed; observed = the mean of the row's recommended-coverage table over the hour; GEH < 5 share pooled over the 20 replicates x 6 sections x 2 hours (240), the per-replicate share's t interval and the replicate-mean form (12) beside it (scripts/i24_geh_diagnosis.py station_hours)",
+  "lane_set": "scripts/i24_validate.py --lane-crossings: the simulated count on the four highest SUMO lane indices of the section's edge (the observed lanes 1-4)",
+  "selection": "among B2 and the arms holding R1-R5, the largest station_hour_pooled_share on the lane set; ties to the smaller change in the order b2 < rcs < rcc < rccs"
+ }
+}

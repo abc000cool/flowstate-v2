@@ -350,3 +350,116 @@ bash -n artifacts/i24_consistency_2026-10-07/stage_p23_c7b.sh.txt
 The §3 bounds are `c7b_expected.json` `lane_set_bounds_b2` (`corridor_c7b.py` `lane_set_bounds`), computed from
 `artifacts/i24_validation_dc_refit_rc.json`, `artifacts/i24_count_consistency.json`
 (`sections[*].aux_band_tracked_veh_h`) and `scripts/i24_geh_diagnosis.py`'s `station_hours`; the tests pin them.
+
+## 11. Result — 2026-10-08
+
+*Written 2026-10-08 after the run, from the readout and the files it names; §1–§10 are the pre-registration,
+unchanged. Nothing here is adopted.*
+
+**Provenance.** Stage `p23_c7b`, one n2d-standard-16, 04:18–06:31 UTC, self-deleted; about $1.7 [estimate: 133 min
+at about $0.78/h]. Readout `artifacts/i24_consistency_c7b.json`: `level` `b2`, `problems` empty, config-hash policy 4,
+`code` 8ea59ec (its seven `code_sha256` entries equal those files at 8ea59ec, `code_dirty_paths` empty; `vm_snapshot`
+264b7ce is the VM's snapshot commit, not in the repository). Batteries
+`artifacts/i24_validation_dc_refit_{rc_p23,rcs,rcc,rccs}.json` (simulation 1,625 / 1,696 / 1,655 / 1,680 s), their
+ramp-flow reductions `artifacts/i24_b2_ramp_flows_dc_refit_{…}.json`, the families' inputs and demand
+`artifacts/{i24_replica_inputs,demand_i24}_flow_{rcs,rcc,rccs}.json` and twelve scenarios
+`scenarios/i24_replica_flow_{rcs,rcc,rccs}{,_corrected,_corrected_dc,_speedcal_dc_refit}.yaml`. Recomputed at HEAD
+(ef28156; `config.py` has changed since 8ea59ec only in the weave range, which I-24 does not use), each arm battery's
+`config_hash` is its `_speedcal_dc_refit` scenario's, as §4.3 expected: rcs 921fb1f42c67, rcc e17c205d725d, rccs
+a35b0f3b8b10. Re-run at HEAD, the harness's `evaluate` reproduces every readout field but provenance.
+
+**The reproduction.** The B2 re-run (`dc_refit_rc_p23`, 7082bcea5442 = 909b89f298c5 under policy 3) reproduces p13's
+battery exactly: all ten `reference_reproduces_p13` checks are true (hash, scenario, seeds, per-replicate counts,
+realised fractions, collisions, segment speeds, fronts, every criteria row but `no_locks`, the observed side). Its
+ramp-flow reduction equals p13's in every replicate, the run directory aside. `no_locks` passes, 0 of 20 locked, the
+same flags as p14's re-scored record.
+
+**R1–R5** (`criteria`; each arm against the B2 re-run on the same 20 seeds; paired arm − B2 with 95 % t-intervals,
+`paired_arm_minus_b2`). Every battery: 0 collisions in 20 recorded runs, 0 locked replicates, no breakdown replicate.
+
+| # | B2 re-run | `rcs` (shift) | `rcc` (coverage) | `rccs` (both) |
+|---|---|---|---|---|
+| R1 collisions | 0 | 0 | 0 | 0 |
+| R2 realised; paired | 0.9666 | 0.9670; +0.0004 [−0.0020, +0.0027] | **0.9561; −0.0105 [−0.0139, −0.0070]** | **0.9584; −0.0082 [−0.0111, −0.0053]** |
+| R3 ramp GEH (OH on / HH off / HH on / Bell off) | 1.80 / 1.21 / 1.29 / 1.99 | 1.69 / 0.95 / 1.29 / 1.87 | 1.72 / 1.36 / 1.43 / 2.00 | 1.79 / 1.24 / 1.43 / 1.96 |
+| R4 2-h GEH 2,200 / 3,200 m; paired flow [veh/h] | 3.86 / 4.63 | 3.68 / 4.51; +13.9 [+3.2, +24.7] / +9.7 [−0.1, +19.6] | **4.09 / 4.88**; −18.3 [−38.3, +1.7] / −19.8 [−38.6, −1.1] | **3.92 / 4.68**; −4.5 [−24.6, +15.6] / −3.9 [−24.1, +16.2] |
+| R5 wave row; 15-min RMSPE (bound 0.274) | fails, does not bind; 0.254 | fails; 0.267 | fails; 0.263 | fails; 0.258 |
+| reading | reference | **holds R1–R5** | fails R2, R4 | fails R2, R4 |
+
+`rcs` passes R2 by 0.0004 and `rccs` misses R4 by 0.06 / 0.05 GEH, both inside their paired intervals; the rules are
+read as fixed, not re-thresholded.
+
+**Why `rcc` and `rccs` fail.** At B2's planned level (s = 1.080413, the same 14,640 planned vehicles) planned/target
+is 1.080 in every window, where B2's runs 1.002–1.152 (`planned_over_target`): demand moves from the second hour into
+the first. More planned early demand gave less early flow. The arm realised 1.05 points less of the same total (R2,
+interval clear of zero); the first-hour station-hour flow at 200 m fell from 5,735.0 to 5,654.9 veh/h; and the
+first-hour shortfall at 2,200 / 3,200 m widened from −639.7 / −524.3 to −686.2 / −577.3 veh/h
+(`station_hour_table`), so R4 failed. Speeds moved little (15-min RMSPE 0.263 against 0.254; 5-min 0.348 against
+0.343). `rccs` is the same with R2 −0.82 points. Why more early demand inserts less is not established; §8 named
+the risk.
+
+**The lane set on B2's row** (`readings.b2`, every lane as scored → lanes 1–4; §3's predictions from C7's bounds):
+
+| reading | every lane | lanes 1–4 | §3 predicted |
+|---|---|---|---|
+| 2-h GEH, 1,000 m (observed 5,751.6 veh/h) | 8.30 (model 6,398.3) | **2.43** (5,569.0; −182.6) | 0.20–5.12 |
+| 2-h GEH, 4,800 m (observed 6,170.5 veh/h) | 1.28 (6,070.2) | **8.21** (5,542.2; −628.3) | 5.68–8.29 |
+| 5-min row, bins passing | 44 / 144 (30.6 %) | 38 / 144 (26.4 %); 1,000 m 7 → 5, 4,800 m 11 → 7 | 18.1–51.4 %; C7's comparison 25.7–30.6 % |
+| station-hours pooled [per-replicate 95 %] | 64.6 % [61.8, 67.4] | 53.75 % [51.8, 55.7] | 51.7–68.3 % |
+| station-hours, replicate mean | 58.3 % | 50.0 % | 50.0–66.7 % |
+
+Every value lies inside its predicted range; the replicate-mean share sits on its lower end. Like for like, 1,000 m
+passes over 2 h but its first hour turns from 404.8 veh/h high to 414.3 low (GEH 5.07 → 5.36); 4,800 m fails both
+hours (−783.7 and −472.9 veh/h; GEH 9.90 and 6.41), a shortfall the fifth lane hid. The residual against the
+recording's rule is small: crossings straddling the set's edge number 73 into / 0 out at 1,000 m and 51 / 24 at
+4,800 m over the 20 replicates (under 2 veh/h per replicate), against 33,173 and 21,122 crossings outside the set.
+
+**The shift** (`rcs` − B2, paired). 2-h flows +7.4 [−12.5, +27.3] veh/h at 200 m, +13.9 [+3.2, +24.7] at 2,200 m,
++9.7 [−0.1, +19.6] at 3,200 m, the other sections within ±6 with intervals across zero. The row moves 44 → 45 bins on
+every lane and 38 → 36 on the lane set; station-hours 64.6 → 63.75 % and 53.75 → 54.58 % (−2 and +2 of 240). Speed
+RMSPE rises: 5-min 0.343 → 0.360, 15-min 0.254 → 0.267. The 200-m cross-correlation lag (C7 §5's estimator,
+computed for this section, not in the readout; reproduce below) moves from +57.5 s to +54.4 s, and r at lag 0 falls
+from 0.693 to 0.615.
+
+**Selection and B5's handoff** (`selection`). The candidates are B2 and `rcs`. The pooled lane-set station-hour
+share is 0.5458 for `rcs` (131 of 240) and 0.5375 for B2 (129 of 240), no tie: **the rule selects `rcs`**. The margin
+is two comparisons and the per-replicate intervals overlap ([51.1, 58.0] % against [51.8, 55.7] %); the rule does not
+ask for a resolved difference. After the `rcs` family's scenarios, inputs and battery are committed, p15 refits `rcs`
+with `--p15-arm i24_replica_flow_rcs_speedcal_dc_refit:i24_replica_flow_rcs_corrected_dc:dc_refit_rcs` (no `:SCALE`:
+the carried level is p4's 0.925). From-arm 921fb1f42c67, base 18b52caef8a9, battery
+`artifacts/i24_validation_dc_refit_rcs.json` (realised 0.9670, so Amendment 6's floor is 0.9570). p15 uses the
+pre-registered all-lane objective (`--p15-section-lanes all`, the default) and reports the lane-set share beside it.
+**As built, that report cannot be formed:** the stage passes `--lane-crossings` to its battery only under
+`observed`, so under `all` the refit's battery records no lane crossings. Not changed here.
+
+**What still fails.** Every arm fails the gate. On `rcs`: the link-flow row 31.25 % (lane set 25.0 %) against ≥ 85 %;
+station-hours 63.75 % (lane set 54.58 %); 5-min segment-speed RMSPE 0.360 against ≤ 0.15; the wave row (no backward
+wave detected, on all four batteries). The ring, seed, sensitivity, collision and lock rows pass. On the lane set,
+six of twelve station-hours fail in every arm's replicate mean: the first hour at 1,000 / 2,200 / 3,200 / 4,800 m and
+the second at 200 and 4,800 m.
+
+**§8's predictions, scored.**
+- `rcs`: R1–R5 hold, **held**; the 200-m lag moves toward 0, **not borne out** (+57.5 → +54.4 s); the station-hour
+  share moves by at most a few comparisons, **held** (±2 of 240).
+- `rcc`: the 200-m second-hour excess shrinks, **held, slightly** (+400.8 → +367.7 veh/h; `rccs` +364.5); the
+  first-hour shortfall at 2,200 / 3,200 m narrows, **not borne out** (it widened); R2 is the criterion at risk,
+  **held**, and R4 failed too, which was not predicted.
+- Lane set: 1,000 m turns into a small shortfall, **held** (−182.6 veh/h, GEH 2.43); 4,800 m short by about
+  450–660 veh/h, **held** (628.3).
+
+**Limits.** One recorded morning, scored on the window its inputs come from: nothing here is validation. The shift
+is a lower bound and moves the mainline only (§5); why it barely moved the 200-m lag is not established, and 5-min
+windows resolve the lag only roughly. The coverage correction was tested only at B2's planned total (§4.2). The
+selection margin is two comparisons. The 72-m map offset (§9) is unchanged: the first replicate's `meta.json` of
+each of the four labels gives the runner's corridor as 8,555.74 m and Old Hickory's attach x as 3,070.07 m.
+
+**Reproduce ($0, from the files above):**
+
+```
+uv run --no-sync python artifacts/i24_consistency_2026-10-07/harness/corridor_c7b.py evaluate --out <scratch>/c7b.json
+uv run --no-sync python -c "import json,sys,numpy as np; sys.path.insert(0,'scripts'); import i24_geh_diagnosis as g
+for l in ('rc_p23','rcs','rcc','rccs'):
+    b=json.load(open(f'artifacts/i24_validation_dc_refit_{l}.json')); o=b['observed']
+    c=g.cross_correlation(np.asarray(b['simulated']['hourly_flows_veh_h_mean']),np.asarray(o['hourly_flows_veh_h_recommended']),o['sections_m'],o['window_s'])[0]
+    print(l, c['lag_parabolic_s'], c['r_lag0'])"
+```

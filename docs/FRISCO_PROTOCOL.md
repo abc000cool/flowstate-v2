@@ -848,6 +848,7 @@ The owner can overturn this adoption (docs/PRE_FRISCO_PROGRAM.md: "Adoption is t
 - each (replicate, section, hour) is one GEH comparison, pooled over the replicates: 20 × 6 × 2 = 240 comparisons on I-24, the form `validation.baseline_gate` uses for C1;
 - the share with GEH < 5 is read against 85 % (`fhwa_default`); the per-replicate share's mean and 95 % t-interval, and the replicate-mean form (12 comparisons, the I-24 row's convention), are reported beside it (`scripts/i24_geh_diagnosis.py station_hours`).
 **Status.** The I-24 gate stays on the committed row (144 five-minute bins, replicate mean) until the owner adopts the station-hour form as the criterion; that choice moves the pass threshold's meaning and is not the coordinator's to make. Reporting both forms changes no verdict: B2 reads 30.6 % on the row and 64.6 % / 58.3 % on station-hours; both fail 85 %.
+**2026-10-08:** stage p23's readout (`artifacts/i24_consistency_c7b.json`, `readings.<arm>.all_lanes` and `.lane_set`: `station_hour_pooled_share`, `station_hour_pooled_per_replicate`, `station_hour_replicate_mean_share`) reports the station-hour form beside the row for every arm of the round, the B2 re-run included, on every lane and on the observed lane set; the criterion's form is unchanged.
 
 ### Amendment 6 — 2026-10-07: the demand level is fitted on link flows under an insertion constraint (approved by the coordinator under the owner's delegation, before any run)
 

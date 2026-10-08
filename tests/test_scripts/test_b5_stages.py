@@ -144,7 +144,7 @@ def _p15_fit(
 def _p15_rest(frm: str = P15_FROM) -> list[str]:
     return [
         f"uv run --no-sync python scripts/i24_validate.py --scenario scenarios/{frm}_b5.yaml "
-        "--label p15_b5 --replicates 20 --procs 14 --analysis-procs 8 --ring-seeds 20",
+        "--label p15_b5 --replicates 20 --procs 14 --analysis-procs 8 --ring-seeds 20 --lane-crossings",
         *P15_TAIL,
     ]
 
@@ -257,7 +257,7 @@ def test_p15_takes_the_arm_c7b_selects(tmp_path: Path) -> None:
 
 def test_p15_passes_its_section_lanes_setting_to_the_fit(tmp_path: Path) -> None:
     """``--p15-section-lanes observed`` reaches the fit as ``--section-lanes observed`` and the
-    battery as ``--lane-crossings --section-lanes observed`` (so the fit's objective and the battery's
+    battery as ``--section-lanes observed`` beside the ``--lane-crossings`` every p15 battery records (so the fit's objective and the battery's
     link-flow row, C3's input, count the same lanes; docs/I24_CONSISTENCY_C7B.md §3); the reduction and
     the readout lines are unchanged. With ``all`` (the default) every call is as before."""
     stub, _, r = _run(tmp_path, "p15_i24_b5", "--p15-section-lanes", "observed")
@@ -265,7 +265,7 @@ def test_p15_passes_its_section_lanes_setting_to_the_fit(tmp_path: Path) -> None
     calls = _calls(stub)
     assert calls[0].count(" --section-lanes observed ") == 1, calls[0]
     assert calls[0].replace(" --section-lanes observed", "", 1) == P15_FIT
-    assert calls[1] == P15_REST[0] + " --lane-crossings --section-lanes observed", calls[1]
+    assert calls[1] == P15_REST[0] + " --section-lanes observed", calls[1]
     assert calls[2:] == P15_REST[1:]
 
 
