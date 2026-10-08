@@ -1,0 +1,137 @@
+name: platform-tests
+
+# E12 (docs/PRE_FRISCO_PROGRAM.md, "E12 - the platform-sensitive tests"; docs/E12_PLATFORM_TESTS.md):
+# the weave fixture tests whose marks depend on the platform, run three times in a row with -rxX and
+# the state recorder on (FLOWSTATE_RECORD_STATE; tests/test_microsim/_platform_record.py), then the
+# per-step divergence probe (scripts/platform_probe.py), compared against the committed macOS probe
+# files. Manual only, never on push:
+#   gh workflow run platform_tests.yml --ref main
+#   gh workflow run platform_tests.yml --ref main -f runners='["ubuntu-latest","macos-latest"]'
+# Setup mirrors ci.yml (uv, Python 3.12, `uv sync --all-packages --dev`: eclipse-sumo / libsumo
+# 1.27.1 from the workspace pins and uv.lock). redis-server is not installed: only
+# tests/test_microsim is collected.
+
+on:
+  workflow_dispatch:
+    inputs:
+      runners:
+        description: 'JSON list of runners, e.g. ["ubuntu-latest"] or ["ubuntu-latest","macos-latest"]'
+        required: false
+        default: '["ubuntu-latest"]'
+      probe_fixtures:
+        description: "scripts/platform_probe.py --fixture: 'all' or fixture names (see --list)"
+        required: false
+        default: "all"
+      dump_at:
+        description: "Optional step times [s] for --dump-at, space-separated (empty: none)"
+        required: false
+        default: ""
+
+concurrency:
+  group: platform-tests-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  platform:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: ${{ fromJSON(inputs.runners) }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    env:
+      OUT: platform-results
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.12"
+          enable-cache: true
+
+      - name: Sync workspace
+        run: uv sync --all-packages --dev
+
+      # Three consecutive runs of the same selection (the E12 criterion: three runs per platform
+      # give identical outcomes). A strict mark that passes fails its run; every run still runs and
+      # the artifacts are uploaded before the job reports it.
+      - name: Platform-sensitive tests, three runs, recorder on
+        id: tests
+        shell: bash
+        run: |
+          mkdir -p "$OUT"
+          status=0
+          for r in 1 2 3; do
+            set +e
+            FLOWSTATE_RECORD_STATE="$OUT/state_record_run$r.jsonl" \
+              uv run pytest $(cat tests/test_microsim/e12_platform_tests.txt) \
+                -m "not slow" -q -rxX -p no:cacheprovider \
+                --junitxml="$OUT/junit_run$r.xml" 2>&1 | tee "$OUT/pytest_run$r.log"
+            code=${PIPESTATUS[0]}
+            set -e
+            echo "run $r: pytest exit $code" | tee -a "$OUT/exit_codes.txt"
+            if [ "$code" -ne 0 ]; then status=1; fi
+          done
+          echo "status=$status" >> "$GITHUB_OUTPUT"
+
+      - name: Divergence probe
+        shell: bash
+        env:
+          FIXTURES: ${{ inputs.probe_fixtures }}
+          DUMP_AT: ${{ inputs.dump_at }}
+        run: |
+          args=(--fixture $FIXTURES --out-dir "$OUT/probe")
+          if [ -n "$DUMP_AT" ]; then args+=(--dump-at $DUMP_AT); fi
+          uv run python scripts/platform_probe.py "${args[@]}" 2>&1 | tee "$OUT/probe.log"
+
+      # Against the committed macOS (laptop) probe files; exit 1 there means "they part", which is a
+      # finding, not a failure of this step.
+      - name: Compare with the committed macOS probe files
+        if: always()
+        shell: bash
+        run: |
+          for f in "$OUT"/probe/*.json; do
+            [ -e "$f" ] || continue
+            fixture=$(basename "$f" .json | sed -E 's/_[a-z0-9]+-[a-z0-9_]+$//')
+            ref="artifacts/e12_platform_2026-10-07/${fixture}_darwin-arm64.json"
+            if [ -e "$ref" ]; then
+              echo "=== $fixture" | tee -a "$OUT/compare.txt"
+              uv run python scripts/platform_probe.py --compare "$ref" "$f" 2>&1 \
+                | tee -a "$OUT/compare.txt" || true
+            fi
+          done
+
+      # The three runs' records against each other (the platform's own three-run agreement) and
+      # against the committed macOS record; exit 1 there is a finding, not a failure of this step.
+      - name: Compare the records
+        if: always()
+        shell: bash
+        run: |
+          ref=artifacts/e12_platform_2026-10-07/state_record_darwin-arm64.jsonl
+          for r in 2 3; do
+            if [ -e "$OUT/state_record_run$r.jsonl" ]; then
+              echo "=== run 1 against run $r" | tee -a "$OUT/compare_records.txt"
+              uv run python scripts/platform_probe.py --compare-records \
+                "$OUT/state_record_run1.jsonl" "$OUT/state_record_run$r.jsonl" 2>&1 \
+                | tee -a "$OUT/compare_records.txt" || true
+            fi
+          done
+          if [ -e "$ref" ] && [ -e "$OUT/state_record_run1.jsonl" ]; then
+            echo "=== committed macOS record against run 1" | tee -a "$OUT/compare_records.txt"
+            uv run python scripts/platform_probe.py --compare-records \
+              "$ref" "$OUT/state_record_run1.jsonl" 2>&1 | tee -a "$OUT/compare_records.txt" || true
+          fi
+
+      - name: Upload record, logs and probe output
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: platform-tests-${{ matrix.os }}-${{ github.run_id }}
+          path: platform-results/
+          retention-days: 90
+
+      - name: Report a failed run
+        if: steps.tests.outputs.status != '0'
+        run: |
+          cat "$OUT/exit_codes.txt"
+          exit 1

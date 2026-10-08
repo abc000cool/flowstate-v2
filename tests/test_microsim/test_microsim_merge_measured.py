@@ -332,13 +332,7 @@ class TestWeavingSection:
         meta = json.loads(paths.meta.read_text())
         z = _zone(meta, "th52")
         _accounting(z)
-        net = sumolib.net.readNet(str(next(paths.run_dir.glob("**/*.net.xml"))))
-        x0 = sum(net.getEdge(e).getLength() for e in ("100", "101"))
-        df = pd.read_parquet(paths.trajectories, columns=["t", "x", "lane", "v"])
-        start = df[
-            (df.x >= x0) & (df.x < x0 + 60.0) & (df.t >= 120.0) & (df.t < 1200.0) & (df.lane == 1)
-        ]
-        windows = start.groupby((start.t // 60.0).astype(int)).v.mean()
+        windows = _th52_lane1_first60m_windows(paths)
         assert meta["n_collisions"] == 0, meta["collisions"]
         assert len(windows) == 18 and (windows > 2.0).all(), windows.round(1).to_dict()
         assert z["n_unfinished"] <= 0.1 * z["n_entered"], z
@@ -359,6 +353,19 @@ class TestWeavingSection:
         _accounting(_zone(meta, "th61"))
         assert state["n_collisions"] == 0, state
         assert state["zero_minutes"] == [], state
+
+
+def _th52_lane1_first60m_windows(paths) -> pd.Series:
+    """Mean speed of section lane 1 over the section's first 60 m per 60-s window after a
+    120-s warm-up, to 1200 s (``test_th52_capacity_does_not_lock``'s criterion; a named
+    helper so the E12 recorder, ``tests/test_microsim/_platform_record.py``, keeps it)."""
+    net = sumolib.net.readNet(str(next(paths.run_dir.glob("**/*.net.xml"))))
+    x0 = sum(net.getEdge(e).getLength() for e in ("100", "101"))
+    df = pd.read_parquet(paths.trajectories, columns=["t", "x", "lane", "v"])
+    start = df[
+        (df.x >= x0) & (df.x < x0 + 60.0) & (df.t >= 120.0) & (df.t < 1200.0) & (df.lane == 1)
+    ]
+    return start.groupby((start.t // 60.0).astype(int)).v.mean()
 
 
 def _th52_state(paths) -> dict:
