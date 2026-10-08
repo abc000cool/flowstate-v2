@@ -1260,8 +1260,7 @@ faster than the congested recording in nineteen seeds of twenty (+14 % to +26 % 
 the 5-min bins; the twentieth, 134183728835869882, broke down and ran slower, below), and speed fidelity is worse in
 all twenty, the same pattern B1 showed on the canonical arm (§8.3.1). Second, the wide A2/A3 intervals come from one
 seed (134183728835869882): under B1 + B2 it realised 0.660 of its demand at a mean segment speed of 4.9 m/s against
-10.4 m/s in the other nineteen — a standing breakdown the I-24 batteries do not record as a lock (`no_locks` is
-not evaluated on them). The other nineteen seeds realised 0.984 against B2's 0.966 at the same seeds. B1 does not
+10.4 m/s in the other nineteen — a standing breakdown that the lock rule does not count: re-scored on 2026-10-07 after the I-24 batteries began recording locks (commit b50211d), the longest standstill of any cell in that seed is 180 s against the 600-s lock duration — the queue crawled but kept discharging (`artifacts/i24_locks_p14_b1b2.json`); a report-only breakdown reading is pre-registered in docs/PRE_FRISCO_PROGRAM.md. The other nineteen seeds realised 0.984 against B2's 0.966 at the same seeds. B1 does not
 hold on top of B2: it still moves the boundary as predicted (A2 holds: 5,400-m flow 5,772 → 5,910 veh/h;
 boundary-zone speed error −17.0 → −9.8 km/h, paired +7.2 [6.2, 8.2]; peak-section GEH 3.9 / 4.6 → 2.6 / 3.2, with
 paired CIs that include zero over all twenty seeds because of one collapse), but it fails A5, worsens both gate rows
@@ -1317,6 +1316,8 @@ other way round, B2 on top of B1 fails its own R5, so the combined arm degrades 
 alone. (2) The FHWA-style re-sequence with the speed-objective fitter is uninformative on this family; its choice is
 a backlog, as the protocol predicted. (3) The B2 arm's record (§8.4.4) is unchanged by this round: its re-run
 reproduced the committed battery exactly, and its adoptability by its own rule rests on that arm, without B1.
+
+**Provenance note, 2026-10-07 (night).** The committed `artifacts/boundary_b1b2_corridor.json` records `code` e05866e because the readout was regenerated locally at the 2.6.0 release commit on the VM's archived outputs (§8.4.6, review-5 fixes); the batteries themselves were run from the commit pushed before the launch, c6c4387 (the coordinator's block log; the bucket's `launch.txt`, now deleted, carried it), on a VM snapshot commit that is not in the repository. From b50211d on, `scripts/gcp/vm_setup.sh` writes `.source_commit` on the VM and the readouts record it as `code` with the snapshot as `vm_snapshot`.
 
 ### 8.5 Corrections the record needs (owner's call)
 

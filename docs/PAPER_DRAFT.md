@@ -1,7 +1,7 @@
 # Emergent stop-and-go waves and sparse-vehicle smoothing on a calibrated I-24 replica: what a trajectory instrument can and cannot validate
 
 > **Unsubmitted first draft, 2026-09-25 (roadmap item B1); revised
-> 2026-10-07, twice.** This draft has not been submitted or circulated. Whether and
+> 2026-10-07, three times.** This draft has not been submitted or circulated. Whether and
 > when it goes to arXiv (roadmap item B2) is the owner's decision. It follows
 > [PAPER_OUTLINE.md](PAPER_OUTLINE.md), updated with the record since
 > 2026-09-03. It adds no new claims and no simulation was run for it: every
@@ -12,8 +12,11 @@
 > artifacts. Of items 19–22, found during the first 2026-10-07 revision, 19
 > and 20 were settled in the same commit (`4d32042`), 21 is left open, and 22
 > was overtaken when stage p8 ran. Items 23–31, found during the later
-> 2026-10-07 revision, are recorded and left open. Both 2026-10-07 revisions
-> are listed in the Revision notes below; neither ran a simulation.
+> 2026-10-07 revision, are recorded and left open, as are items 32–33, found
+> during the night revision. All three 2026-10-07 revisions are listed in the
+> Revision notes below; none ran a simulation. The night revision also cites
+> the decision records of 2026-10-07, which were in the working tree but not
+> yet committed when it was made.
 
 **Authors:** Ansh Pathak, Sujan Sannidhi, Venkata Shashish Vasireddi
 **Affiliation:** FlowState
@@ -166,11 +169,14 @@ results is a passing validation**; each is labelled where it appears.
    a braking cap from the weave's own speed targets and a close-leader blind
    spot at Ruth St, and opposing entries at T.H.52; and W2, which removes
    both on fixtures but fails its no-new-lock criterion and stays off.
+   *(Overtaken by the night revision, items 3–4: W2's corridor round ran, and
+   Amendment 4 adopted W2 together with W1b.)*
 4. **W1b's corridor round** (Abstract; §1.4; §2.7; §7.7; §8.7; §9 item 18;
    ledger row 77). §7.7 said the round "has not been launched". It ran, and
    every registered criterion passes: locks 3 → 0, S790 +7.2 veh/h [−9.6,
    +23.9], zero collisions. Labelled as run on the nine-day inputs and scored
    by the battery's own criteria, not the gate; opt-in pending the owner.
+   *(Overtaken by the night revision, item 3: adopted with W2 by Amendment 4.)*
 5. **Lock detection** (§2.7; §7.7; §10 scripts table; Appendix C, item 29).
    The review's three changes to the detector; both readers have now run on
    an I-94 battery that kept its space-time bins; the p9 artifacts are the
@@ -232,6 +238,86 @@ are locks is inferred from their departed shares; the p8 artifacts carry no
 lock record. (vi) The code tree of the p8c confirmation run is recorded as a
 commit that is not in this repository (Appendix C, item 28).
 
+## Revision notes (2026-10-07, night)
+
+What changed after commit `29f4d78`, and why. Four records landed after the
+later revision: the I-24 corridor rounds of Amendments B1 and B2 and the
+round that combined them (stages p12, p13 and p14;
+docs/I24_DISCHARGE_DIAGNOSIS.md §8.3.1, §8.4.4, §8.4.6;
+`artifacts/boundary_b1_corridor.json`, `artifacts/boundary_b2_corridor.json`,
+`artifacts/boundary_b1b2_corridor.json`); the I-94 corridor round of W1b + W2
+(stage p10; docs/I94_CAL_COLLISIONS.md §16;
+`artifacts/weave_w2_corridor.json`); the lock re-scoring of two of p14's
+three batteries (`artifacts/i24_locks_p14_{b1b2,b2_ref}.json`; docs/I24_VALIDATION.md
+§0, note "Locks recorded"); and three decisions taken on 2026-10-07 at 21:20
+CDT (docs/DECISIONS_2026-10-07.md; docs/FRISCO_PROTOCOL.md, "Adoption of
+Amendment 3" and Amendments 4–5; CHANGELOG, `[Unreleased]`). The runs are
+committed through `b50211d`. The decision records (those two documents, the
+dated note under I24_DISCHARGE_DIAGNOSIS.md §8.4.4, the CHANGELOG's
+`[Unreleased]` entry and docs/PRE_FRISCO_PROGRAM.md) were staged but not
+committed when this revision was made. No simulation was run. A few figures
+were computed from committed artifacts; each is marked [computed] with the
+keys it was read from. **None of the new results is a passing validation**:
+the I-24 arm that is now the calibrated-arm candidate passes the hourly
+link-flow row on 30.6% of comparisons, against 85% required.
+
+1. **The two I-24 corrections ran; "not run" is gone** (Abstract; §1.4
+   item 4; §1.5; §2.4; §5.7; §5.8; §5.9, new; §8.1; §8.2; §8.3; §9 items 1,
+   9, 21, 22; ledger rows 72–73, 79–82). The draft said that neither B1 nor
+   B2 had been run on the corridor. B1 alone (p12): A1–A4 hold and A5 fails
+   on the arm its rule names, so B1 is not adopted as written; on `_dc_refit`
+   every applicable criterion holds. B2 alone (p13): R1–R5 hold, so B2 is
+   adoptable by its own rule. B1 on top of B2 (p14): A5 fails and one seed in
+   twenty collapses; the FHWA demand re-sequence that followed picks a backlog
+   (C2 and C3 fail), and the carried demand level stands. §5.9 gives every
+   number with its artifact key and labels the two RMSPE estimators.
+2. **The `_dc_refit` numbers are labelled as built on uncorrected ramp
+   counts** (§5.7 table and note; §5.8, the count check's model reading;
+   §5.9, p12's arms; §8.1; §8.2; ledger rows 57, 73 and 79), with a pointer
+   to the dated note under I24_DISCHARGE_DIAGNOSIS.md §8.4.4. No number was
+   changed.
+3. **The three decisions of 2026-10-07** (§2.5, new paragraph; §2.7; §5.9;
+   §7.6; §7.7; §7.8; §8.3; §9 items 16, 18, 23, 25). They are the
+   coordinator's decisions, taken under the owner's delegation, and the owner
+   can overturn them. B2 was adopted provisionally, as a ramp-count correction
+   under the protocol's §2.3, not its §7.1 (Amendment 5). W1b and W2 were
+   adopted together (Amendment 4); the amendment was written after W1b's
+   release clause had failed on the corridor, says so, and keeps that round's
+   verdict on record. Amendment 3 was adopted; its range round is
+   pre-registered and has not run.
+4. **The I-94 round of W1b + W2 (p10)** (§1.4 item 6; §7.7; §7.8; §8.7; §9
+   items 18, 23; ledger row 78). The draft said this round had not run. It
+   ran: no collision in the guarded arm (0 of 20) against one without, a
+   difference within what the round's pre-registered power cannot resolve,
+   so the drop is not attributed to W2; W1b's release clause fails (1.26%
+   against 1%), identically in both arms. No sentence of the draft had
+   attributed the corridor's collision drop to W2; the new text follows
+   I94_CAL_COLLISIONS.md §16's wording.
+5. **Breakdowns that are not locks** (§2.7; §5.9; §8.7; §9 item 24, new;
+   ledger row 83). p14's collapsed seed is not a lock by the written
+   definition, because its queue crawled but kept discharging; a report-only
+   breakdown reading has been pre-registered.
+6. **Smaller fixes.** §1.5 pointed W2's fixtures to §7.7; they are in §7.8.
+   §10 names the code trees of the new rounds, unevenly recorded. Ledger rows
+   78–83 added and rows 57, 72, 73, 76 and 77 annotated. Appendix C item 25
+   annotated; items 32–33 added, both open. Earlier revision notes carry a
+   pointer where this revision overtakes them.
+
+**Numbers that could not be traced to a committed artifact key.** None was
+removed; each traces to a named document section. (i) The Clopper–Pearson
+interval for p10's guarded arm (0–16.8%) is in I94_CAL_COLLISIONS.md §16;
+`artifacts/weave_w2_corridor.json` records the counts, not the interval (the
+same interval for 0 of 20 is recorded in `artifacts/i24_locks_p14_b1b2.json`,
+`locks.share_locked`). (ii) The breakdown reading's thresholds (0.9 of planned
+demand in a battery whose mean is at least 0.95) are in
+docs/PRE_FRISCO_PROGRAM.md only, which was not yet committed. (iii) That p13's
+archive kept `meta.json` alone for 19 of each battery's 20 replicates is
+stated in I24_VALIDATION.md §0 and docs/CONTRACTS.md; no artifact records it.
+(iv) The Old Hickory correction's size at pooled coverage (about 150 veh/h)
+is I24_DISCHARGE_DIAGNOSIS.md §8.4.2's, as before. (v) The tree each VM ran
+is not recoverable from a committed record for p13 and p14 (§10; Appendix C,
+item 32).
+
 ---
 
 ## Abstract
@@ -270,11 +356,22 @@ the recorded flow, and the ceiling sits at the corridor's downstream end,
 mostly in how the measured downstream speed is imposed. A data-only check of
 the recording's own counts then left the flow targets standing and found
 through traffic counted in its on-ramp lanes, which inflates the model's
-ramp inputs. Neither correction has yet been run on the corridor. The
-corridor is not validated. Calibrating the drivers' mean maximum
-acceleration, by a rule fixed before any run, raises the peak-section flow to
-about 6,030 veh/h, a demand refit raises it no further, and the calibration
-costs the emergent-wave criterion; it is not adopted.
+ramp inputs. Calibrating the drivers' mean maximum acceleration, by a rule
+fixed before any run, raises the peak-section flow to about 6,030 veh/h, a
+demand refit raises it no further, and the calibration costs the
+emergent-wave criterion; it is not adopted. The two corrections the
+diagnosis points to, of the ramp counts and of the boundary, were then run
+on the corridor, each against criteria fixed before its run. On the refit arm,
+removing the flagged through traffic from the ramp counts brings the peak
+sections within GEH 5 of their targets on two-hour flows, with 4.5 points
+more of the demand on the road, and holds every registered criterion; under
+a decision the owner delegated, it was adopted provisionally on 2026-10-07
+as an input correction. A computed correction of the boundary lands the
+downstream flow on the recording there, but makes segment speeds worse on
+the arm its rule reads and on top of the ramp correction, and is not
+adopted. The corrected arm still passes the hourly link-flow check on only
+30.6% of comparisons and fails the wave criterion. The corridor is not
+validated.
 
 On this unvalidated replica, FollowerStopper at its literature constants
 smooths traffic and costs capacity at every penetration and compliance level
@@ -302,7 +399,13 @@ entrants line up their merge, was measured on I-24 (125 m) and rounds to the
 model's constant (120 m). Three of 20 four-hour replicates ended in a
 permanent standstill at a weaving gore that no battery summary named; a
 release rule registered in advance removed all three on the corridor with no
-measurable throughput cost, and is opt-in pending the owner.
+measurable throughput cost. On the calibration-day inputs it released 1.26%
+of one weave's entrants, above its registered 1% bound. It was adopted on
+2026-10-07, under the same delegation and with that failure disclosed,
+together with guards that stop the
+weave's own commands from causing collisions; the guarded arm had no
+collision in 20 runs against one without, a difference too small to
+attribute to the guards.
 
 ---
 
@@ -366,7 +469,10 @@ publish with the code [LESSONS.md].
    (§5.7), and a fixture diagnosis and a data check place the remaining
    ceiling downstream of the merge, mostly at the corridor's boundary
    representation and partly in ramp inputs inflated by through traffic
-   (§5.8).
+   (§5.8). Corridor runs of the two corrections followed: correcting the
+   ramp counts brings the peak sections within GEH 5 on two-hour flows and
+   was adopted provisionally; correcting the boundary degrades segment speeds
+   and was not adopted (§5.9).
 5. **Controller results with 95% confidence intervals**: the capacity cost of
    gap-keeping smoothing on a corridor near capacity; detection latency and
    deferred commitment in Jam-Absorption Driving; the lane-change mechanism
@@ -378,7 +484,10 @@ publish with the code [LESSONS.md].
    its residuals, the dependence of its weave on an unmeasured input, inputs
    rebuilt without the validation days that fit worse and expose collisions,
    and a permanent-lock failure mode that a battery's means hide, with a
-   release rule that removes it on the corridor (§7.4–7.7).
+   release rule that removes it on the corridor; the release rule and
+   collision guards for the weave's own commands were adopted together after
+   a corridor round in which the release rule exceeded its registered bound
+   (§7.4–7.8).
 
 ### 1.5 What this paper does not claim
 
@@ -414,8 +523,12 @@ data-only check of the recording's counts; the
 calibration-day I-94 batteries (§7.5) are rehearsal gates, and they fail;
 the W1b corridor round (§7.7) is a paired comparison of two model variants
 on inputs that include the validation days, scored by the battery's own
-criteria, not by the gate; and the collision guards of W2 (§7.7) are fixture
-results.
+criteria, not by the gate; and the collision guards of W2 (§7.8) are fixture
+results. The corridor rounds added that night are no different (§5.9, §7.8).
+The I-24 rounds are calibration runs on the one recorded morning, each read
+by criteria fixed before it ran, and the arm they leave as the calibrated-arm
+candidate fails the gate. The I-94 round of W1b + W2 is a paired comparison
+on the calibration-day inputs, and both of its arms fail the gate.
 
 ---
 
@@ -553,7 +666,8 @@ from OpenStreetMap the runner ignores the buffer length and applies the
 schedule as every vehicle's speed limit, that is its IDM desired speed, over
 the whole last corridor edge: 992 m on I-24 [I24_DISCHARGE_DIAGNOSIS.md §2;
 docs/CONTRACTS.md §2]. §5.8 finds that this representation passes less
-traffic than the road did there. Two SUMO lane-change
+traffic than the road did there. A correction computed from the drivers' own
+equilibrium was then run on the corridor and is not adopted (§5.9). Two SUMO lane-change
 parameters on I-24 were set from independent observables before any
 criterion was evaluated (§4.4).
 
@@ -650,6 +764,33 @@ a dated amendment, and results are then reported under both rules
 [FRISCO_PROTOCOL.md, change control]. The I-94 runs of §7.4 are a rehearsal
 of this protocol on public data, not a client study.
 
+**Amendments adopted on 2026-10-07 (night).** Three amendments were adopted
+on 2026-10-07 at 21:20 CDT. They are the coordinator's decisions, taken under
+a delegation from the owner on the evidence of written decision memos
+[DECISIONS_2026-10-07.md, header; FRISCO_PROTOCOL.md, "Adoption of Amendment
+3", Amendments 4–5], and the owner can overturn any of them. None makes a
+failing gate check pass, and none is validation.
+
+- **Amendment 3** makes the T.H.52 ramp-to-ramp share an uncertain input
+  over the range from the proportional split to 0.70 (§7.6). The gate stays
+  judged at the proportional split, so no verdict changes. Its three-point
+  corridor round is pre-registered and has not run; no share is ever chosen
+  from it.
+- **Amendment 4** makes the weave rules W1b and W2 part of the model at every
+  weaving section, together and never W2 alone (§7.7–7.8). It was written
+  after W1b's release clause had failed on the corridor (1.26% against 1%),
+  and it says so; that round's verdict, "W2 not adopted on this round",
+  stays on record. The amendment re-reads no clause and moves no threshold:
+  the release share is reported beside the lock row as a standing cost. The
+  code default stays off until a reproduction re-run of that round's guarded
+  arm on the current code and until the battery and report count the
+  releases.
+- **Amendment 5** adopts B2's ramp-count correction provisionally, as a
+  data-quality step under the protocol's §2.3, not as a calibration change
+  under its §7.1 (§5.9). The I-24 arm with corrected ramp counts becomes the
+  calibrated-arm candidate; earlier results stay in the record, labelled as
+  built on uncorrected counts.
+
 ### 2.6 Reproducibility as method
 
 Every run writes a `meta.json` with its seed, package versions, calibration
@@ -701,8 +842,9 @@ an assumption where no origin–destination count exists
 Six opt-in weave settings were added on 2026-10-07. Each is off by default,
 and with it off 37 fixture and golden runs are byte-identical to the code
 before it; no committed scenario sets any of them, except the scenario
-written for W1b's corridor round (§7.7) [WEAVE_LOSS_DIAGNOSIS.md §8.2,
-§10.8, §11; TH52_CROSSING_SHARE.md §10.2; I94_CAL_COLLISIONS.md §14.2].
+written for W1b's corridor round (§7.7) and the two written for the round of
+W1b + W2 (§7.8) [WEAVE_LOSS_DIAGNOSIS.md §8.2, §10.8, §11;
+TH52_CROSSING_SHARE.md §10.2; I94_CAL_COLLISIONS.md §14.2, §16].
 
 - `entrant_giveup_m` (amendment W1): an entrant halted at the end of the
   auxiliary lane, still owing its change and with no change to request,
@@ -724,6 +866,13 @@ written for W1b's corridor round (§7.7) [WEAVE_LOSS_DIAGNOSIS.md §8.2,
   [I94_CAL_COLLISIONS.md §13.2, §14.1]. All 43 committed scenarios hash the
   same with them unset [I94_CAL_COLLISIONS.md §14.2].
 
+*(Added 2026-10-07, night.)* Amendment 4 (§2.5) makes W1b and W2 part of
+the model at every weaving section: `entrant_giveup_m` 5,
+`entrant_giveup_dwell_s` 60 and the three W2 switches on, never W2 without
+W1b, never tuned per corridor. Until the code default flips, a run under the
+amendment sets the five keys in its scenario. The I-24 replica models no
+weaving section, so its arms are untouched [FRISCO_PROTOCOL.md, Amendment 4].
+
 **Lock detection (2026-10-07).** A run locks when vehicles stand with zero
 discharge past a point for at least 10 minutes while a queue builds
 upstream. Two readers find it in files every replicate already writes. A
@@ -741,7 +890,12 @@ queue is followed from bin to bin, and a piece that joins it within 10
 minutes is merged); a run with only the run-end file can establish a lock
 but not its absence (`no_locks` NOT RECORDED); and a standstill explained by
 a lane closure or a seeded perturbation is listed as seeded, not as a model
-lock [CHANGELOG, 2026-10-07, second regression review].
+lock [CHANGELOG, 2026-10-07, second regression review]. *(Added 2026-10-07,
+night.)* The I-24 battery script now records locks too, and two of p14's
+batteries (B2 alone and B1 + B2), re-scored from their archives without simulating, have none. A
+run whose queue crawls but keeps discharging is not a lock by this
+definition, however much of its demand it fails to serve (§5.9)
+[I24_VALIDATION.md §0, "Locks recorded"; CONTRACTS.md, "Locks"].
 
 ---
 
@@ -1706,8 +1860,8 @@ of 20 seeds in every battery [DISCHARGE_CALIBRATION.md §4].
 | Arm (20 seeds) | Demand scale | GEH < 5 | Segment-speed RMSPE (5 min) | Wave row (`stack`) | Jam components per replicate, standard detector (with a backward front) | Peak sections [veh/h] | Realised demand (mean, lowest) | Mean travel time [s] |
 |---|---|---|---|---|---|---|---|---|
 | Reference, measured-mean drivers (k = 0) | 0.800 | 21.5% | 37.2% | 15.9 km/h PASS | 9.05 (7.3) | 5,850 / 5,821 | 0.987, 0.977 | 574 |
-| k = 1, old demand | 0.800 | 25.0% | 78.4% | no qualifying peak, FAIL | 13.65 (10.3) | 6,031 / 6,025 | 0.996, 0.994 | 536 |
-| k = 1, demand refit | 0.925 | 25.7% | 33.3% | no qualifying peak, FAIL | 6.65 (5.05) | 6,047 / 5,983 | 0.921, 0.912 | 669 |
+| k = 1, old demand (`_dc`; uncorrected ramp counts, see note) | 0.800 | 25.0% | 78.4% | no qualifying peak, FAIL | 13.65 (10.3) | 6,031 / 6,025 | 0.996, 0.994 | 536 |
+| k = 1, demand refit (`_dc_refit`; uncorrected ramp counts, see note) | 0.925 | 25.7% | 33.3% | no qualifying peak, FAIL | 6.65 (5.05) | 6,047 / 5,983 | 0.921, 0.912 | 669 |
 | k = 0.25, demand refit (Amendment 2) | 0.900 | 16.0% | 34.1% | 15.7 km/h PASS | 10.7 (7.95) | 5,871 / 5,820 | 0.918, 0.908 | 644 |
 | k = 0.5, demand refit (Amendment 2) | 0.900 | 24.3% | 33.9% | 15.1 km/h PASS | 9.8 (7.6) | 5,953 / 5,899 | 0.930, 0.916 | 652 |
 
@@ -1727,6 +1881,16 @@ jam regions (`simulated.waves_per_replicate[].count`, the mean of which is
 k = 0.5 rows' jam components and travel times are read from their artifacts
 (the source documents do not quote them); they were "—" before the later
 2026-10-07 revision.*
+
+*Note 2026-10-07, night: built on uncorrected ramp counts.* Every arm in
+this table, like every I-24 result before §5.9, ran on ramp inputs built
+from on-ramp counts that carry through traffic (§5.8). The k = 1
+demand-refit arm (`_dc_refit`, config ada3f406504b) has since been replaced
+as the I-24 calibrated-arm candidate by the same arm with corrected ramp
+counts (§5.9). Its numbers here are unchanged and stay correct for the
+inputs it ran on; they are reported beside the candidate
+[I24_DISCHARGE_DIAGNOSIS.md §8.4.4, dated note "Adopted provisionally";
+FRISCO_PROTOCOL.md, Amendment 5].
 
 - **More demand did not raise the peak flow.** The demand fitter of §4.2, run
   again under the stronger drivers, raised the demand by 15.6%. The peak
@@ -1776,7 +1940,10 @@ The calibrated drivers are therefore not adopted on I-24. The flow family's
 fitted arm with the measured-mean drivers stays the reference for this work,
 and the k = 1 refit is kept as a documented alternative
 [DISCHARGE_CALIBRATION.md §4]; the published record of §5.3 is unchanged
-(Appendix C, item 19). The same driver shift is the largest single
+(Appendix C, item 19). *(Updated 2026-10-07, night: the k = 1 refit with
+corrected ramp counts is now the I-24 calibrated-arm candidate (§5.9). That
+makes it a candidate, not an adoption of the drivers: Amendment 2's result,
+k = 0 on I-24, is unchanged, and the candidate still fails the wave row.)* The same driver shift is the largest single
 improvement the I-94 model has had (§7.4; on inputs that later proved to
 carry an input artefact, §7.5) and costs I-24 its emergent waves, so one
 calibration recipe does not serve both corridors [DISCHARGE_CALIBRATION.md
@@ -1791,6 +1958,10 @@ measured range (this section), nor a merge model built on the measured gaps
 at the merge. *(Revised 2026-10-07, and again later the same day: this
 sentence had attributed the shortfall to the lane-change model alone, then
 to one merge that the simulator does not discharge at the observed rate.)*
+The corrections §5.8 points to were then run (§5.9). Correcting the ramp
+counts brings the peak sections within GEH 5 on two-hour flows, but the
+hourly link flows, the segment speeds and, with these drivers, the wave row
+still fail.
 
 ### 5.8 Where the I-24 ceiling sits: fixtures and a count check (2026-10-07, later)
 
@@ -1798,7 +1969,8 @@ to one merge that the simulator does not discharge at the observed rate.)*
 prediction written before its run; predictions that failed reported as
 failed) and one data-only check of the recording's counts, read by rules
 fixed before it ran [I24_DISCHARGE_DIAGNOSIS.md §1, §8.4]. No corridor run
-has tested it.
+had tested it when this section was written; §5.9 reports the corridor runs
+that followed.
 Intervals are 95% t-intervals over seeds; paired where two arms share seeds.
 The merge fixtures force the breakdown with a 90-s red phase at the merge
 node, a seeded perturbation of the fixture (§1.5).*
@@ -1862,13 +2034,15 @@ advance the outcome is `ramp_counts_contaminated`: the peak sections'
 14% (Old Hickory) and 35% (Hickory Hollow) through traffic, lower bounds.
 The model's on-ramp inputs, built from those counts, therefore carry about
 150 and 240 veh/h of vehicles the road did not receive, and its net exits
-are too small. Against the standing targets the refit arm fails GEH at both
+are too small. Against the standing targets the refit arm, on those
+uncorrected ramp inputs (§5.7, note of 2026-10-07, night), fails GEH at both
 peak sections (6,047 against 6,626, GEH 7.28; 5,983 against 6,639, GEH 8.25)
 and passes at 5,400 m (5,735 against 6,009, GEH 3.57): by the rule, the
 peak-section shortfall of 580–656 veh/h is the model's, and it lies
 downstream of the merge, in the boundary representation and in the
 inflated ramp inputs. What the ramp correction does to the peak sections
-is not predictable from the check; it is a corridor run. The downstream ceiling still
+is not predictable from the check; it is a corridor run (made since: +269
+and +284 veh/h, §5.9). The downstream ceiling still
 rises with `a_max` under the time-varying schedule (5,833 / 5,992 / 6,114
 veh/h at k = 0 / 0.5 / 1), which the registered plateau check had predicted
 it would not; the stripe detector's fronts per run fall at the same time
@@ -1891,28 +2065,264 @@ No lever restores the wave criterion lost at k = 1: the stack detector finds
 a qualifying peak in 0–1 of 10 whole-corridor runs with or without the two
 boundary levers [§9].
 
-**What follows** [§8]. The diagnosis proposes, and the owner has not
-adopted:
+**What follows** [§8]. The diagnosis proposed:
 (i) Amendment B1, an opt-in boundary limit scaled by the computed factor
-(1.2185 on I-24; I-94 to compute its own), with corridor acceptance
-criteria fixed before any corridor run — zero collisions, the boundary state
-(5,400 m flow within 5,829–6,309 veh/h and a smaller boundary-zone speed
-error), realised demand no lower than the reference, the wave verdict
-unchanged where it passes, and segment-speed RMSPE no worse by more than two
-points — to be run on the I-24 arms and through the I-94 gate (about $2.80;
-not run); (ii) Amendment B2, written after the count check and before any
-corridor run, an opt-in builder option that removes the flagged through
-traffic from each ramp count, as a new scenario family, with its own
-acceptance criteria (zero collisions; realised demand no lower than the
-reference; each ramp's flow within GEH 5 of its corrected count; peak-section
-GEH no worse; the wave verdict and segment-speed RMSPE as for B1), about $1.3
-an arm, not run [§8.4.3]; and (iii) no further `a_max` shift and no
-merge-model work aimed at discharge. The merge statements of §5.5 and §8.2
-that this supersedes are withdrawn there. The criteria record of §5.3 does
-not change: 5 of 7 rows on each congested arm, with GEH and RMSPE failing;
-what fails them is now located by fixtures and a data check, not by a
-corridor run. The straight copy has no curvature or junction shapes, and its
-ramp lengths are assumed [§9].
+(1.2185 on I-24), with corridor acceptance criteria fixed before any
+corridor run — zero collisions, the boundary state (5,400 m flow within
+5,829–6,309 veh/h and a smaller boundary-zone speed error), realised demand
+no lower than the reference, the wave verdict unchanged where it passes, and
+segment-speed RMSPE no worse by more than two points; (ii) Amendment B2,
+written after the count check and before any corridor run, an opt-in
+builder option that removes the flagged through traffic from each ramp
+count, as a new scenario family, with its own acceptance criteria (zero
+collisions; realised demand no lower than the reference; each ramp's flow
+within GEH 5 of its corrected count; peak-section GEH no worse; the wave
+verdict and segment-speed RMSPE as for B1) [§8.3, §8.4.3]; and (iii) no
+further `a_max` shift and no merge-model work aimed at discharge. Both
+amendments have since run on the corridor (§5.9). B1 holds every applicable
+criterion on the calibrated-demand arm but fails the speed criterion on the
+arm its rule names, and is not adopted; no factor is defined for I-94's
+EIDM fleet, so it ran on I-24 only. B2 holds every criterion fixed for it
+and was adopted provisionally as an input correction. *(Revised 2026-10-07,
+night: this paragraph said that neither amendment had been run and that the
+owner had adopted neither.)* The merge statements of §5.5 and §8.2 that this
+supersedes are withdrawn there. The criteria record of §5.3 does not change:
+5 of 7 rows on each congested arm, with GEH and RMSPE failing; what fails
+them was located by fixtures and a data check, and the corridor rounds of
+§5.9 then tested the two corrections. The straight copy has no curvature or
+junction shapes, and its ramp lengths are assumed [§9].
+
+### 5.9 The two corrections on the corridor (2026-10-07, night)
+
+*Calibration, not validation. Every arm below is run and scored on the one
+recorded morning, with no holdout day. Each round was read by criteria
+written down before it ran, and each arm is paired with a reference run on
+the same code and step 3's 20 seeds [I24_DISCHARGE_DIAGNOSIS.md §8.3,
+§8.4.3, §8.4.5]. Brackets are 95% t-intervals over seeds, paired where two
+arms are differenced. The battery's own gate fails on every arm here.*
+
+**B1 alone (stage p12).** Every step of the measured boundary schedule was
+multiplied by the computed factor 1.2185 on the 992 m last edge (§5.8). The
+round ran three arms, each against its own reference. The rule reads A3–A5
+on the flow family's fitted arm with the measured-mean drivers
+(`i24_replica_flow_speedcal`, the reference of §5.7, which the amendment
+calls canonical), A2 on the k = 1 demand-refit arm `_dc_refit`, whose demand
+fills the downstream end, and A1 on every arm; the third arm is k = 1 at the
+old demand (`_dc`) [I24_DISCHARGE_DIAGNOSIS.md §8.3–8.3.1;
+artifacts/boundary_b1_corridor.json, `adoption.reading`,
+`arms.*.reference.scenario`]. All three arms ran on the uncorrected ramp
+counts (§5.7, note of 2026-10-07, night) [I24_DISCHARGE_DIAGNOSIS.md
+§8.4.4, dated note].
+
+| Criterion (fixed before the run) | Flow family's fitted arm, k = 0: reference → B1 | `_dc_refit`, k = 1: reference → B1 | Verdict |
+|---|---|---|---|
+| A1 zero collisions; steps below −8.9 m/s² not above the reference | 0 and 0; 11 → 10 | 0 and 0; 3 → 2 | pass |
+| A2 5,400 m flow within 5,829–6,309 veh/h; boundary-zone speed error smaller | 5,531 → 5,689 [5,678, 5,701] (reported) | 5,735 → **6,008 [5,994, 6,021]** (recorded 6,009); zone speed 33.1 → 39.8 km/h against the schedule's 49.9, paired +6.6 [6.5, 6.7] | pass (read on `_dc_refit`) |
+| A3 realised demand not lower | 0.987 → 0.993 | 0.921 → 0.948, paired +0.027 [+0.025, +0.029] | pass |
+| A4 wave verdict kept where it passes; backward fronts (standard detector) not down by more than a third | stack 15.9 → 15.8 km/h, both pass; fronts 7.3 → 18.75 per replicate | reference fails the wave row; fronts 5.05 → 11.15 | pass |
+| A5 15-min segment-speed RMSPE ≤ reference + 0.02 | **0.230 → 0.309** (limit 0.250); per-seed paired +0.074 [+0.057, +0.090] | 0.273 → 0.256 | **fail** (read on the fitted arm) |
+| Peak sections 2,200 / 3,200 m (reported; targets 6,626 / 6,639) | 5,850 / 5,821 → 5,947 / 5,933; GEH 9.8 / 10.4 → 8.6 / 8.9 | 6,047 / 5,983 → 6,313 [6,295, 6,331] / 6,259 [6,240, 6,278]; GEH 7.3 / 8.3 → 3.9 / 4.7; paired +266 [252, 281] / +276 [258, 293] | — |
+
+*Source: [I24_DISCHARGE_DIAGNOSIS.md §8.3.1; artifacts/boundary_b1_corridor.json,
+`arms.{canonical,dc_refit}.criteria.A1`–`A5` and `.reported.peak_sections`;
+artifacts/i24_validation_p12_{canonical,dc_refit,dc}_{ref,b1}.json]. A2's zone
+speed is the windowed estimator fixed before any result was read.*
+
+B1 is **not adopted as written**: A5 fails on the arm where the rule reads
+it [`adoption.i24_holds` false]. On `_dc_refit` every applicable criterion holds, and the
+numbers are what the fixtures predicted: the 5,400 m flow lands on the
+recording, and the peak sections come within GEH 5 of their targets on
+two-hour flows. On the fitted k = 0 arm the same change frees the downstream
+end, and the corridor runs faster than the congested recording. The
+battery's 5-min speed row worsens on both arms (0.372 → 0.502 on the fitted
+arm, 0.333 → 0.377 on `_dc_refit`), and on `_dc` the 15-min RMSPE goes from
+0.534 to 0.864 while its peak flows do not move
+[`arms.*.reported.rmspe_5min`; `arms.dc.criteria.A5`]. The rule also names
+I-94, but I-94's EIDM fleet has no such factor: below the desired speed its
+equilibrium gap does not depend on the desired speed. So the stage ran on
+I-24 only [I24_DISCHARGE_DIAGNOSIS.md §8.3, factors note; `adoption.i94`].
+
+**B2 alone (stage p13).** The ramp counts without the flagged through
+traffic (§5.8) were built into a new scenario family. Its k = 1 refit arm
+differs from `_dc_refit` only in name and in the four ramps' values, and it
+carries `_dc_refit`'s demand scale 0.925 without refitting it. The same-code
+reference reproduces the committed `_dc_refit` battery exactly
+[I24_DISCHARGE_DIAGNOSIS.md §8.4.3–8.4.4; artifacts/boundary_b2_corridor.json,
+`reference_reproduces_committed`].
+
+| Criterion (fixed before the run) | `_dc_refit` (reference) | B2 | Verdict |
+|---|---|---|---|
+| R1 zero collisions | 0 in 20 | 0 in 20 | pass |
+| R2 realised demand not lower | 0.921 | **0.967**, paired +0.045 [+0.042, +0.049] | pass |
+| R3 each ramp's two-hour flow within GEH 5 of its corrected count (Old Hickory on / Hickory Hollow off / Hickory Hollow on / Bell Road off) | 1.1 / 1.5 / 12.0 / 0.9 (reported) | 1.8 / 1.2 / 1.3 / 2.0 | pass |
+| R4 peak-section GEH not above the reference's | 7.28 / 8.25 | **3.86 / 4.63**: 6,316 [6,301, 6,331] / 6,267 [6,253, 6,282] veh/h; paired +269 [248, 290] / +284 [266, 302] | pass |
+| R5 wave verdict kept where it passes; 15-min RMSPE ≤ reference + 0.02 | wave row fails; 0.273 | wave row fails; 0.254 (bound 0.293) | pass |
+| Gate (reported): hourly link-flow GEH < 5 (≥ 85%); 5-min RMSPE (≤ 15%) | 25.7%; 0.333 | **30.6%; 0.343** | fail |
+
+*Source: [I24_DISCHARGE_DIAGNOSIS.md §8.4.4; artifacts/boundary_b2_corridor.json,
+`criteria.R1`–`R5`, `paired_b2_minus_reference`; B2's flows with intervals
+from its identical re-run, artifacts/boundary_b1b2_corridor.json,
+`part_i.reported.peak_sections.*.reference`; gate rows from
+artifacts/i24_validation_dc_refit_{p13ref,rc}.json, `criteria`].*
+
+R1–R5 hold, so B2 is **adoptable by its own rule** [`all_pass` true]. A correction of the
+inputs, not of the model, brings the calibrated arm's peak sections within
+GEH 5 on two-hour flows and keeps 4.5 points more of the demand on the road.
+The reference's Hickory Hollow on-ramp sat 12 GEH from its corrected count
+because it inserts the inflated one. R4 is a two-hour, peak-only reading:
+the hourly link-flow row still passes on 30.6% of comparisons, the 5-min
+speed row worsens slightly, and the wave row fails on both arms, as on every
+k = 1 arm (§5.7). The correction removes at least the flagged through
+traffic, not all of it: a vehicle is flagged only if the same fragment shows
+it in a mainline lane, and fragments are short (§3.2)
+[I24_DISCHARGE_DIAGNOSIS.md §8.4.3].
+
+**B1 on top of B2, then the demand re-sequence (stage p14).** The round asked
+whether B1 still holds once the ramp inputs are corrected, then refit the
+demand level on the arm a rule fixed in advance selected. B2 alone was re-run
+on the same machine as the reference and reproduced the committed p13
+battery exactly [I24_DISCHARGE_DIAGNOSIS.md §8.4.5–8.4.6;
+artifacts/boundary_b1b2_corridor.json, `part_i.reference_reproduces_p13.exact`].
+
+| Criterion (fixed before the run) | B2 alone | B1 + B2 | Verdict |
+|---|---|---|---|
+| A1 zero collisions; braking steps not above B2's | 0 in 20; 4 | 0 in 20; 3 | pass |
+| A2 5,400 m flow within 5,829–6,309 veh/h; zone speed error smaller | 5,772 [5,759, 5,785]; 32.9 km/h (error −17.0) | 5,910 [5,605, 6,215]; 40.1 km/h (error −9.8), paired +7.2 [6.2, 8.2] | pass |
+| A3 realised demand not lower | 0.967 | 0.967 [0.934, 1.001] | pass |
+| A4 backward fronts (standard detector) not down by more than a third; the wave row fails on both | 10.1 | 26.6 | pass |
+| A5 15-min RMSPE ≤ B2's + 0.02 | 0.254 | **0.310** (limit 0.274) | **fail** |
+| Peak sections 2,200 / 3,200 m (reported) | 6,316 / 6,267; GEH 3.9 / 4.6 | 6,416 [6,120, 6,713] / 6,384 [6,074, 6,695]; GEH 2.6 / 3.2; paired +100 [−201, +402] / +117 [−197, +432] | — |
+| Gate (reported): hourly GEH < 5; 5-min RMSPE | 30.6%; 0.343 | 25.7%; 0.452 | fail |
+
+*Source: [I24_DISCHARGE_DIAGNOSIS.md §8.4.6; artifacts/boundary_b1b2_corridor.json,
+`part_i.criteria.A1`–`A5`, `part_i.reported.peak_sections`,
+`part_i.reported.{geh_lt5_share,rmspe_5min}`].*
+
+**Two RMSPE estimators.** The gated RMSPE values in this section (A5, R5 and
+C4 below) are RMSPEs of the replicate-mean field: the 20 replicates' mean
+speed field against the recording's. The bracketed RMSPE intervals are
+t-intervals of per-seed differences of per-replicate RMSPEs, each replicate
+scored on its own; their means are not the differences of the gated values
+[artifacts/boundary_b1b2_corridor.json, `part_i.reported.estimators`]. On
+that per-seed reading A5's degradation is +0.097 [+0.061, +0.132], and
++0.080 [+0.070, +0.091] without the seed described below. On the battery's
+5-min row it is +0.146 [+0.124, +0.169], and +0.137 [+0.125, +0.150] without
+that seed [`part_i.reported.quoted_figures`].
+
+B1 does not hold on top of B2 [`part_i.reading.holds` false]. It still moves the boundary as the fixtures
+predicted (A2), but it fails A5, worsens both gate rows and collapses one
+seed in twenty. The speed loss is broad, not one seed's: each seed's 5-min
+RMSPE is worse under B1 + B2 in all twenty seeds, and in the nineteen that
+did not break down the corridor runs faster than the congested recording,
+by +14% to +26% in mean signed segment-speed error [computed from
+`rmspe.per_replicate_vs_observed`, `simulated.segment_speeds_ms_per_replicate`
+and `observed.segment_speeds_ms` of
+artifacts/i24_validation_p14_{b1b2,b2_ref}.json]. The twentieth seed,
+134183728835869882, broke down. It realised 0.660 of its demand against
+0.971 under B2 alone, at a mean segment speed of 4.9 m/s against 10.4 m/s in
+the other nineteen
+[`part_i.reported.quoted_figures.collapsed_seed`, `.other_seeds`]. Its
+two-hour flows fell to 3,728 / 3,568 / 3,145 veh/h at 2,200 / 3,200 /
+5,400 m, against 6,359 / 6,301 / 5,806 under B2 alone; the other nineteen
+seeds gained 149–352 veh/h at those sections and realised 0.984 against
+0.966 [computed from `part_i.batteries.{b1b2,b2}.flows_2h_veh_h`;
+`.other_seeds`]. That one seed is why A2's and A3's intervals are wide and
+why the paired peak-section gains include zero. Read the other way round,
+against the committed p12 `_dc_refit` + B1 battery (same seeds, another code
+tree; reported, not gating), B2 on top of B1 holds R1–R4 and fails R5 (0.310
+against 0.256, bound 0.276) [`part_i.reported.r1_r5_second_arm`]. The
+combined arm degrades speeds against either correction alone, and B2's case
+rests on the arm without B1. Either correction alone brings the peak sections
+within GEH 5 on two-hour flows (B1 +266 / +276, B2 +269 / +284 veh/h on
+`_dc_refit`); together they add less than the sum.
+
+By the rule fixed before the run, the demand re-sequence then ran on B2
+alone. The fitter ran exactly as it had for `_dc_refit` (speed objective,
+one seed per scale; `part_ii.fit.checks.as_p4` true) and chose s = 1.125,
+which inserts 0.783 of the planned demand on its fit seed (fit-hour /
+held-out RMSPE 0.323 / 0.313) [`part_ii.fit.chosen`]. Its 20-seed battery,
+read against B2:
+
+| Criterion (fixed before the run) | B2 (s = 0.925) | Refit (s = 1.125) | Verdict |
+|---|---|---|---|
+| C1 zero collisions | 0 in 20 | 0 in 20 | pass |
+| C2 realised share ≥ B2's − 0.01 | 0.967 | **0.793**, paired −0.174 [−0.176, −0.171] | **fail** |
+| C3 hourly GEH < 5 share not lower | 30.6% | **25.0%** | **fail** |
+| C4 15-min RMSPE ≤ B2's + 0.02 | 0.254 | 0.259; per-seed paired +0.002 [−0.007, +0.012] | pass |
+| C5 wave verdict kept where it passes | fails | fails | does not bind |
+
+*Source: [I24_DISCHARGE_DIAGNOSIS.md §8.4.6; artifacts/boundary_b1b2_corridor.json,
+`part_ii.criteria`; artifacts/demand_scale_i24_flow_rc.json;
+artifacts/i24_validation_p14_refit2_b2.json].*
+
+The refit is not a calibrated-arm candidate [`part_ii.candidate` false]. Between s = 0.9 and 1.175 the
+fit seed's insertion falls from 0.991 to 0.756, while its fit-hour RMSPE
+jumps between 0.32 and 0.41 with no trend; the minimum at 1.125 is an
+isolated dip [`part_ii.fit.grid`]. The speed objective does not see
+insertion, so it picks a backlog here, as it did under Amendment 2 (§5.7).
+Re-read from the same recorded runs, a rule requiring 98% insertion would
+pick s = 0.9 among the recorded scales, but that rule's refine round
+(0.825–0.975) was never run; this is a re-analysis, not a calibration
+[`part_ii.fit.insertion_reanalysis_reported`]. The carried s = 0.925 stands,
+and a demand fitter whose objective sees insertion is needed before any
+re-sequence [I24_DISCHARGE_DIAGNOSIS.md §8.4.6, "What p14 settles"].
+
+**Locks, and a breakdown that is not one.** Since 2026-10-07 the I-24
+battery script records locks with the detector of §2.7. Two of p14's three
+batteries, B2 alone and B1 + B2, were re-scored from their archives without simulating: no lock in 20 of 20
+seeds of either, `no_locks` PASS (95% interval 0–16.8% for each)
+[artifacts/i24_locks_p14_{b1b2,b2_ref}.json, `locks.share_locked`,
+`criteria`]. The
+collapsed seed is not a lock by the written definition: no cell stood
+without discharge for more than 180 s of the 600 s a lock needs, because its
+queue crawled but kept discharging [artifacts/i24_locks_p14_b1b2.json,
+`standing_per_replicate`; I24_VALIDATION.md §0, "Locks recorded"]. So the
+lock row does not catch this breakdown. A report-only *breakdown* reading has
+been pre-registered: a replicate that realises less than 0.9 of its planned
+demand while its battery's mean is at least 0.95 (the collapsed seed
+realised 0.660; the B2 arm's lowest replicate 0.960). It is reported beside
+the lock row and gates nothing until a later amendment says otherwise
+[PRE_FRISCO_PROGRAM.md, "Coordinator's decisions on this plan";
+artifacts/i24_validation_dc_refit_rc.json, `simulated.demand_realized_fraction`].
+p13's batteries cannot be re-scored, because their archive kept only
+`meta.json` for 19 of each battery's 20 replicates [I24_VALIDATION.md §0].
+
+**The decision (2026-10-07, 21:20 CDT).** Amendment 5 adopted B2
+provisionally, as a ramp-count correction under the protocol's data-quality
+rule (§2.3 of the protocol), not as a calibration change under its §7.1
+(§2.5) [FRISCO_PROTOCOL.md, Amendment 5; DECISIONS_2026-10-07.md §A1;
+I24_DISCHARGE_DIAGNOSIS.md §8.4.4, dated note]. It is the coordinator's
+decision under the owner's delegation, and the owner can overturn it.
+
+- The B2 arm (`i24_replica_flow_rc_speedcal_dc_refit`, config 909b89f298c5)
+  replaces `_dc_refit` (ada3f406504b) as the I-24 calibrated-arm candidate.
+  No file is renamed, and `_dc_refit`'s results stay in the record, labelled
+  as built on uncorrected counts (§5.7).
+- It is a candidate, not a validated or adopted arm. It fails the gate. It
+  runs the k = 1 drivers that §5.7 did not adopt, which lose the wave row;
+  B2 on the k = 0 arm, with the wave half binding, is the first
+  pre-registered follow-up. And it is one morning, corrected and scored on
+  the same data.
+- The Old Hickory part of the correction (about 150 veh/h at pooled
+  coverage, §5.8) lies outside the span the count check tested, so its sign
+  rests on the flags alone. It reverts if a flag audit or an external count
+  contradicts it in sign.
+- Not adopted: B1, the B1 + B2 arm (fails A5) and the refit (fails C2 and
+  C3). The published record of §5.3 and the controller and strategy results
+  of §6 are unchanged, and they rest on the uncorrected counts (§9 item 21).
+- Pre-registered follow-ups: B2 on the k = 0 arm; a data-only audit of the
+  Old Hickory flags; an insertion-aware demand fit on the corrected family; a
+  diagnosis of the hourly GEH shortfall; external ramp counts
+  [FRISCO_PROTOCOL.md, Amendment 5].
+
+**What the rounds establish.** On the calibrated-demand arm the downstream
+representation was the ceiling, as the fixtures of §5.8 found, and the
+computed factor removes it there. But on the fitted k = 0 arm, and on top of
+the ramp correction, freeing the downstream end makes the corridor run
+faster than the congested recording, and speed fidelity gets worse. The
+inflated ramp inputs were a real part of the peak-section shortfall, and
+correcting them is what the record now carries. The hourly flows and the
+segment speeds still fail, and the corridor is not validated.
 
 ---
 
@@ -2762,13 +3172,21 @@ range. The test as a whole fails at every share, because station speed lags
 flow. This is a sensitivity, not a calibration: no share is chosen from it,
 and the model keeps the proportional split. Until the share is measured, the
 T.H.52 shortfall cannot be read as a merge-model finding
-[TH52_CROSSING_SHARE.md §10.4–10.5]. Protocol Amendment 3, proposed and not
-adopted, would carry the share as an uncertain input over this range, judge
-the gate at the proportional split and report the range beside it. Its
-routes to a calibrated share are MnDOT's report, a pre-registered count
-estimate, or a count at the gore [FRISCO_PROTOCOL.md, Amendment 3]. The Ruth
-St weave's split has not been bounded at all [FRISCO_PROTOCOL.md,
-Amendment 3, item 3].
+[TH52_CROSSING_SHARE.md §10.4–10.5]. Protocol Amendment 3, adopted on
+2026-10-07 (§2.5), carries the share as an uncertain input over this range
+and judges the gate at the proportional split, so no verdict changes. Once
+its pre-registered three-point corridor round has run, every I-94 result the
+T.H.52 section can move is reported at the proportional split with its value
+at 0.70 beside it. That round has not run, so every I-94 result in this
+paper is at the proportional split only; no share is ever chosen from the
+round [FRISCO_PROTOCOL.md, Amendment 3 and "Adoption of Amendment 3";
+DECISIONS_2026-10-07.md §A3]. *(Revised 2026-10-07, night: this sentence said
+the amendment was proposed and not adopted.)* Its routes to a calibrated
+share are MnDOT's report, a pre-registered count estimate, or a count at the
+gore, each by its own dated amendment [FRISCO_PROTOCOL.md, Amendment 3]. The
+Ruth St weave's split has not been bounded at all; it stays at the
+proportional split and is listed as an unexamined split assumption
+[FRISCO_PROTOCOL.md, Amendment 3, item 3; "Adoption of Amendment 3", (a)].
 
 **W1, a give-up for a stranded entrant.** One physical fix was
 pre-registered with fixture criteria: an entrant halted at the end of the
@@ -2896,15 +3314,20 @@ The W1b means sit near where I94_COLLAPSE_DIAGNOSIS.md §5 put the step-3
 battery with its three locked replicates left out (56.7% and 46.2%), and
 the intervals narrow, as that section's reading implies. W1b removes every lock seen on
 the corridor at no measurable throughput cost and with no collision. Three
-limits stand. It ran on the nine-day inputs of §7.5, not on the
-calibration-day inputs, under which runs gridlock harder; that pairing,
-together with W2 (§7.8), is a proposed stage that has not run
-[I94_CAL_COLLISIONS.md §13.6, §14.8]. At Ruth St it acted 108 times over
+limits stand. It ran on the nine-day inputs of §7.5. On the calibration-day
+inputs, under which runs gridlock harder, it has since run together with W2
+(stage p10, §7.8): neither arm locked, but W1b released 1.26% of Ruth St's
+entrants, above the 1% bound registered for it [I94_CAL_COLLISIONS.md §16].
+*(Revised 2026-10-07, night: this sentence said that pairing had not run.)*
+At Ruth St it acted 108 times over
 the 20 runs, against two locks there in the reference; on the fixtures most
 such releases ended ordinary stands, and the corridor round did not classify
 them [WEAVE_LOSS_DIAGNOSIS.md §10.9, §11]. And it releases a model state with
-no field counterpart. The key stays opt-in; adoption, a configuration-hash change
-under policy v3, is the owner's decision [WEAVE_LOSS_DIAGNOSIS.md §11].
+no field counterpart. Amendment 4 adopted it on 2026-10-07 together with W2
+(§2.5, §7.8). The code default, a configuration-hash change, stays off until
+the amendment's two conditions hold [FRISCO_PROTOCOL.md, Amendment 4].
+*(Revised 2026-10-07, night: this sentence said the key stays opt-in and its
+adoption is the owner's decision.)*
 
 ### 7.8 Collisions under the calibration-day inputs, and the weave's command path (2026-10-07, later)
 
@@ -2962,12 +3385,65 @@ criterion fails, G6 (no new lock): in one grid run the three switches
 together send the run into the known gore lock, which no single switch does
 and W1b + W2 does not; and three stress runs carry a speed flag their
 references lack, in a set whose boundary holds every run at that flag's
-threshold. By its rule W2 stays off, and nothing is re-thresholded
-[§14.5–14.6]. The corridor round that would pair W1b + W2 against W1b on the
-calibration-day inputs (stage `p10_i94_cal_w1b_w2`, about $1.7–1.9) has not
-run; adoption is the owner's decision [§14.8]. The fixtures show that the
-mechanisms exist and that the switches remove them, not how often they occur
-on the corridor.
+threshold. By its fixture rule W2 stayed off, and nothing is re-thresholded
+[§14.5–14.6]. The fixtures show that the mechanisms exist and that the
+switches remove them, not how often they occur on the corridor. *(Revised
+2026-10-07, night: this paragraph said the corridor round had not run and
+that adoption was the owner's decision. Both are overtaken below.)*
+
+**W1b + W2 on the corridor (stage p10, 2026-10-07).** The corridor round
+registered for W2 was then run on the calibration-day inputs: arm A with W1b
+on both weaves, arm B adding the three W2 switches, step 3's 20 seeds,
+paired [I94_CAL_COLLISIONS.md §13.6, §16; artifacts/weave_w2_corridor.json]:
+
+| Criterion (registered in advance) | Result (B against A, paired by seed) | Verdict |
+|---|---|---|
+| CW1 S790 flow, 06:30–07:30: lower bound above −50 veh/h | −13.5 veh/h [−32.8, +5.8] | pass |
+| CW2 departed share: lower bound above −1 point | +0.01 points [−0.04, +0.07] | pass |
+| CW3 zero collisions in B | B: 0 in 20 runs; A: 1 (T.H.52) | pass |
+| CW4 zero locks in B (two readers) | none in either arm | pass |
+| CW5a given-up exits per weave, B ≤ A + 2 + 2√(2A) | Ruth St 599 (A 540, bound 608); T.H.52 990 (A 954, bound 1,043) | pass |
+| CW5b W1b's releases ≤ 1% of each entrance's departures, pooled | Ruth St 257 of 20,340 (1.26%); T.H.52 1 of 91,644 | **fail** |
+
+*Source: [I94_CAL_COLLISIONS.md §16; artifacts/weave_w2_corridor.json,
+`criteria.CW1`–`CW5`].* The guarded arm had no collision (0 of 20;
+Clopper–Pearson 0–16.8%) and no measurable cost in flow, departures, locks
+or given-up exits. Arm A had one, at T.H.52. A difference of one collision in
+20 paired runs is within what the round's pre-registered power note says it
+cannot resolve, so the round does not show that W2 caused the drop. W2's
+evidence remains the fixtures, where all four reproducing collisions became
+none. CW5b fails, and arm A fails it at the same pooled share, 257 of 20,340
+[computed from `per_seed[*].a.sections`]: the clause measures W1b on the
+denser calibration-day Ruth St weave, not W2. By the rule fixed in advance,
+W2 is **not adopted on this round**, and that verdict stays on record. Both
+arms fail the protocol's gate (`verdict` "failed" in
+artifacts/baseline_gate_mndot_i94_wb_stpaul_weave_xlsfg_dc_cal_w1b{,_w2}.json);
+the battery's own link-flow row reads 44.3% and 46.1% of comparisons under
+GEH 5 and its wave row 5.7 km/h in both [`battery_criteria_a`,
+`battery_criteria_b`]. In arm B the guards suspended undriven vehicles' own
+lane changing for a step 22,919 times (opposing-entry vetoes: 6,908 at Ruth
+St, 16,011 at T.H.52) and withheld a weave speed target 6,426 times under the
+hand-back rule and 528 times under the close-leader rule [computed from
+`w2_counters_b`].
+
+**Adoption (Amendment 4, 2026-10-07, 21:20 CDT).** W1b and W2 were then
+adopted together at every weaving section, never W2 alone, by the
+coordinator under the owner's delegation (§2.5) [FRISCO_PROTOCOL.md,
+Amendment 4; DECISIONS_2026-10-07.md §A2]. The amendment states that it was
+written after CW5b's failure was seen. It re-reads no clause and moves no
+threshold; instead, W1b's release share per weave is reported beside the lock
+row, and a share above 1% is listed among a report's limitations rather than
+failing its gate. Re-reading CW5b against arm A was considered and refused
+as re-thresholding [DECISIONS_2026-10-07.md §A2.4]. Neither rule is
+deliverable alone: W1b alone collided at T.H.52 (arm A), and W2 alone ended a
+fixture run in the gore lock that W1b releases. Neither is measured driver
+behaviour, neither seeds a disturbance, and the deadlock's cause and T.H.52's
+fixture loss remain. The rules may be switched off only to reproduce results
+published before the amendment; every I-94 result in this paper except p9's
+and p10's own arms ran with both off and stays reported as run. The code
+default flips only after a reproduction re-run of arm B on the current code
+(arm B ran before an engine fix whose defect, by inference, cannot occur on
+I-94's geometry) and after the battery and report count W1b's releases.
 
 **The I-94 corridor is not reproduced, and no controller or strategy result
 is reported for it** [ONBOARDING_MNDOT.md §6, §11]. *(Corrected 2026-10-07:
@@ -2988,17 +3464,23 @@ The protocol's gate, which a strategy result needs, fails (§7.4)
 | Ring, 22 vehicles on 230 m | emergence and single-vehicle dampening, 20 of 20 seeds | — |
 | US-101, 640 m, with measured boundary | congestion propagating from an imposed downstream state; backward waves in 20 of 20 replicates (standard detector; none with the criterion's stack detector) | flows, speeds, wave speed (1 PASS / 5 FAIL) |
 | I-24, 3.4 miles, four demand arms | the stop-and-go pattern from 2.2 km on; wave speed in band under the criterion's detector | link flows (17–20% of link-hours under GEH 5); segment speeds (34–36% RMSPE) |
-| I-24, drivers' acceleration calibrated (calibration, one morning) | peak-section flow about a quarter closer (about 6,030 of 6,630 veh/h) | link flows (25.0–25.7%); the wave row is lost; a refit holds 8% of the demand off the network (§5.7) |
+| I-24, drivers' acceleration calibrated (calibration, one morning; uncorrected ramp counts) | peak-section flow about a quarter closer (about 6,030 of 6,630 veh/h) | link flows (25.0–25.7%); the wave row is lost; a refit holds 8% of the demand off the network (§5.7) |
+| I-24, ramp counts corrected (B2) on the k = 1 refit arm (calibration, one morning; the calibrated-arm candidate) | peak sections within GEH 5 on two-hour flows (6,316 / 6,267 against 6,626 / 6,639 veh/h); every criterion fixed for B2 (§5.9) | hourly link flows (30.6% under GEH 5); segment speeds (5-min RMSPE 34.3%); the wave row (§5.9) |
+| I-24, boundary limit corrected (B1), alone or on top of B2 (calibration) | the 5,400 m flow on `_dc_refit` (6,008 against 6,009 veh/h recorded) | segment speeds, worse on the arm its rule names and on top of B2; one seed in twenty breaks down on top of B2 (§5.9) |
 | I-94 WB, St. Paul | — | the corridor (departed 0.884, RMSPE 0.691, GEH 16%; the VM U reference configuration, before the scripted-merge guard of §7.2) |
 | I-94 WB, protocol gate, calibrated drivers (rehearsal) | the queue tail's growth speed (a diagnostic reading: 4.9 against 4.6–5.7 km/h observed; §7.6) | the gate: GEH < 5 on 61.8% / 60.0% of station-hours, 15-min RMSPE 33.9% / 38.8%, wave speed, bottleneck timing (§7.4) |
-| I-94 WB, protocol gate, calibrated drivers, calibration-day inputs (rehearsal) | — (C6 passes in two arms because no phantom bottleneck appears; the five-day mean shows no observed bottleneck to reproduce, §7.5–7.6) | the gate: GEH < 5 on 34–35% / 31–34% of station-hours, 15-min RMSPE 42–45%, wave speed; collisions in two arms (§7.5, §7.8) |
+| I-94 WB, protocol gate, calibrated drivers, calibration-day inputs (rehearsal) | — (C6 passes in two arms because no phantom bottleneck appears; the five-day mean shows no observed bottleneck to reproduce, §7.5–7.6) | the gate: GEH < 5 on 34–35% / 31–34% of station-hours, 15-min RMSPE 42–45%, wave speed; collisions in two arms (§7.5, §7.8); with W1b + W2 no collision in 20 runs, and the gate still fails (§7.8) |
 
 *Sources: §5, §7.* The failures are informative because each has a stated
 cause and an artifact behind it. On I-24, six rounds of merge-side causes
 were excluded, and fixtures in the corridor's own geometry place the flow
 ceiling downstream of the merge, mostly in how the measured boundary is
 imposed, while a data check finds the model's on-ramp inputs inflated by
-through traffic; neither correction has been run on the corridor (§5.8). On I-94 it is a weaving section, whose fixture loss turns on
+through traffic (§5.8). On the corridor, correcting the ramp counts brings
+the peak sections within GEH 5 on two-hour flows, and correcting the
+boundary degrades segment speeds; the hourly flows still fail (§5.9).
+*(Revised 2026-10-07, night: this sentence said neither correction had been
+run on the corridor.)* On I-94 it is a weaving section, whose fixture loss turns on
 an unmeasured crossing share (§7.6), and which with honest inputs is the
 model's binding defect (§7.5); three of its 20 calibrated replicates on the
 nine-day inputs end in a permanent lock at a weaving gore, which a
@@ -3041,7 +3523,8 @@ readings was too strong, and the I-24 one was wrong about the place.
   step had calibrated. Raising it to the top of its measured range raises the
   peak sections by about a quarter of the gap: on the grid's demand the
   corridor then carries all its demand, and with a demand refit it meets a
-  ceiling near 6,050 veh/h (§4.6, §5.7) [DISCHARGE_CALIBRATION.md §1, §4].
+  ceiling near 6,050 veh/h (§4.6, §5.7; on the uncorrected ramp counts, §5.7
+  note) [DISCHARGE_CALIBRATION.md §1, §4].
   That ceiling is the downstream end's, which still rises with `a_max` under
   the time-varying boundary schedule, at the cost of waves (§5.8). The
   headway parameters remain ruled out (§5.5).
@@ -3072,15 +3555,21 @@ readings was too strong, and the I-24 one was wrong about the place.
   model's constant [WEAVE_LOSS_DIAGNOSIS.md §5; TH52_CROSSING_SHARE.md §10.4;
   MERGE_ANTICIPATION.md, Result].
 
-What remains on I-24, about 600 veh/h, is located by fixtures and a data
-check, not yet by a corridor run: mostly the boundary representation, a
-little the Hickory Hollow weave, and on-ramp inputs inflated by through
-traffic counted in the ramp lanes; the flow targets themselves stand (§5.8).
-*(Revised 2026-10-07, later: this sentence said the remainder has no
-established mechanism.)* The proposed corrections, Amendments B1 (the
-boundary) and B2 (the ramp counts), are the next steps; more `a_max` and
-more merge rules aimed at discharge are not [I24_DISCHARGE_DIAGNOSIS.md
-§8.2–8.4].
+What remained on I-24, about 600 veh/h at the peak sections, was located by
+fixtures and a data check: mostly the boundary representation, a little the
+Hickory Hollow weave, and on-ramp inputs inflated by through traffic counted
+in the ramp lanes; the flow targets themselves stand (§5.8). *(Revised
+2026-10-07, later: this sentence said the remainder has no established
+mechanism.)* Corridor runs then tested both corrections on the
+calibrated-demand arm (§5.9). Either alone brings the peak sections within
+GEH 5 on two-hour flows. The boundary correction makes speeds worse on the
+arm its rule names and on top of the ramp correction, and is not adopted;
+the ramp correction holds every criterion fixed for it and was adopted
+provisionally as an input correction. The hourly link-flow row still fails
+(30.6% against 85%), and more `a_max` and more merge rules aimed at
+discharge remain ruled out [I24_DISCHARGE_DIAGNOSIS.md §8.2–8.4.6].
+*(Revised 2026-10-07, night: this paragraph called Amendments B1 and B2 the
+next steps, not yet run.)*
 
 Two cautions carry over from §3.9 and §7.3. Under the instrument's coverage,
 I-24's gaps and refusal shares are one-sided and the direction of its
@@ -3125,15 +3614,25 @@ CLAUDE.md §3.1's instability near capacity (§2.2) [DISCHARGE_CALIBRATION.md
 
 The later work of the same day kept it too. W1b's corridor criteria were
 fixed before W1b existed and passed as fixed (§7.7). W2's criteria were
-fixed before its code; one failed, and W2 stays off without re-thresholding
-(§7.8). The I-24 discharge levers each had a rationale and a prediction on
+fixed before its code; one failed, and by its fixture rule W2 stayed off
+without re-thresholding (§7.8). *(Updated 2026-10-07, night.)* W2's corridor
+round with W1b then failed one clause, W1b's release bound at Ruth St, and
+its verdict, W2 not adopted on that round, stands. The amendment that
+adopted both rules together was written after that failure was seen and says
+so. It moves no threshold and discloses the release share as a standing cost
+instead, but a reader should weigh it as a decision taken with the result in
+hand (§2.5, §7.8). The I-24 discharge levers each had a rationale and a prediction on
 record before they ran, and the predictions that failed (the merge binding;
 the downstream ceiling ignoring `a_max`; EIDM adding nothing) are reported as
 failed. Two levers that raised the flow were not proposed, because they buy
 it with emergency braking (`lcAssertive` 3.38) or with the loss of most
 stop-and-go content and a change of model family (EIDM), and Amendment B1's
 corridor criteria were fixed before any corridor run (§5.8)
-[I24_DISCHARGE_DIAGNOSIS.md §1, §7, §8.2–8.3]. One more lesson: correcting
+[I24_DISCHARGE_DIAGNOSIS.md §1, §7, §8.2–8.3]. They were read as fixed: B1
+holds every applicable criterion where it was built to act, fails the speed
+criterion where its rule reads it, and is not adopted. The demand
+re-sequence that followed chose a backlog and is reported as failing its
+criteria, not re-run under another objective (§5.9). One more lesson: correcting
 an input can make a fit worse. The I-94 inputs rebuilt without the
 validation days bring GEH < 5 on calibration-day station-hours from 62% down
 to 34%, because an inflated exit in the old inputs had been compensating for
@@ -3222,19 +3721,30 @@ entrant under the weave's control, and no rule, the weave's or SUMO's,
 released it (§7.7) [I94_COLLAPSE_DIAGNOSIS.md §0]. Once named, the lock had
 a fix that could be tested against the corridor: W1b removed all three locks
 with no measurable cost, and the battery's means then moved close to where
-the diagnosis had put them with the locked replicates set aside (§7.7). The same
+the diagnosis had put them with the locked replicates set aside (§7.7). On
+the calibration-day inputs it released more entrants than its registered
+bound at Ruth St (§7.8). The same
 holds for collisions: a model's own speed targets can bypass the
 simulator's safety checks, and the collision count of every run set, read
 with a confirmation re-run, is how that was found here (§7.8).
+
+The converse holds too: a run can break down without locking. On I-24 one
+seed in twenty under B1 + B2 served only 0.660 of its demand, at a mean
+segment speed of 4.9 m/s, and it is not a lock by the written definition,
+because its queue crawled but kept discharging (§5.9). The lock row passes
+such a run. A report-only breakdown reading has been pre-registered to sit
+beside it [PRE_FRISCO_PROGRAM.md, "Coordinator's decisions on this plan"].
 
 ---
 
 ## 9. Limitations
 
 1. **No corridor is validated.** I-24 fails link-flow GEH and segment-speed
-   RMSPE; US-101 scores 1 PASS / 5 FAIL; I-94 is not reproduced, and with
+   RMSPE, including the calibrated-arm candidate with corrected ramp counts
+   (hourly GEH < 5 on 30.6% of comparisons, 5-min RMSPE 34.3%; §5.9);
+   US-101 scores 1 PASS / 5 FAIL; I-94 is not reproduced, and with
    the calibrated drivers it fails the protocol's baseline gate in rehearsal
-   on both input sets (§5, §7).
+   on both input sets, with and without the adopted weave rules (§5, §7).
 2. **Coverage.** Every I-24 count, flow and density is a lower bound. The
    corrected demand arms rest on coverage estimates, not on counts (§3.4).
    I-24's lane-change gaps and refusal shares are one-sided, and the size of
@@ -3267,9 +3777,13 @@ with a confirmation re-run, is how that was found here (§7.8).
    every driver's desired speed over the last 992 m, and not at the Old
    Hickory merge, whose model entrants nonetheless cross at walking pace
    where real ones cross at about 12.7 m/s; a data check adds on-ramp
-   inputs inflated by through traffic. Neither correction has been tested
-   on the corridor (§5.5, §5.7–5.8, §8.2). *(Revised 2026-10-07, later: this
-   item said SUMO's lane-change model under-discharges the I-24 merge.)* The I-94 weave is
+   inputs inflated by through traffic. On the corridor, correcting the ramp
+   inputs brings the peak sections within GEH 5 on two-hour flows; correcting
+   the boundary degrades segment speeds and is not adopted; the hourly flows
+   and the speeds still fail (§5.5, §5.7–5.9, §8.2). *(Revised 2026-10-07,
+   later: this item said SUMO's lane-change model under-discharges the I-24
+   merge. Revised again that night: it said neither correction had been
+   tested on the corridor.)* The I-94 weave is
    our own rule set; it does not reach observed capacity, and on the fixture
    its loss turns on an unmeasured input rather than on any single rule
    (§7.3, §7.6). EIDM and IDM differ in capacity by about 11% on the same
@@ -3303,7 +3817,13 @@ with a confirmation re-run, is how that was found here (§7.8).
     count or published figure exists, and the fixture's flow verdict flips
     inside its bounded range. The Ruth St weave's split has not been bounded
     at all (§7.6) [TH52_CROSSING_SHARE.md §10.4; FRISCO_PROTOCOL.md,
-    Amendment 3].
+    Amendment 3]. Amendment 3, adopted on 2026-10-07, carries the T.H.52
+    share as an uncertain input from the proportional split to 0.70 and
+    keeps the gate at the proportional split. Its range round has not run,
+    so every I-94 result here is at the proportional split only, without the
+    range reading the amendment requires once the round has run; Ruth St
+    stays an unexamined split assumption [FRISCO_PROTOCOL.md, "Adoption of
+    Amendment 3"].
 17. **String stability under the calibrated drivers.** At mean `a_max`
     + 1 sd the mean driver is stable at capacity density (unstable only from
     39.8 veh/km, against 28.2 at the measured mean), which CLAUDE.md §3.1
@@ -3320,8 +3840,15 @@ with a confirmation re-run, is how that was found here (§7.8).
     step-3 reading are not committed, while p9's re-run records the same
     three in its committed artifact (§7.7) [I94_COLLAPSE_DIAGNOSIS.md §5,
     §10; artifacts/validation_mndot_i94_wb_stpaul_weave_xlsfg_dc_p9.json].
-    W1b, which removed them on the corridor, is opt-in and was not run on the
-    calibration-day inputs.
+    W1b, which removed them on the corridor, has since run on the
+    calibration-day inputs with W2 (stage p10: no lock in either arm, and
+    releases of 1.26% of Ruth St's entrants against a 1% bound), and
+    Amendment 4 adopted it with W2; the code default is still off (§7.8).
+    The I-24 battery script now records locks; two of p14's batteries,
+    re-scored from their archives, have none; p13's archive cannot be
+    re-scored, and the published I-24 batteries of §5.3 have not been
+    re-scored (§5.9). *(Revised 2026-10-07, night: this item said W1b is opt-in and
+    had not run on the calibration-day inputs.)*
 19. **The shifted acceleration's cost in car following is unmeasured.** The
     episode-fit gap RMSE of the population with mean `a_max` + 1 sd was not
     computed, because the episodes are cloud-only data
@@ -3342,24 +3869,64 @@ with a confirmation re-run, is how that was found here (§7.8).
     on-ramp inputs are built from those counts and so include that through
     traffic (about 150 and 240 veh/h at the pooled coverage), which leaves
     their net exits too small. The I-24 results of §5–6 ran on such inputs.
-    The peak-section targets stand; the
-    corrected ramp counts (Amendment B2) have not been run (§5.8)
-    [I24_DISCHARGE_DIAGNOSIS.md §8.4.2–8.4.3].
+    The peak-section targets stand. The corrected ramp counts (Amendment B2)
+    have since run on the k = 1 refit arm only and were adopted
+    provisionally (§5.9). Every other I-24 result in this paper, the
+    published record of §5.3, the controller and strategy results of §6 and
+    the driver-calibration batteries of §5.7, stays on the uncorrected
+    inputs; rebuilding the published record on corrected inputs is a
+    separate decision. The correction removes a lower bound of the through
+    traffic, and its Old Hickory part rests on the trajectory flags alone
+    [I24_DISCHARGE_DIAGNOSIS.md §8.4.2–8.4.4; FRISCO_PROTOCOL.md, Amendment
+    5]. *(Revised 2026-10-07, night: this item said B2 had not been run.)*
 22. **The measured boundary as a desired speed.** On corridors built from
     OpenStreetMap the runner imposes the measured downstream speed as every
     vehicle's desired speed over the whole last edge, which on I-24 passes
     less than the road did there (§2.4, §5.8). Every I-24 and I-94 corridor
-    result in this paper ran under that representation; the proposed
-    correction has not been run on a corridor [I24_DISCHARGE_DIAGNOSIS.md
-    §5.1, §8.3].
+    result in this paper ran under that representation, except the B1 arms
+    of §5.9. The computed correction (Amendment B1) was run on I-24 and is
+    not adopted: it removes the ceiling on the calibrated-demand arm but
+    makes segment speeds worse on the arm its rule names and on top of the
+    ramp correction. No factor is defined for I-94's EIDM fleet
+    [I24_DISCHARGE_DIAGNOSIS.md §5.1, §8.3–8.3.1, §8.4.6]. *(Revised
+    2026-10-07, night: this item said the correction had not been run on a
+    corridor.)*
 23. **Collisions in the weave's command path.** The weave's one-step speed
     targets cap a human driver's braking at its comfortable deceleration, and
     the weave reads a leader inside the minimum gap as no leader; with the
     calibration-day inputs this produced collisions in two of three I-94
-    arms. The guards that remove both mechanisms on fixtures are off, because
-    one registered criterion failed. Any I-94 battery on the weave model,
-    including those reported here with zero collisions, runs with this
-    exposure (§7.8) [I94_CAL_COLLISIONS.md §14–15].
+    arms. The guards that remove both mechanisms on fixtures stayed off by
+    their fixture rule. On the corridor, with W1b on, the guarded arm had no
+    collision in 20 runs against one without; that difference is within
+    what the round's pre-registered power cannot resolve, so it is not
+    attributed to the guards. Amendment 4 adopts the guards with W1b, but the
+    code default stays off until its conditions hold. Every I-94 battery
+    reported here except p10's guarded arm ran without them, including those
+    with zero collisions, and carries this exposure (§7.8)
+    [I94_CAL_COLLISIONS.md §14–16; FRISCO_PROTOCOL.md, Amendment 4].
+    *(Revised 2026-10-07, night: this item said the guards are off because
+    one registered criterion failed.)*
+24. **Breakdowns that are not locks.** The lock row reads a standstill: a
+    cell standing without discharge for 10 minutes. On I-24 the B1 + B2 arm
+    broke down in one seed of twenty (realised 0.660 against 0.971 under B2
+    alone; 5,400 m flow 3,145 against 5,806 veh/h), and that run is not a
+    lock by the definition, because no cell stood longer than 180 s (§5.9)
+    [artifacts/i24_locks_p14_b1b2.json, `standing_per_replicate`;
+    artifacts/boundary_b1b2_corridor.json, `part_i.reported.quoted_figures`].
+    So `no_locks` PASS does not mean that no run broke down. A report-only
+    breakdown reading has been pre-registered (a replicate below 0.9 of its
+    planned demand in a battery whose mean is at least 0.95); it gates
+    nothing [PRE_FRISCO_PROGRAM.md, "Coordinator's decisions on this plan"].
+    Of the I-24 batteries, only two of p14's carry lock records, in sidecar
+    files beside the unchanged battery artifacts.
+25. **Decisions taken under delegation.** The three adoptions of 2026-10-07
+    (§2.5) are the coordinator's decisions under the owner's delegation, and
+    the owner can overturn them. Amendment 4 was written after W1b's release
+    clause had failed on the corridor; it re-reads no clause, but it turns a
+    failed bound into a disclosed cost. Amendment 5 is provisional. Amendment
+    3's range round has not run, so no I-94 result here carries the range
+    reading that amendment requires [DECISIONS_2026-10-07.md;
+    FRISCO_PROTOCOL.md, "Adoption of Amendment 3", Amendments 4–5].
 
 ---
 
@@ -3408,6 +3975,31 @@ revision (an implementation of the boundary `limit_factor` of Amendment B1
 and its harness, and further edits to I24_DISCHARGE_DIAGNOSIS.md) was not
 used.
 
+The results added on the night of 2026-10-07 (§5.9, §7.8) are recorded in
+documents and artifacts committed through `b50211d`: stage p10 in `67cab25`,
+p12 in `3a2d0bc`, p13 in `3b2306e`, p14 in `bb52ed7` (its readout re-run
+locally and re-committed in `cd470a9`), and the lock re-scoring in
+`b50211d`. Their code trees are recorded unevenly. p10's guarded arm ran on
+`5516e05` [FRISCO_PROTOCOL.md, Amendment 4]. p12's artifacts record no
+commit. p13's readout records a cloud-machine snapshot commit that is not in
+this repository [artifacts/boundary_b2_corridor.json, `code`;
+I24_DISCHARGE_DIAGNOSIS.md §8.4.4]. p14's readout records `e05866e`, which
+postdates its batteries (Appendix C, item 32). The lock re-scoring records
+`cd470a9`, with uncommitted changes in the tree, and the sha256 of each
+scoring file [artifacts/i24_locks_p14_b1b2.json, `code`]. Each round's
+same-code reference reproduced its committed battery exactly across machines
+and code trees: p12's and p13's references the step-3 batteries, p14's the
+p13 battery [artifacts/boundary_b1_corridor.json,
+`arms.*.reported.reference_reproduces_step3`;
+artifacts/boundary_b2_corridor.json, `reference_reproduces_committed`;
+artifacts/boundary_b1b2_corridor.json, `part_i.reference_reproduces_p13`].
+The decision records behind the three adoptions (DECISIONS_2026-10-07.md,
+FRISCO_PROTOCOL.md's "Adoption of Amendment 3" and Amendments 4–5, the dated
+note under I24_DISCHARGE_DIAGNOSIS.md §8.4.4, the CHANGELOG's `[Unreleased]`
+entry and PRE_FRISCO_PROGRAM.md) were staged but not committed when this
+revision was made. Uncommitted engine changes in the tree at the same time
+were not used.
+
 **Software.** Eclipse SUMO and libsumo 1.27.1, pinned because goldens are
 per SUMO version [CLAUDE.md §9]; Python 3.12 [M3_RESULTS.md §1]. Commands
 run as `uv run --no-sync python scripts/...` from the repository root
@@ -3448,6 +4040,9 @@ every criteria value to the digit [I24_VALIDATION.md §0.1, §0.12].
 | W1b corridor round (stage p9) | `corridor_battery.py`; `artifacts/weave_loss_2026-10-07/w1b/harness/corridor_w1b.py` | `artifacts/weave_w1b_corridor.json`, `artifacts/validation_mndot_i94_wb_stpaul_weave_xlsfg_dc{,_w1b}_p9.json`, `scenarios/mndot_i94_wb_stpaul_weave_dc_w1b.yaml` |
 | Collision confirmation (stage p8c); W2 fixtures | `scripts/run_pairs.py`, `i94_collision_trace.py`; `artifacts/weave_collision_guards_2026-10-07/harness/` | `artifacts/i94_cal_collisions_trace.json`, `artifacts/weave_collision_guards_2026-10-07/` |
 | I-24 discharge fixtures; count check (stage p11) | `artifacts/i24_discharge_2026-10-07/` (`fx.py`, `batch_*.py`, `analyze_*.py`); `scripts/i24_count_consistency.py` | `artifacts/i24_discharge_2026-10-07/*_summary.json`, `runs/R_or.jsonl`, `prereg.md`; `artifacts/i24_count_consistency.json` |
+| B1, B2 and B1 + B2 corridor rounds, demand re-sequence (stages p12–p14) | `scripts/boundary_limit_factor.py`, `i24_build_replica.py --ramp-through-traffic exclude`, `i24_validate.py`, `i24_fit_demand_scale.py`; `artifacts/i24_discharge_2026-10-07/harness/` (`corridor_b1.py`, `hard_braking.py`), `harness_b2/corridor_b2.py`, `harness_b1b2/corridor_b1b2.py` | `artifacts/boundary_b1_corridor.json`, `artifacts/boundary_b2_corridor.json`, `artifacts/boundary_b1b2_corridor.json`, `artifacts/i24_validation_{p12_*,dc_refit_p13ref,dc_refit_rc,p14_*}.json`, `artifacts/demand_scale_i24_flow_rc.json`, `scenarios/i24_replica_flow_rc*.yaml`, `scenarios/i24_replica_flow_speedcal{,_dc,_dc_refit}_b1.yaml` |
+| Lock re-scoring of archived I-24 batteries | `scripts/i24_rescore_locks.py` (`validation.locks`) | `artifacts/i24_locks_p14_{b1b2,b2_ref}.json` |
+| W1b + W2 corridor round (stage p10) | `corridor_battery.py`, `baseline_gate.py`; `artifacts/weave_collision_guards_2026-10-07/harness/corridor_w2.py` | `artifacts/weave_w2_corridor.json`, `artifacts/validation_mndot_i94_wb_stpaul_weave_xlsfg_dc_cal_w1b{,_w2}{,_gated}.json`, `artifacts/baseline_gate_mndot_i94_wb_stpaul_weave_xlsfg_dc_cal_w1b{,_w2}.json`, `scenarios/mndot_i94_wb_stpaul_weave_dc_cal_w1b{,_w2}.yaml` |
 
 **Compute.** The large batteries and sweeps ran on self-deleting cloud
 machines (n2-standard-32); for example, the re-run of the 500-run sweep
@@ -3608,7 +4203,7 @@ Single-seed probes are marked; none is a headline result on its own.
 | 54 | Observed I-94 discharge ÷ pre-breakdown flow, S790→S97 | 1.10 [0.98, 1.23]; no drop resolvable | — (8 of 9 days) | [DISCHARGE_CALIBRATION.md §1] |
 | 55 | Amendment-1 grid choice (calibration) | k = 1 (mean `a_max` 1.4833 m/s²) on both; keep-right 0 (I-24), 0.1 (I-94); discharge error 12.2% → 9.4% (I-24), 26.0% → 16.2% (I-94; S97 3,321 → 3,764 veh/h) | 1 seed per pair (I-24), 2 (I-94); 75 runs | [artifacts/driver_calibration_i24.json; artifacts/driver_calibration_i94.json; DISCHARGE_CALIBRATION.md §3] |
 | 56 | String-stability onset of the population's mean driver | 28.2 veh/km at k = 0 (capacity density 29.2), 32.5 at k = 0.5, 39.8 at k = 1; unstable share at 30 veh/km 0.43 → 0.22 | — (closed form) | [DISCHARGE_CALIBRATION.md §1, §4]; `validation.string_stability`, no committed artifact |
-| 57 | I-24 batteries with the calibrated drivers (calibration, one morning) | peak sections 5,850 / 5,821 (reference) → 6,031 / 6,025 (k = 1) → 6,047 / 5,983 veh/h (k = 1 + refit); realised demand 0.987 / 0.996 / 0.921; GEH 21.5 / 25.0 / 25.7%; RMSPE 37.2 / 78.4 / 33.3%; wave 15.9 km/h PASS / no peak / no peak | 20 per arm | [artifacts/i24_validation_flow_speedcal_ref.json; artifacts/i24_validation_dc.json; artifacts/i24_validation_dc_refit.json; DISCHARGE_CALIBRATION.md §4; MERGE_MODEL_READINESS.md §5] |
+| 57 | I-24 batteries with the calibrated drivers (calibration, one morning; built on uncorrected ramp counts) | peak sections 5,850 / 5,821 (reference) → 6,031 / 6,025 (k = 1) → 6,047 / 5,983 veh/h (k = 1 + refit); realised demand 0.987 / 0.996 / 0.921; GEH 21.5 / 25.0 / 25.7%; RMSPE 37.2 / 78.4 / 33.3%; wave 15.9 km/h PASS / no peak / no peak. The k = 1 + refit arm (`_dc_refit`) is replaced as the calibrated-arm candidate by row 80's arm; numbers unchanged (§5.7 note) | 20 per arm | [artifacts/i24_validation_flow_speedcal_ref.json; artifacts/i24_validation_dc.json; artifacts/i24_validation_dc_refit.json; DISCHARGE_CALIBRATION.md §4; MERGE_MODEL_READINESS.md §5; I24_DISCHARGE_DIAGNOSIS.md §8.4.4, dated note] |
 | 58 | Amendment 2, smaller shifts with demand refits (calibration) | k = 0.25: wave 15.7 km/h, GEH 16.0%, RMSPE 34.1%, realised 0.918, jam components 10.7 (7.95 backward), mean travel time 644 s; k = 0.5: 15.1 km/h, 24.3%, 33.9%, 0.930, 9.8 (7.6), 652 s; floor 0.977; none qualifies, k = 0 stays | 20 per arm | [artifacts/i24_validation_dck025_refit.json; artifacts/i24_validation_dck05_refit.json; FRISCO_PROTOCOL.md, Result of Amendment 2] |
 | 59 | I-94 protocol baseline gate, calibrated drivers, nine-day inputs (rehearsal) | C1 61.8% [56.5, 67.0] / 60.0% [54.0, 66.0] (calibration / validation; reference 15.5% / 14.5%); C3 33.9% [31.3, 36.5] / 38.8% [34.2, 43.4] (reference 49.7% / 48.7%); C4 4.9 km/h; gate fails; validation days not a clean holdout, and part of the gain is an input artefact (row 74) | 20 | [artifacts/baseline_gate_mndot_dc.json; artifacts/baseline_gate_mndot_i94_wb_stpaul_p1.json; DISCHARGE_CALIBRATION.md §4; I94_CALIBRATION_DAYS.md §2] |
 | 60 | I-94 S790, 06:30–07:30, calibrated drivers | 3,780–4,010 veh/h in every seed, against 4,911 observed | 20 | [I94_RESIDUALS.md §0; MERGE_MODEL_READINESS.md §5]; from the battery's per-seed station-hours |
@@ -3623,12 +4218,18 @@ Single-seed probes are marked; none is a headline result on its own.
 | 69 | I-94 locks (diagnostic) | 3 of 20 four-hour replicates at k = 1 (3–38%) against 0 of 20 at k = 0 on the same seeds (0–17%); Fisher p = 0.23 | 20 per arm | [I94_COLLAPSE_DIAGNOSIS.md §5, §10]; per-replicate files in the stage archive, not committed; the same three in the committed p9 re-run [artifacts/validation_mndot_i94_wb_stpaul_weave_xlsfg_dc_p9.json, `locks`] |
 | 70 | W1b (fixture, macOS) | 7 releases, each after exactly 60.0 s; 126 of 126 runs without a release byte-identical to their references; the one fixture lock released (1,014 of 1,014 departed against 673); five ordinary Ruth St stands of 61.5–68.5 s also released | 132 paired fixture runs | [artifacts/weave_loss_2026-10-07/w1b/criteria.json; artifacts/weave_loss_2026-10-07/w1b/releases.json; WEAVE_LOSS_DIAGNOSIS.md §10.9–10.10] |
 | 71 | The Old Hickory merge in I-24's geometry, and the downstream end (fixtures, macOS; the merge fixture forces breakdown with a red phase) | merge alone, free outflow: 6,620 ± 62 (k = 0) and 6,979 ± 49 (k = 1) veh/h at the 2,200 m-equivalent section, against 6,626 recorded; downstream end without the merge: 6,114 ± 20 (k = 1), 5,833 ± 46 (k = 0) at 2,200 m; a straight copy of the corridor with the replica's own vehicles within 12 veh/h of the refit arm at every section | 20 (merge), 10 (downstream end, copy) | [I24_DISCHARGE_DIAGNOSIS.md §4–5, §7.6; artifacts/i24_discharge_2026-10-07/G_summary.json, DS_summary.json, LEV_summary.json, FULL_summary.json] |
-| 72 | Boundary levers on the whole-corridor copy (fixtures, macOS) | the schedule on a 200 m buffer: +234 ± 24 veh/h at 2,200 m; the schedule × 1.2185 (computed, Amendment B1, proposed): +257 ± 27 at 2,200 m, 5,995 against 6,009 recorded at 5,400 m, boundary zone 39.7 against 49.9 km/h; 0 collisions; B1 not run on a corridor | 10 paired | [I24_DISCHARGE_DIAGNOSIS.md §7.4–7.5, §8.3; artifacts/i24_discharge_2026-10-07/FULL_summary.json] |
-| 73 | I-24 count consistency on 2,200 → 5,400 m (data; rules fixed before the run) | residual at the pooled coverage −403 [−689, −135] veh/h; each section at its own coverage +294; ramp through traffic removed −191; outcome `ramp_counts_contaminated`: the targets 6,626 / 6,639 stand, the on-ramp counts carry ≥ 14% (Old Hickory) and ≥ 35% (Hickory Hollow) through traffic; refit arm GEH 7.28 / 8.25 at the peak sections, 3.57 at 5,400 m; Amendment B2 proposed, not run | — (data; 15-min block bootstrap) | [artifacts/i24_count_consistency.json, `verdict`; I24_DISCHARGE_DIAGNOSIS.md §8.4.2–8.4.3] |
+| 72 | Boundary levers on the whole-corridor copy (fixtures, macOS) | the schedule on a 200 m buffer: +234 ± 24 veh/h at 2,200 m; the schedule × 1.2185 (computed, Amendment B1, proposed): +257 ± 27 at 2,200 m, 5,995 against 6,009 recorded at 5,400 m, boundary zone 39.7 against 49.9 km/h; 0 collisions; on the corridor, rows 79 and 81 | 10 paired | [I24_DISCHARGE_DIAGNOSIS.md §7.4–7.5, §8.3; artifacts/i24_discharge_2026-10-07/FULL_summary.json] |
+| 73 | I-24 count consistency on 2,200 → 5,400 m (data; rules fixed before the run) | residual at the pooled coverage −403 [−689, −135] veh/h; each section at its own coverage +294; ramp through traffic removed −191; outcome `ramp_counts_contaminated`: the targets 6,626 / 6,639 stand, the on-ramp counts carry ≥ 14% (Old Hickory) and ≥ 35% (Hickory Hollow) through traffic; refit arm (uncorrected ramp counts) GEH 7.28 / 8.25 at the peak sections, 3.57 at 5,400 m; Amendment B2 followed, run as row 80 | — (data; 15-min block bootstrap) | [artifacts/i24_count_consistency.json, `verdict`; I24_DISCHARGE_DIAGNOSIS.md §8.4.2–8.4.3] |
 | 74 | I-94 gate on calibration-day inputs (rehearsal) | C1 34.4% [30.9, 37.9] / 32.1% [29.0, 35.2] (`_dc_cal`; netfix 35.0 / 34.2%, speed factor 34.6 / 31.3%); C3 41.7% / 41.8% (netfix 44.6 / 44.6%, speed factor 43.6 / 43.6%); collisions 2 / 4 / 0; lowest realised demand 0.597 / 0.761 / 0.200; gate fails in every arm; none adopted | 20 per arm | [artifacts/baseline_gate_mndot_i94_wb_stpaul_weave_xlsfg_dc_cal{,_netfix,_sf}.json; artifacts/validation_mndot_i94_wb_stpaul_weave_xlsfg_dc_cal{,_netfix,_sf}.json; I94_CALIBRATION_DAYS.md, Results of stage p8] |
 | 75 | The six calibration-day collisions, confirmed (diagnostic) | 6 of 6 reproduced exactly on another CPU family, control clean; T.H.52: 2 of 3 opposing entries in the same step, 1 a late cut-in; Ruth St: 1 of 3 rear cars pinned at its comfortable deceleration, 2 braked beyond it but late | 6 colliding replicates + 1 control | [artifacts/i94_cal_collisions_trace.json; I94_CAL_COLLISIONS.md §15] |
-| 76 | W2, the weave collision guards (fixtures, macOS) | stress sets: 4 reference collisions (1 rear-end, 3 opposing entries) → 0; operating fixtures: 0 collisions in 132 W2 runs; T.H.52 flow +21.8 [−19.8, +63.5] veh/h; G6 (no new lock) fails; off | 80 stress + 132 operating runs per arm | [artifacts/weave_collision_guards_2026-10-07/criteria.json; I94_CAL_COLLISIONS.md §14.3–14.5] |
-| 77 | W1b corridor round (p9; I-94, calibrated drivers, nine-day inputs) | S790 +7.2 [−9.6, +23.9] veh/h; realised demand +0.7 points [−0.25, +1.66]; locks 3 → 0; collisions 0 and 0; releases 0.54% of Ruth St and 0.005% of T.H.52 entrants; battery's own GEH < 5 52.3% [46.0, 58.6] → 56.1% [52.3, 59.8]; every registered criterion passes; opt-in | 20 paired | [artifacts/weave_w1b_corridor.json; artifacts/validation_mndot_i94_wb_stpaul_weave_xlsfg_dc{,_w1b}_p9.json; WEAVE_LOSS_DIAGNOSIS.md §11] |
+| 76 | W2, the weave collision guards (fixtures, macOS) | stress sets: 4 reference collisions (1 rear-end, 3 opposing entries) → 0; operating fixtures: 0 collisions in 132 W2 runs; T.H.52 flow +21.8 [−19.8, +63.5] veh/h; G6 (no new lock) fails; off by its fixture rule; corridor round row 78; adopted with W1b by Amendment 4, code default still off | 80 stress + 132 operating runs per arm | [artifacts/weave_collision_guards_2026-10-07/criteria.json; I94_CAL_COLLISIONS.md §14.3–14.5] |
+| 77 | W1b corridor round (p9; I-94, calibrated drivers, nine-day inputs) | S790 +7.2 [−9.6, +23.9] veh/h; realised demand +0.7 points [−0.25, +1.66]; locks 3 → 0; collisions 0 and 0; releases 0.54% of Ruth St and 0.005% of T.H.52 entrants; battery's own GEH < 5 52.3% [46.0, 58.6] → 56.1% [52.3, 59.8]; every registered criterion passes; adopted with W2 by Amendment 4 (row 78), code default still off | 20 paired | [artifacts/weave_w1b_corridor.json; artifacts/validation_mndot_i94_wb_stpaul_weave_xlsfg_dc{,_w1b}_p9.json; WEAVE_LOSS_DIAGNOSIS.md §11] |
+| 78 | W1b + W2 corridor round (p10; I-94, calibrated drivers, calibration-day inputs) | collisions: guarded arm 0 of 20, W1b alone 1 (T.H.52), a difference within the round's pre-registered power, not attributed to W2; S790 −13.5 [−32.8, +5.8] veh/h; departed +0.01 points [−0.04, +0.07]; no lock in either arm; W1b releases at Ruth St 257 of 20,340 (1.26%) in both arms, CW5b fails; W2 not adopted on this round; gate fails in both arms; Amendment 4 adopted both afterwards | 20 paired | [artifacts/weave_w2_corridor.json, `criteria`, `per_seed`; artifacts/baseline_gate_mndot_i94_wb_stpaul_weave_xlsfg_dc_cal_w1b{,_w2}.json, `verdict`; I94_CAL_COLLISIONS.md §16; FRISCO_PROTOCOL.md, Amendment 4] |
+| 79 | Amendment B1 on the I-24 corridor (p12; calibration, one morning; uncorrected ramp counts) | `_dc_refit`: 5,400 m flow 5,735 → 6,008 [5,994, 6,021] (recorded 6,009); peak sections +266 [252, 281] / +276 [258, 293] veh/h, GEH 7.3 / 8.3 → 3.9 / 4.7; realised 0.921 → 0.948; 15-min RMSPE 0.273 → 0.256 (5-min 0.333 → 0.377); the flow family's fitted arm (k = 0): 15-min RMSPE 0.230 → 0.309, per-seed paired +0.074 [+0.057, +0.090], A5 fails; 0 collisions on every arm; not adopted | 20 paired per arm | [artifacts/boundary_b1_corridor.json, `arms.*.criteria`, `arms.*.reported`, `adoption`; I24_DISCHARGE_DIAGNOSIS.md §8.3.1] |
+| 80 | Amendment B2 on the I-24 corridor (p13; calibration, one morning; `_dc_refit` with corrected ramp counts) | R1–R5 hold: 0 collisions; realised 0.921 → 0.967, paired +0.045 [+0.042, +0.049]; ramps within GEH 1.8 / 1.2 / 1.3 / 2.0 of their corrected counts (reference's Hickory Hollow on-ramp 12.0); peak sections +269 [248, 290] / +284 [266, 302] veh/h, GEH 7.28 / 8.25 → 3.86 / 4.63; 15-min RMSPE 0.273 → 0.254; gate fails (hourly GEH < 5 25.7% → 30.6%, 5-min RMSPE 0.333 → 0.343, wave row fails); adopted provisionally (Amendment 5), the calibrated-arm candidate | 20 paired | [artifacts/boundary_b2_corridor.json, `criteria`, `paired_b2_minus_reference`; artifacts/i24_validation_dc_refit_{p13ref,rc}.json, `criteria`; I24_DISCHARGE_DIAGNOSIS.md §8.4.4] |
+| 81 | B1 on top of B2 (p14 part (i); calibration) | A5 fails: 15-min RMSPE 0.254 → 0.310 (per-seed paired +0.097 [+0.061, +0.132]; +0.080 [+0.070, +0.091] without the collapsed seed); 5,400 m flow 5,772 → 5,910 [5,605, 6,215]; zone speed error −17.0 → −9.8 km/h, paired +7.2 [6.2, 8.2]; gate rows 30.6% → 25.7% and 0.343 → 0.452; one seed of 20 breaks down (realised 0.660 against 0.971); read the other way, B2 on top of B1 fails R5 (0.310 against 0.256); not adopted | 20 paired | [artifacts/boundary_b1b2_corridor.json, `part_i.criteria`, `part_i.reported`; I24_DISCHARGE_DIAGNOSIS.md §8.4.6] |
+| 82 | FHWA demand re-sequence on B2 (p14 part (ii); calibration) | the speed-objective fitter chooses s = 1.125, inserting 0.783 on its fit seed; the battery realises 0.793 against 0.967 (paired −0.174 [−0.176, −0.171]) and passes hourly GEH < 5 on 25.0% against 30.6%: C2 and C3 fail, not a candidate; the carried s = 0.925 stands | 1 seed per scale (fit); 20 paired (battery) | [artifacts/boundary_b1b2_corridor.json, `part_ii`; artifacts/demand_scale_i24_flow_rc.json; artifacts/i24_validation_p14_refit2_b2.json] |
+| 83 | Locks on p14's I-24 batteries (re-scored from archives, no simulation) | no lock in 20 of 20 seeds of B2 alone or of B1 + B2 (95% interval 0–16.8% each); the collapsed seed's longest standing interval 180 s against the 600 s a lock needs: a breakdown, not a lock | 20 per battery | [artifacts/i24_locks_p14_{b1b2,b2_ref}.json, `locks`, `criteria`, `standing_per_replicate`; I24_VALIDATION.md §0, "Locks recorded"] |
 
 ---
 
@@ -3966,7 +4567,11 @@ edited; each item is left for the coordinator, and all are open.
     row. DISCHARGE_CALIBRATION.md §4 and the CHANGELOG name
     `i24_replica_speedcal` the canonical arm and `i24_replica_flow_speedcal`
     the Amendment-1 reference (item 19). Amendment B1's acceptance runs
-    should name which arm decides. *Open.*
+    should name which arm decides. *Open.* *(Note 2026-10-07, night: stage
+    p12 read A3–A5 on `i24_replica_flow_speedcal`, which its readout labels
+    `canonical` [artifacts/boundary_b1_corridor.json,
+    `arms.canonical.reference.scenario`]; §5.9 calls it the flow family's
+    fitted arm. The naming in the sources is unchanged.)*
 26. **Statements overtaken by stage p8.** I94_COLLAPSE_DIAGNOSIS.md §5 still
     reads "p8 has not run; no `_dc_cal*` artifact is committed", and
     I94_CALIBRATION_DAYS.md §0 ("Next run") and §6 ("Today it holds … So all
@@ -4011,3 +4616,28 @@ edited; each item is left for the coordinator, and all are open.
     DISCHARGE_CALIBRATION.md §5 still asks that 6,626 / 6,639 not be reused
     before that check, which has now run. This draft follows §8.4.2 (§5.5,
     §5.8). *Open.*
+
+Found during the night revision of 2026-10-07. Only this draft was edited;
+both items are left for the coordinator and are open.
+
+32. **The p14 readout's recorded code tree.** I24_DISCHARGE_DIAGNOSIS.md
+    §8.4.6 says the readout's `code` field is the cloud machine's snapshot
+    commit and is not in this repository. The committed
+    `artifacts/boundary_b1b2_corridor.json` records `code` and
+    `vm_snapshot` both as `e05866e`, the 2.6.0 release commit, which is in
+    this repository but was made at 22:12 UTC, after the stage's batteries
+    were written (their `created_at` 20:37–21:48 UTC); the readout itself
+    was re-run locally at 23:07 UTC (`created_at`), before the next commit
+    (`cd470a9`, 23:23 UTC). So the field appears to name the tree of the
+    local re-run, and the tree the cloud machine ran is recorded in no
+    committed file. *Open.*
+33. **The I-24 lock status in older records.** I24_DISCHARGE_DIAGNOSIS.md
+    §8.4.6 calls the collapsed seed "a standing breakdown the I-24 batteries
+    do not record as a lock (`no_locks` is not evaluated on them)", and the
+    CHANGELOG's 2.6.0 summary says the I-24 batteries "supply no lock
+    records and read NOT RECORDED". Commit `b50211d` then made the I-24
+    battery script record locks and re-scored two of p14's batteries: PASS
+    in both, and the seed is not a lock by the definition (I24_VALIDATION.md
+    §0, "Locks recorded"). Neither older record carries a pointer, and the
+    CHANGELOG has no entry for `b50211d`. This draft follows the re-scoring
+    (§5.9, §9 item 24). *Open.*

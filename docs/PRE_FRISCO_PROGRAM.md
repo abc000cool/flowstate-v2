@@ -497,3 +497,16 @@ mine, taken on the plan above before any run, and the owner can overturn any of 
   later amendment.
 - **Order and budget** as scheduled; a VM is launched only from a pushed commit with its
   pre-registration committed; ledger kept under $35, flagged before $50.
+
+## Schedule change — C7b inserted before B5's I-24 fit
+
+C7 ran on 2026-10-07 (docs/I24_GEH_DIAGNOSIS.md): recording noise is the largest class under
+every order, the station-hour form is 64.6 % (still failing), and two consistency defects of
+ours were found — the simulated count reads five lanes at 1,000 and 4,800 m where the recording
+reads four, and the demand was built at the equilibrium coverage against a recommended-coverage
+target (planned/target 1.00–1.15 over the period) — plus a 75.7 s insertion-time stamp offset.
+**C7b** (docs/I24_CONSISTENCY_C7B.md, stage `p23_c7b`, ≈ $1.6) pre-registers the scorer's lane-set
+correction, the coverage-consistent demand and the computed insertion shift as B2-style input
+corrections with R1–R5, and runs before `p15`: B5 refits the level on the arm C7b's fixed rule
+selects, so that a level is not fitted against an inconsistent target. The running total rises
+by about $1.6 (expected ≈ $17; caps ≈ $28).
