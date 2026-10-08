@@ -29,7 +29,10 @@ together with the inputs it came from, the synthetic-validation table of
 ``calibration.coverage.synthetic_validation`` and provenance. Memory stays
 below ~1 GB: one lane of one window is loaded at a time.
 
-Run: ``uv run --no-sync python scripts/i24_coverage.py``
+Run: ``uv run --no-sync python scripts/i24_coverage.py``. Another morning
+(docs/PRE_FRISCO_PROGRAM.md C9): name it with ``I24_DAY_DIR`` and ``I24_T0_UNIX``
+(``scripts/i24_data.py``) and give ``--out``; the artifact's ``source`` and
+``data_hash`` then name that recording.
 """
 
 from __future__ import annotations
@@ -54,6 +57,7 @@ from i24_data import (
     WB_DIR,
     clock,
     data_hash,
+    source_label,
 )
 
 from calibration.coverage import (
@@ -420,7 +424,7 @@ def main() -> None:
         "script": "scripts/i24_coverage.py",
         "data_hash": data_hash(),
         "source": (
-            "I-24 MOTION INCEPTION v1.x, 30 Nov 2022 westbound (6386d89efb3ff533c12df167__post10), "
+            f"{source_label()}, "
             f"mainline lanes 1-4, data x in [0, {span_hi:.0f}) m, {clock(T_LO_S)}-{clock(T_HI_S)} CST, "
             f"{WINDOW_S:.0f} s windows"
         ),

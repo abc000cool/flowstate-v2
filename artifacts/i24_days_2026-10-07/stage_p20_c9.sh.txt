@@ -1,0 +1,146 @@
+# Stage p20 for scripts/gcp/pipeline_i24.sh — NOT inserted (that file is not this change's to edit).
+# Paste it just above the "# 9. Done marker" block, next to the other opt-in stages (p11-p14).
+# Before a launch:
+#   1. the owner uploads the two INCEPTION westbound zips to the launch bucket, unopened, under
+#      gs://<bucket>/i24motion/ (docs/I24_DAYS_REQUEST.md);
+#   2. P20_DAYS below gets their dates and object names (DATE=OBJECT, one per morning; the stage refuses the
+#      placeholders), and P20_ARM the adopted arm's battery label (dc_refit_rc: the B2 arm, Amendment 5);
+#   3. commit and push scripts/i24_data.py, i24_coverage.py, i24_validate.py, i24_virtual_detectors.py,
+#      day_split.py, tests/test_scripts/test_i24_data_days.py, test_i24_days_c9.py and this stage (the launcher
+#      refuses a dirty tree or a HEAD not on origin/main).
+#
+# p20 (opt-in; docs/PRE_FRISCO_PROGRAM.md C9, plan item 15; not in the default list; needs the launcher's default
+#     --data-set i24, which ships the processed 30 Nov 2022 day). Data only: no simulation, no ring. Two more I-24
+#     MOTION mornings and the protocol's day split (docs/FRISCO_PROTOCOL.md §2-3) with the C9 amendment (Amendment 9
+#     there as proposed; approved 2026-10-07 before any new file was read: a day already used to calibrate is pinned
+#     to calibration; CIRCLES test-fleet days are events). Every output goes to artifacts/i24_days_2026-10-07/ and is
+#     mirrored into logs/p20_i24_days/ after every step, so every archive (light or full) carries it; the ingest then
+#     copies logs/pipeline_vm/p20_i24_days/ back to artifacts/i24_days_2026-10-07/ by hand (the ingest script names
+#     no file of this stage). Steps:
+#       1. per new morning, the two in parallel (logs/p20_day_<date>.log):
+#          a. the zip from $P20_ZIPS to data/i24motion/, converted by scripts/i24_extract.py --source <zip>
+#             --t-origin <06:00 CST of the date: scripts/i24_data.py t0 DATE> --name i24_wb_<YYYYMMDD> (westbound,
+#             5 Hz; streamed, never extracted to disk); the zip is deleted once the conversion is checked
+#             (scripts/i24_data.py check DATE DIR: the origin is the date's, westbound, the first sample within
+#             05:00-06:29 CST and the samples through 08:31 CST, so a zip of another date is refused);
+#          b. its coverage artifact, scripts/i24_coverage.py on that day (I24_DAY_DIR / I24_T0_UNIX) ->
+#             coverage_<YYYYMMDD>.json (the committed fleet and FD artifacts; the recommended estimator per 15 min);
+#          c. its observed side, scripts/i24_validate.py --observed-only -> observed_<YYYYMMDD>.json (the battery's
+#             tables on that day: crossings at the six sections, recommended-coverage flows, segment speeds, waves);
+#       2. scripts/i24_virtual_detectors.py over the three mornings (30 Nov with the committed coverage artifact and
+#          observed side) -> detectors.csv, stations.csv, virtual_detectors.json; refuses unless every day's
+#          study-period crossings equal its observed side's counts_tracked and each coverage artifact is its day's;
+#       3. scripts/data_quality_report.py over 06:30-08:30 -> dq/data_quality.{json,md} (the mass balance with the
+#          four ramps declared unmeasured by stations.csv);
+#       4. scripts/station_selection.py with the CIRCLES days excluded -> selection.json (protocol §2.2);
+#       5. scripts/day_split.py --circles-events --pin-calibration 2022-11-30=... -> day_split.json (three
+#          candidates: one calibration place, filled by 30 Nov; both new mornings validation; underpowered on both
+#          sides, §3.3; the split as written recorded beside it, c9_amendment.as_written);
+#       6. the re-score, $0, the model unchanged (§3.5): scripts/i24_validate.py --criteria-only --label $P20_ARM
+#          --rescore-observed against each validation day and their mean -> rescore_<arm>_<YYYYMMDD>.json and
+#          rescore_<arm>_validation_mean.json, and the same for the split as written when its validation days differ
+#          (rescore_<arm>_as_written_validation_mean.json; change control reports both). Each carries the three GEH
+#          tables, the RMSPE block and the criteria rows as the battery forms them, and the gate checks C1, C3, C4 and
+#          C5 read on that side, reported only (PRE_FRISCO_PROGRAM C9 "Criteria").
+#     Stop rule (C9): a morning that fails the screen (step 1a's check, the split's candidate screen) or shows a
+#     coverage hole at a count section (virtual_detectors.json study_period_crossings_over_day_median; the
+#     data-quality verdicts) is replaced before the draw: the stage then stops at the split, nothing is re-scored,
+#     and the owner downloads another morning (docs/I24_DAYS_REQUEST.md).
+#     Cost on n2d-standard-16 in us-central1 (16 vCPU, 64 GB) [estimate]: per morning, in parallel, the 5.8 GB
+#     download about 1-2 min, the conversion about 5-6 min (309 s for 30 Nov westbound on the laptop, docs/I24_DATA.md
+#     §1, plus the zip's sha256), the coverage about 5-10 min (64 lane-windows of mixture fits) and the observed side
+#     about 3-5 min; the detectors about 2 min a morning (three block reads each); quality, selection, split and the
+#     re-scores under 2 min. About 30-40 min of stage time, about 45-52 min billed with boot, setup and the I-24 data
+#     upload through the bucket: about $0.6-0.7 at about $0.78/h; --cap-min 120 bounds it at about $1.6. Bucket
+#     storage of the two zips (11.6 GB) about $0.23 a month at standard storage, cents for the launch.
+#       scripts/gcp/launch_i24_pipeline.sh --vm flowstate-p20 --zone us-central1-a,us-central1-b,us-central1-c \
+#         --machine n2d-standard-16 --bucket gs://<bucket>/p20 --self-delete --via-bucket --data-set i24 \
+#         --cap-min 120 --pipeline-args '--stages "p20_i24_days"'
+P20_DAYS=("YYYY-MM-DD=<run id>__post10.zip" "YYYY-MM-DD=<run id>__post10.zip")   # fill before the launch commit
+P20_ARM=dc_refit_rc   # artifacts/i24_validation_dc_refit_rc.json: the B2 arm (Amendment 5), the calibrated-arm candidate
+P20_OUT=artifacts/i24_days_2026-10-07
+P20_ZIPS="${P20_ZIP_PREFIX:-gs://$(printf '%s' "${BUCKET#gs://}" | cut -d/ -f1)/i24motion}"
+P20_PIN="2022-11-30=every I-24 calibration used it (FD, driver population, demand scale, the B2 ramp correction)"
+P20_EVENT="event affecting the stretch: the CIRCLES MegaVanderTest test fleet on I-24 (Amendment 9)"
+p20_keep() {  # mirror the outputs into logs/ (archived in full by every make_archive)
+  mkdir -p logs/p20_i24_days && cp -R "$P20_OUT"/. logs/p20_i24_days/
+}
+p20_compact() { printf '%s' "${1//-/}"; }
+p20_observed() {  # p20_observed DATE: the morning's observed side (30 Nov: the committed one the batteries used)
+  if [ "$1" = 2022-11-30 ]; then printf '%s' artifacts/i24_validation_observed.json
+  else printf '%s' "$P20_OUT/observed_$(p20_compact "$1").json"; fi
+}
+p20_day() {  # p20_day DATE OBJECT: fetch, convert, check, coverage, observed side for one new morning
+  local day="$1" object="$2" c dir t0
+  c=$(p20_compact "$day"); dir="data/i24motion/processed/i24_wb_$c"
+  t0=$($RUN scripts/i24_data.py t0 "$day") || { echo "p20: $day has no CST origin"; return 1; }
+  if ! $RUN scripts/i24_data.py check "$day" "$dir" 2>/dev/null; then
+    mkdir -p data/i24motion
+    gcloud storage cp "$P20_ZIPS/$object" "data/i24motion/$object" --quiet || { echo "p20: $P20_ZIPS/$object not fetched"; return 1; }
+    $RUN scripts/i24_extract.py --source "data/i24motion/$object" --t-origin "$t0" --name "i24_wb_$c" || return 1
+    $RUN scripts/i24_data.py check "$day" "$dir" || { echo "p20: $object is not the westbound morning of $day"; return 1; }
+    rm -f "data/i24motion/$object"
+  fi
+  [ -f "$P20_OUT/coverage_$c.json" ] || I24_DAY_DIR="$dir" I24_T0_UNIX="$t0" \
+    $RUN scripts/i24_coverage.py --out "$P20_OUT/coverage_$c.json" || return 1
+  I24_DAY_DIR="$dir" I24_T0_UNIX="$t0" $RUN scripts/i24_validate.py --observed-only "$P20_OUT/observed_$c.json" \
+    --coverage-artifact "$P20_OUT/coverage_$c.json" || return 1
+}
+p20_rescore() {  # p20_rescore NAME DATE...: each day (once), then the mean when there are several
+  local name="$1" day obs=() rc=0; shift
+  [ $# -gt 0 ] || { say "p20: $name has no validation day; nothing re-scored"; return 0; }
+  for day in "$@"; do
+    obs+=("$day=$(p20_observed "$day")")
+    $RUN scripts/i24_validate.py --criteria-only --label "$P20_ARM" --ring-seeds 0 \
+      --rescore-observed "$day=$(p20_observed "$day")" \
+      --rescore-out "$P20_OUT/rescore_${P20_ARM}_$(p20_compact "$day").json" || rc=1
+  done
+  if [ $# -gt 1 ]; then
+    $RUN scripts/i24_validate.py --criteria-only --label "$P20_ARM" --ring-seeds 0 --rescore-observed "${obs[@]}" \
+      --rescore-label "$name" --rescore-out "$P20_OUT/rescore_${P20_ARM}_$name.json" || rc=1
+  fi
+  return $rc
+}
+p20_steps() {
+  local item day pids=() rc=0 days=(2022-11-30) args=() val=() written=()
+  for item in "${P20_DAYS[@]}"; do
+    case "$item" in *YYYY*|*"<"*) say "p20: fill P20_DAYS (DATE=OBJECT) before the launch; nothing run"; return 1 ;; esac
+  done
+  [ -n "${BUCKET:-}${P20_ZIP_PREFIX:-}" ] || { say "p20: no bucket to fetch the zips from; nothing run"; return 1; }
+  mkdir -p "$P20_OUT"
+  for item in "${P20_DAYS[@]}"; do
+    p20_day "${item%%=*}" "${item#*=}" > "logs/p20_day_${item%%=*}.log" 2>&1 &
+    pids+=($!); days+=("${item%%=*}")
+  done
+  for item in "${pids[@]}"; do wait "$item" || rc=1; done
+  p20_keep
+  [ "$rc" -eq 0 ] || { say "p20: a morning failed (logs/p20_day_*.log); stopped before the detectors"; return 1; }
+  args=(--day 2022-11-30=data/i24motion/processed/i24_wb_20221130 --coverage 2022-11-30=artifacts/i24_coverage.json
+        --observed 2022-11-30=artifacts/i24_validation_observed.json)
+  for day in "${days[@]:1}"; do
+    args+=(--day "$day=data/i24motion/processed/i24_wb_$(p20_compact "$day")"
+           --coverage "$day=$P20_OUT/coverage_$(p20_compact "$day").json" --observed "$day=$(p20_observed "$day")")
+  done
+  $RUN scripts/i24_virtual_detectors.py "${args[@]}" --out-dir "$P20_OUT" || { p20_keep; say "p20: detectors refused"; return 1; }
+  $RUN scripts/data_quality_report.py --detectors "$P20_OUT/detectors.csv" --stations "$P20_OUT/stations.csv" \
+    --start 06:30 --end 08:30 --title "I-24 MOTION westbound: virtual detectors at six sections (C9)" \
+    --out "$P20_OUT/dq" || { p20_keep; return 1; }
+  $RUN scripts/station_selection.py --quality "$P20_OUT/dq/data_quality.json" \
+    --exclude-day "2022-11-14=$P20_EVENT" --exclude-day "2022-11-15=$P20_EVENT" --exclude-day "2022-11-16=$P20_EVENT" \
+    --exclude-day "2022-11-17=$P20_EVENT" --exclude-day "2022-11-18=$P20_EVENT" \
+    --out "$P20_OUT/selection.json" || { p20_keep; return 1; }
+  $RUN scripts/day_split.py --detectors "$P20_OUT/detectors.csv" --stations "$P20_OUT/stations.csv" \
+    --start 06:30 --end 08:30 --quality "$P20_OUT/dq/data_quality.json" --selection "$P20_OUT/selection.json" \
+    --circles-events --pin-calibration "$P20_PIN" --out "$P20_OUT/day_split.json" \
+    || { p20_keep; say "p20: the split was refused (a morning failed the screen?); nothing re-scored"; return 1; }
+  p20_keep
+  read -r -a val <<< "$($RUN -c 'import json,sys; print(" ".join(json.load(open(sys.argv[1]))["validation_dates"]))' "$P20_OUT/day_split.json")"
+  read -r -a written <<< "$($RUN -c 'import json,sys; print(" ".join(json.load(open(sys.argv[1]))["c9_amendment"]["as_written"]["validation_dates"]))' "$P20_OUT/day_split.json")"
+  p20_rescore validation_mean "${val[@]}" || rc=1
+  if [ "${written[*]}" != "${val[*]}" ]; then p20_rescore as_written_validation_mean "${written[@]}" || rc=1; fi
+  p20_keep
+  return $rc
+}
+if echo " $STAGES " | grep -q " p20_i24_days "; then
+  stage p20_i24_days p20_steps || say "p20_i24_days failed; continuing"
+fi
