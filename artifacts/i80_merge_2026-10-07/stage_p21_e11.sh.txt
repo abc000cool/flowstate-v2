@@ -1,0 +1,94 @@
+# Stage p21 for scripts/gcp/pipeline_i24.sh — NOT inserted (E11's scripts are built; the pipeline file is another agent's).
+# Paste it just above the "# 9. Done marker" block, next to the other opt-in stages (p10-p14). It uses only
+# the pipeline's say, stage, make_archive, $RUN and $PROCS.
+# Before a launch: commit and push scripts/i80_data.py, scripts/i80_merge_measures.py, scripts/i80_build_replica.py,
+# artifacts/i80_merge_2026-10-07/harness/corridor_e11.py, their tests (tests/test_scripts/test_i80_*.py,
+# tests/test_scripts/test_corridor_e11_harness.py), this stage and Amendment M1 in docs/MERGE_MODEL.md (the launcher
+# refuses a dirty tree or a HEAD not on origin/main; a VM is launched only with its pre-registration committed).
+
+# p21 (opt-in; docs/PRE_FRISCO_PROGRAM.md "E11"; not in the default list; needs no data set: launch with --data-set none,
+#     the I-80 data is fetched here). Merge gaps and speeds on NGSIM I-80, a site never calibrated on. Criteria E1-E4
+#     and the rescue rule fixed 2026-10-07 before any run (E3 = Amendment M1 to docs/MERGE_MODEL.md §3, approved by the
+#     coordinator 2026-10-07, 21:40 CDT). Steps, all on the VM:
+#       1. scripts/i80_data.py fetch: the raw NGSIM I-80 trajectories (data.transportation.gov, Socrata 8ect-6jqj,
+#          location 'i-80', paged by :id in 200,000-row chunks, calibration.data_fetch.fetch_ngsim_i80) into data/ngsim/
+#          (gitignored; never shipped). Raw only: reconstructed NGSIM is out of scope by owner rule;
+#       2. scripts/i80_data.py prepare -> artifacts/i80_data.json: exact duplicates dropped, periods split on the
+#          recording origin (US-101's recipe, docs/M2_RESULTS.md §1), the replica block = the longest wall-clock-
+#          contiguous run of periods (FHWA-HRT-06-137 says 17:00-17:30 PDT);
+#       3. scripts/i80_merge_measures.py observed -> artifacts/i80_merge_observed.json: the on-ramp's entering changes
+#          in the block's analysis windows: accepted lead / lag time gaps, Troutbeck joint critical gaps with 200-
+#          resample bootstrap intervals, partner speeds, gap ratios at 0 / 2 / 5 / 10 s, acceleration-lane speed by
+#          50-m bin, each with n and a 200-resample bootstrap 95 % interval;
+#       4. scripts/i80_build_replica.py build -> scenarios/i80_replica.yaml (the kept configuration, merge: lane_change),
+#          data/osm/i80_ngsim.osm, artifacts/i80_replica_inputs.json: geometry, counted demand and the measured
+#          downstream boundary as the US-101 replica's, the fleet block of the kept I-24 arm
+#          (scenarios/i24_replica_flow_rc_speedcal_dc_refit.yaml, B2 adopted provisionally; population
+#          artifacts/idm_i24_capacity_amax_k1.0.json); nothing fitted on I-80. The builder refuses a layout other than
+#          the documented one (lanes 1-6 and the ramp lane 7 present, no exit lane): then nothing is run. The site has
+#          no weaving section, so Phase A's weave guards (W1b, W2) do not apply to the kept configuration here;
+#       5. corridor_e11.py make-arm -> scenarios/i80_replica_measured.yaml: the same document with the on-ramp on
+#          merge: measured (central set), refused if anything else differs; then an interim archive;
+#       6. per arm (kept, then measured): 20 seeds (spawn_seeds(42, 20)) through microsim.runner.run_replicates under
+#          runs/i80_merge/<arm>/, then scripts/i80_merge_measures.py simulated on their trajectories (the same
+#          extractors; WP-82's arrival-crossing fix) -> artifacts/i80_merge_sim_<arm>.json (per-seed and pooled
+#          values, collisions, departed shares), then the trajectories are deleted (never shipped). Resumable per arm
+#          (logs/p21_<arm>.extract.ok);
+#       7. corridor_e11.py readout -> artifacts/i80_merge_validation.json: E1-E4 per arm, the rescue rule, n with every
+#          interval; reported: the speed profile, the gap ratios, departed shares (no-lock and breakdown readings).
+#          Exit 3 (logged, the stage fails) when the inputs disagree; the readout is still written.
+#     Everything it keeps is artifacts/*.json or scenarios/*.yaml, so every archive carries it; the map rides in
+#     artifacts/i80_replica_inputs.json (after the ingest: scripts/i80_build_replica.py write-osm rebuilds
+#     data/osm/i80_ngsim.osm and checks its sha256). The ingest does not list these files: copy them by hand.
+#     Cost on n2d-standard-16 (16 vCPU, 64 GB; $PROCS = 14) [estimate]: fetch about 5-15 min (about 1 GB of CSV from
+#     Socrata), prepare and the observed measures about 5-10 min, the build under a minute, each arm 20 runs of about
+#     35 simulated minutes on a 1.4-km six-lane corridor in two waves plus the extraction, about 8-15 min, the readout
+#     seconds: about 30-55 min of stage time, about 45 + 12 min billed with boot and setup, about $0.7 at
+#     $0.78/h. --cap-min 120 bounds it at about $1.6. It can share a VM with p20 (C9 needs --data-set i24; sum the
+#     caps).
+#       scripts/gcp/launch_i24_pipeline.sh --vm flowstate-p21 --machine n2d-standard-16 \
+#         --zone us-central1-a,us-central1-b,us-central1-c --bucket gs://<bucket>/p21 \
+#         --self-delete --via-bucket --data-set none --cap-min 120 --pipeline-args '--stages "p21_i80_merge"'
+P21_H=artifacts/i80_merge_2026-10-07/harness/corridor_e11.py
+P21_KEPT=scenarios/i80_replica.yaml
+P21_MEAS=scenarios/i80_replica_measured.yaml
+P21_FLEET=scenarios/i24_replica_flow_rc_speedcal_dc_refit.yaml
+P21_DATA=artifacts/i80_data.json
+P21_OBS=artifacts/i80_merge_observed.json
+P21_INPUTS=artifacts/i80_replica_inputs.json
+p21_arm() {  # p21_arm <kept|measured> <scenario>: 20 seeds, the extractors on their trajectories, the trajectories deleted
+  local arm="$1" scn="$2" ok="logs/p21_$1.extract.ok" out="artifacts/i80_merge_sim_$1.json"
+  if [ -f "$ok" ] && [ -f "$out" ]; then say "p21: $arm extracted earlier, not repeated"; return 0; fi
+  $RUN "$P21_H" run --scenario "$scn" --label "$arm" --procs "$PROCS" || { say "p21: the $arm runs failed"; return 1; }
+  $RUN scripts/i80_merge_measures.py simulated --manifest "runs/i80_merge/$arm/MANIFEST.json" \
+      --observed "$P21_OBS" --inputs "$P21_INPUTS" --procs "$PROCS" --out "$out" \
+    || { say "p21: the $arm extraction failed (its trajectories stay on the VM for a resume)"; return 1; }
+  touch "$ok"
+  rm -f runs/i80_merge/"$arm"/*/*/trajectories.parquet   # the simulated trajectories never leave the VM
+  du -sh "runs/i80_merge/$arm" 2>/dev/null || true
+}
+p21_steps() {
+  local rc=0
+  $RUN scripts/i80_data.py fetch || { say "p21: the I-80 fetch failed; nothing run"; return 1; }
+  $RUN scripts/i80_data.py prepare --out "$P21_DATA" || { say "p21: prepare failed; nothing run"; return 1; }
+  $RUN scripts/i80_merge_measures.py observed --data-summary "$P21_DATA" --out "$P21_OBS" \
+    || { say "p21: the observed measures failed; nothing run"; return 1; }
+  $RUN scripts/i80_build_replica.py build --data-summary "$P21_DATA" --fleet-from "$P21_FLEET" \
+      --out "$P21_KEPT" --inputs-out "$P21_INPUTS" \
+    || { say "p21: the replica build was refused or failed (reason in logs/p21_i80_merge.log); nothing run"; return 1; }
+  $RUN "$P21_H" make-arm --source "$P21_KEPT" --out "$P21_MEAS" \
+    || { say "p21: the measured arm was refused; nothing run"; return 1; }
+  make_archive light   # the observed side, the inputs and the two documents leave the machine before the runs
+  p21_arm kept "$P21_KEPT" || rc=1
+  p21_arm measured "$P21_MEAS" || rc=1
+  if [ ! -f artifacts/i80_merge_sim_kept.json ] || [ ! -f artifacts/i80_merge_sim_measured.json ]; then
+    say "p21: an arm's measures are missing; no readout"; return 1
+  fi
+  $RUN "$P21_H" readout --observed "$P21_OBS" --kept artifacts/i80_merge_sim_kept.json \
+      --measured artifacts/i80_merge_sim_measured.json --out artifacts/i80_merge_validation.json \
+    || { say "p21: the readout failed or is blocked (its problems list says why)"; rc=1; }
+  return $rc
+}
+if echo " $STAGES " | grep -q " p21_i80_merge "; then
+  stage p21_i80_merge p21_steps || say "p21_i80_merge failed; continuing"
+fi

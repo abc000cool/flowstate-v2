@@ -235,3 +235,29 @@ queue-discharge rate and SUMO's lane-end behaviour), not more acceptance rules.
 **Update 2026-10-07 (docs/I24_DISCHARGE_DIAGNOSIS.md, fixtures only):** the I-24 peak-section ceiling (about 6,050 veh/h with the calibrated drivers) is not set by the Old Hickory merge — in I-24's own 4-lane geometry with free outflow the merge discharges 6,620 ± 62 veh/h (old drivers) and 6,979 ± 49 (calibrated), above the recording's 6,626. The ceiling comes from downstream: mostly the representation of the measured downstream boundary (its speed applied as every driver's desired speed over the 992-m last edge: drivers travel at about 33 km/h and pass 5,743 veh/h where the road passed 6,009), partly the Hickory Hollow weave, and about half of the remaining gap looks like an inconsistency between the recorded section counts and ramp counts. A proposed, opt-in boundary correction (Amendment B1) is not yet run on the corridor; until it is, statements here about a merge or queue-discharge shortfall at I-24 should be read as superseded.
 
 **Superseded (2026-10-07):** the count check ran (stage p11, docs/I24_DISCHARGE_DIAGNOSIS.md §8.4.2). The peak-section targets stand and the count inconsistency is through traffic in the on-ramp counts, so "about half of the remaining gap" above is not in the target: the shortfall is the model's, in the boundary representation and in ramp inputs built from those counts.
+
+### M1 — 2026-10-07, before stage p21 (E11): an interval rule for a model not fitted to the site
+
+§3 checks the model against the measurements it was built from and has no rule for a site it was never fitted
+on. E11 (docs/PRE_FRISCO_PROGRAM.md) adds one for NGSIM I-80's Powell Street on-ramp (raw export; entering
+changes, lane 7 to 6, inside the acceleration lane read off the data; `scenarios/i80_replica.yaml` built as the
+US-101 replica with the I-24 population, nothing fitted on I-80).
+
+**E3.** For each of six medians of the entering changes — the accepted lead and lag time gaps, the
+joint-estimator lead and lag critical gaps (`calibration.critical_gap`), and the partner speeds at the change on
+the follower side (changer − new follower) and the leader side (new leader − changer) — the model's 20-seed 95 %
+interval overlaps I-80's bootstrap 95 % interval. The model's interval is the t-interval of the per-seed medians
+over `spawn_seeds(42, 20)` (`validation.metrics.ci`) and needs a reading from all 20 seeds; a seed whose
+critical-gap fit is unfitted or at a bound has none, and fewer than 20 is underpowered (CLAUDE.md §0.6) and does
+not count as overlapping. I-80's interval is the percentile interval of 200 bootstrap resamples (of the changes;
+of the drivers for the critical gaps). Both closed; they overlap when lo_model ≤ hi_I-80 and lo_I-80 ≤ hi_model.
+An I-80 interval that does not exist leaves the check unevaluable, which is not a pass. E3 holds when all six
+overlap; n is reported with every interval.
+
+**Readings fixed with it** (as §3's self-check reads (b) and (c)): E1 compares the signs of the pooled 20-seed
+median partner speeds with I-80's, side by side. E2 reads `ratio_pop`, pooled over the 20 seeds, at the change
+against 0.9 (follower) and 0.8 (leader); a side recovers when its median at 10 s exceeds its median at 0 s. E4 is
+zero collisions in the arm's 20 runs. A criterion is met, not met, or not evaluable (not met). `merge: measured`
+is rescued only if it meets E1–E4 and the kept configuration (LC2013, `merge: lane_change`) does not meet at
+least one. Readout: `artifacts/i80_merge_validation.json`. Fixed before any run; approved by the coordinator
+2026-10-07 under the owner's delegation; never re-thresholded.
