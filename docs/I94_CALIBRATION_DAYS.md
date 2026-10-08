@@ -435,6 +435,17 @@ On an n2-standard-16: `--machine n2-standard-16 --cap-min 480 --pipeline-args
 2. **Rule (c), S792 out of the demand balance: needs an amendment** (§3,
    draft 2). With (b), every planned station flow comes within about
    125 veh/h of its count (§4).
+
+   **Items 1 and 2, run 2026-10-08.** Both drafts ran as FRISCO_PROTOCOL
+   Amendment 10's round (stage `p16_i94_d10`; the readout is
+   `artifacts/i94_d10_corridor.json`). This is under Amendment 4 defaults;
+   the reproduction re-run of p10's arm B is pending.
+   - `_rbc`, with (b) and (c), holds all four criteria and is B5's I-94 arm.
+   - `_rb`, with (b) alone, fails the 15-min speed criterion (C3): paired
+     +0.090 [0.056, 0.124] against ≤ +0.02.
+   - The gate still fails in every arm.
+
+   See docs/I94_D10_RESULT.md.
 3. **The §2.3 reading behind `_dc_cal`.** Not carrying residuals is applied
    as the protocol's own rule, not as an amendment: unmeasured ramps from
    their own segment's mainline difference. If the owner reads the

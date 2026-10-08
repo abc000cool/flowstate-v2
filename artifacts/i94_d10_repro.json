@@ -1,0 +1,47 @@
+{
+ "schema": "flowstate.i94_d10_repro/1",
+ "created_at": "2026-10-08T04:51:32+00:00",
+ "code": "3856257379af3d53a826ab10b620caed798a9663",
+ "vm_snapshot": "941f7fb8efc8cff04f66a816b6fd4f2e814ddb5f",
+ "spec": "docs/PRE_FRISCO_PROGRAM.md D10, step 1 (fixed 2026-10-07 before any run of the round)",
+ "reference": {
+  "scenario": "scenarios/mndot_i94_wb_stpaul_weave_dc_cal_w1b_w2.yaml",
+  "battery": "artifacts/validation_mndot_i94_wb_stpaul_weave_xlsfg_dc_cal_w1b_w2.json",
+  "gate": "artifacts/baseline_gate_mndot_i94_wb_stpaul_weave_xlsfg_dc_cal_w1b_w2.json"
+ },
+ "one_seed": {
+  "battery": "artifacts/validation_mndot_i94_wb_stpaul_weave_xlsfg_dc_cal_w1b_w2_p16repro.json",
+  "gate": "artifacts/baseline_gate_mndot_i94_wb_stpaul_weave_xlsfg_dc_cal_w1b_w2_p16repro.json"
+ },
+ "reproduced": true,
+ "seed": 6914975401685141156,
+ "differs": [],
+ "fields_new_in_todays_record": [
+  "weave_releases"
+ ],
+ "gate_fields_compared": [
+  "calibration.rmspe.300",
+  "calibration.rmspe.900",
+  "calibration.rmspe.3600",
+  "calibration.bottlenecks.simulated",
+  "validation.rmspe.300",
+  "validation.rmspe.900",
+  "validation.rmspe.3600",
+  "validation.bottlenecks.simulated"
+ ],
+ "config_hash": {
+  "one_seed_run": "bae67e48f30b",
+  "committed": "5080d84d4725",
+  "scenario_file": {
+   "v4": "395a111cb991",
+   "v3": "5080d84d4725"
+  },
+  "scenario_file_at_one_replicate": {
+   "v4": "bae67e48f30b",
+   "v3": "f5ce04db89fa"
+  },
+  "consistent": true,
+  "note": "not compared: the one-seed run records the file's configuration with replicates 1 (scripts/corridor_battery.py --replicates), and the committed battery its policy's hash; consistent says each is the scenario file's under some policy"
+ },
+ "then": "the committed battery and gate are the reference"
+}

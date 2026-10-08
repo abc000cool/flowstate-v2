@@ -85,6 +85,8 @@ $2.3). p17: 25 four-hour runs plus battery and gate, 155 + 12 min, **$2.2** (cap
 
 **Stop.** If the default-off check is not byte-identical, or `constraint_unmet`.
 
+**Status — 2026-10-08.** D10 selected `_rbc` as the I-94 from-arm: p17 runs on `scenarios/mndot_i94_wb_stpaul_weave_dc_cal_w1b_w2_rbc.yaml` (ad158ff561b1), read against its battery `artifacts/validation_mndot_i94_wb_stpaul_weave_xlsfg_dc_cal_w1b_w2_rbc.json` (realised 0.979; C2 floor 0.969), under the Amendment-4 label. p15 (I-24) waits for p23's selected arm.
+
 ## B6 — a joint driver fit under the emergent-wave constraint
 
 **Purpose.** Amendment 1 moved mean `a_max` alone. At k = 1 the mean driver is
@@ -299,6 +301,8 @@ hold.
 
 **Risk.** The T.H.52 weave stays the binding defect: honest inputs dropped C1 to
 34 % in p8.
+
+**Status — 2026-10-08: run** (p16, code 3856257; Amendment 4 defaults, the reproduction re-run of p10's arm B pending; docs/I94_D10_RESULT.md). `_rbc` holds D1–D4; `_rb` fails D4 (C3 paired +0.090 [0.056, 0.124]). B5's I-94 arm is `_rbc`; rules 1 and 2 hold together (FRISCO_PROTOCOL Amendment 10, "Run"; adoption is the owner's). The gate still fails in every arm.
 
 ## E11 — merge gaps and speeds on a never-calibrated site (item 18)
 

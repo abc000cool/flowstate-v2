@@ -1,0 +1,426 @@
+{
+ "schema": "flowstate.b2_k0_expected/1",
+ "created_at": "2026-10-08T06:18:42+00:00",
+ "code": null,
+ "vm_snapshot": "ef28156d6a776c7b8a6cd102cb2f9f6ccc37dbcc",
+ "code_dirty_paths": [
+  "artifacts/i24_discharge_2026-10-07/harness_b2_k0/corridor_b2_k0.py"
+ ],
+ "code_sha256": {
+  "artifacts/i24_discharge_2026-10-07/harness_b2_k0/corridor_b2_k0.py": "f85da771931cfe297d667d430f8bf5556ef0100c05ca03b14289dd769de1a50b",
+  "artifacts/i24_discharge_2026-10-07/harness_b2/corridor_b2.py": "5febc94cf36b6557d81ddea0027a43eef51c3902c8d950494cb75b3810fa2ffa",
+  "artifacts/i24_discharge_2026-10-07/harness/hard_braking.py": "a64b8ae37f39344186a596b44d134688cf703123d3b9f4a404555b369b8c2523",
+  "scripts/i24_fit_demand_scale.py": "e7e036a6e0279e1fba5fcfc6070eae32eb1a26390d582686a3771108d860b43b",
+  "scripts/i24_validate.py": "b941574d6a3f83ce4cd96605b9587eeab9516337274046b24fe1c71b360ccdad",
+  "packages/flowstate_core/flowstate_core/config.py": "6b02e0e1ed0447265c09fb73f1ead04903338a10b3446381cedafe0653464a67"
+ },
+ "config_hash_policy": 4,
+ "spec": "docs/I24_DISCHARGE_DIAGNOSIS.md \u00a78.4.7 (pre-registered 2026-10-08, not run)",
+ "status": "computed from committed files only; nothing simulated",
+ "arm": {
+  "scenario": "scenarios/i24_replica_flow_rc_speedcal.yaml",
+  "name": "i24_replica_flow_rc_speedcal",
+  "config_hash": "9030f087e0af",
+  "config_hash_v3": "fa9eb07d549b",
+  "recipe": "scripts/i24_fit_demand_scale.py scaled_config(s = 0.8, fleet artifacts/idm_i24_capacity.json, base corrected) on scenarios/i24_replica_flow_rc_corrected.yaml",
+  "base": {
+   "scenario": "scenarios/i24_replica_flow_rc_corrected.yaml",
+   "sha256": "fbb6a8a7c9ed9bf8a2ea828852b5212d3416967075cd3e9d364a25c3e7f0e1ca",
+   "config_hash": "55f92397b4c5",
+   "config_hash_v3": "c1f91268f596"
+  },
+  "differs_from_reference_in": {
+   "name": [
+    "i24_replica_flow_speedcal",
+    "i24_replica_flow_rc_speedcal"
+   ],
+   "ramp_windows_changed": {
+    "Old Hickory Blvd on-ramp": 24,
+    "Hickory Hollow Pkwy off-ramp": 11,
+    "Hickory Hollow Pkwy on-ramp": 24,
+    "Bell Road off-ramp (collector road)": 13
+   },
+   "anything_else": false
+  }
+ },
+ "reference": {
+  "scenario": "scenarios/i24_replica_flow_speedcal.yaml",
+  "sha256": "d48c9b80f1934e70b7fb4a58ee5d2455664a10f4ad992c176af527b4f86310dd",
+  "config_hash": "5a8e079c4bfa",
+  "config_hash_v3": "ae5861a4d906",
+  "config_hash_v2": "8075db417a5a",
+  "committed_battery": {
+   "path": "artifacts/i24_validation_flow_speedcal_ref.json",
+   "sha256": "d1a714b83031ef906b8bb1fce5aaba4a54ae1ac758a084c19315c258c09b3b7f"
+  },
+  "committed_battery_config_hash": "ae5861a4d906",
+  "seeds": [
+   6914975401685141156,
+   134183728835869882,
+   2378473973028931053,
+   3747978530954135749,
+   677105600768189526,
+   661281422688282993,
+   3011106312394044631,
+   6953598295321596746,
+   165503670820534583,
+   6134032994440706937,
+   8557154790156791364,
+   6538422657834023852,
+   6904272788004776631,
+   6143473282319009404,
+   3944094060050347669,
+   4910985839736976611,
+   7382187975121682178,
+   5690692725577505498,
+   887972120279483394,
+   8026499204807041784
+  ]
+ },
+ "planned": {
+  "study_s": [
+   600.0,
+   7800.0
+  ],
+  "mainline_veh_h": {
+   "reference": 5061.46005,
+   "arm": 5061.46005
+  },
+  "vehicles_study_period": {
+   "reference": 13395.678899999999,
+   "arm": 12661.8315,
+   "change": -733.8473999999987
+  },
+  "ramps": {
+   "Old Hickory Blvd on-ramp": {
+    "kind": "on",
+    "unit": "veh/h",
+    "reference": 998.0781,
+    "arm": 857.8665,
+    "change": -140.21159999999998,
+    "change_rel": -0.14048159157083995,
+    "windows_changed": 24,
+    "r3_target_corrected_pooled_veh_h": 915.1424319348195,
+    "r3_recorded_pooled_veh_h": 1064.7537041063672,
+    "planned_geh_vs_corrected": {
+     "reference": 2.6814754719348737,
+     "arm": 1.923674997607291
+    }
+   },
+   "Hickory Hollow Pkwy off-ramp": {
+    "kind": "off",
+    "unit": "mean exit fraction",
+    "reference": 0.09131512500000001,
+    "arm": 0.08944104166666668,
+    "change": -0.0018740833333333318,
+    "change_rel": -0.020523252126450342,
+    "windows_changed": 11,
+    "r3_target_corrected_pooled_veh_h": 581.1923237368231,
+    "r3_recorded_pooled_veh_h": 593.8242433172837
+   },
+   "Hickory Hollow Pkwy on-ramp": {
+    "kind": "on",
+    "unit": "veh/h",
+    "reference": 638.3013000000001,
+    "arm": 411.58920000000006,
+    "change": -226.71210000000002,
+    "change_rel": -0.355180382681345,
+    "windows_changed": 24,
+    "r3_target_corrected_pooled_veh_h": 442.6168182212329,
+    "r3_recorded_pooled_veh_h": 686.721427028011,
+    "planned_geh_vs_corrected": {
+     "reference": 8.417342251579704,
+     "arm": 1.5013506053990529
+    }
+   },
+   "Bell Road off-ramp (collector road)": {
+    "kind": "off",
+    "unit": "mean exit fraction",
+    "reference": 0.052924375,
+    "arm": 0.049819916666666665,
+    "change": -0.0031044583333333375,
+    "change_rel": -0.05865838440857052,
+    "windows_changed": 13,
+    "r3_target_corrected_pooled_veh_h": 309.02513325198856,
+    "r3_recorded_pooled_veh_h": 328.4030958999402
+   }
+  }
+ },
+ "reference_committed_readings": {
+  "R1_collisions": 0,
+  "R2_realized": {
+   "mean": 0.9867650000000001,
+   "min": 0.9771,
+   "max": 0.9931
+  },
+  "R4_peak_sections": {
+   "2200": {
+    "model_veh_h": 5849.599999999999,
+    "target_veh_h": 6626.170833333333,
+    "geh": 9.832464310032966
+   },
+   "3200": {
+    "model_veh_h": 5820.650000000001,
+    "target_veh_h": 6639.020833333333,
+    "geh": 10.368402690228853
+   }
+  },
+  "R5_rmspe_15min": {
+   "reference": 0.23028516151899586,
+   "bound": 0.2502851615189959
+  },
+  "R5_wave_row": {
+   "value": 15.886017525294879,
+   "passed": true,
+   "evaluated": true
+  },
+  "backward_fronts_per_replicate": {
+   "standard": 7.3,
+   "stripe": 105.1
+  },
+  "gate_rows": [
+   {
+    "name": "link_flows_geh",
+    "value": 0.2152777777777778,
+    "passed": false,
+    "evaluated": true,
+    "threshold": "GEH < 5 for >= 85% of link-hour comparisons"
+   },
+   {
+    "name": "speeds_rmspe",
+    "value": 0.37180595308834147,
+    "passed": false,
+    "evaluated": true,
+    "threshold": "segment-speed RMSPE <= 15%"
+   },
+   {
+    "name": "wave_speed",
+    "value": 15.886017525294879,
+    "passed": true,
+    "evaluated": true,
+    "threshold": "backward wave speed in [14, 22] km/h (emergent, unseeded)"
+   },
+   {
+    "name": "ring_emergence",
+    "value": 1.0,
+    "passed": true,
+    "evaluated": true,
+    "threshold": "Sugiyama ring emergence benchmark reproduced"
+   },
+   {
+    "name": "ring_dampening",
+    "value": 1.0,
+    "passed": true,
+    "evaluated": true,
+    "threshold": "Stern single-AV dampening benchmark reproduced"
+   },
+   {
+    "name": "n_seeds",
+    "value": 20.0,
+    "passed": true,
+    "evaluated": true,
+    "threshold": "n_seeds >= 20"
+   },
+   {
+    "name": "sensitivity_grid",
+    "value": 1.0,
+    "passed": true,
+    "evaluated": true,
+    "threshold": "penetration {1%, 2%, 5%, 10%, 15%, 20%} x compliance {25%, 50%, 80%, 100%} grid published with CIs"
+   },
+   {
+    "name": "no_collisions",
+    "value": 0.0,
+    "passed": true,
+    "evaluated": true,
+    "threshold": "zero SUMO collisions in every run, each run recording the counter"
+   }
+  ]
+ },
+ "peak_supply": {
+  "definition": "planned 2-h flow past each peak section: mainline plus the on-ramps whose count section lies upstream of it (no off-ramp lies upstream of either section); R4 holds iff the arm's 2-h flow at both sections is not below the reference's (GEH is monotone below the targets)",
+  "off_ramps_upstream": [],
+  "sections": {
+   "2200": {
+    "on_ramps_upstream": [
+     "Old Hickory Blvd on-ramp"
+    ],
+    "reference_planned_veh_h": 6059.538149999999,
+    "arm_planned_veh_h": 5919.32655,
+    "reference_model_veh_h": 5849.599999999999,
+    "reference_share_of_planned": 0.9653541004606102,
+    "arm_share_needed_for_r4": 0.988220526539459,
+    "arm_geh_if_every_planned_vehicle_passes": 8.924724234218013,
+    "reference_geh": 9.832464310032966
+   },
+   "3200": {
+    "on_ramps_upstream": [
+     "Old Hickory Blvd on-ramp"
+    ],
+    "reference_planned_veh_h": 6059.538149999999,
+    "arm_planned_veh_h": 5919.32655,
+    "reference_model_veh_h": 5820.650000000001,
+    "reference_share_of_planned": 0.9605765086238464,
+    "arm_share_needed_for_r4": 0.9833297674716055,
+    "arm_geh_if_every_planned_vehicle_passes": 9.082320111261701,
+    "reference_geh": 10.368402690228853
+   }
+  }
+ },
+ "k1_p13": {
+  "readout": {
+   "path": "artifacts/boundary_b2_corridor.json",
+   "sha256": "e8593c9fcc2bf96625dbbd22ec5cc48a3b834cb85dc7fc87e959daab35acbfc3"
+  },
+  "criteria": {
+   "R1": {
+    "name": "safety",
+    "passed": true,
+    "b2_collisions": 0,
+    "ref_collisions": 0
+   },
+   "R2": {
+    "name": "no winning by backlog",
+    "passed": true,
+    "b2_realized_mean": 0.9665900000000001,
+    "ref_realized_mean": 0.9211600000000001
+   },
+   "R3": {
+    "name": "ramp-lane flows",
+    "passed": true,
+    "b2_geh_vs_corrected": {
+     "Old Hickory Blvd on-ramp": 1.8004545926925006,
+     "Hickory Hollow Pkwy off-ramp": 1.2125717320705107,
+     "Hickory Hollow Pkwy on-ramp": 1.2888176588942262,
+     "Bell Road off-ramp (collector road)": 1.9911274696483923
+    },
+    "ref_geh_vs_corrected_reported": {
+     "Old Hickory Blvd on-ramp": 1.1146789232841674,
+     "Hickory Hollow Pkwy off-ramp": 1.5380416198263271,
+     "Hickory Hollow Pkwy on-ramp": 11.972632800961044,
+     "Bell Road off-ramp (collector road)": 0.8973816931467706
+    }
+   },
+   "R4": {
+    "name": "peak sections (reported either way)",
+    "passed": true,
+    "b2_geh": {
+     "2200": 3.858611832177049,
+     "3200": 4.630489069213626
+    },
+    "ref_geh": {
+     "2200": 7.281232353978447,
+     "3200": 8.252383930727337
+    }
+   },
+   "R5": {
+    "name": "emergent waves and speeds",
+    "passed": true,
+    "wave_verdict": {
+     "ref_passes": false,
+     "b2_passes": false,
+     "passed": true
+    },
+    "rmspe_15min": {
+     "ref": 0.2725067288705279,
+     "b2": 0.25412709845352993,
+     "bound": 0.2925067288705279,
+     "passed": true
+    }
+   }
+  },
+  "all_pass": true
+ },
+ "b6_s1": {
+  "artifact": {
+   "path": "artifacts/driver_joint_screen_i24.json",
+   "sha256": "0655cea06fc9c71e9c4a6a7888e7c1da3f6a9428a702f8252b456bdcbe5d0ccd"
+  },
+  "rows": {
+   "k0_j0": {
+    "a_max_mean_ms2": 1.054909533427964,
+    "T_mean_s": 1.3221695251256709,
+    "population": "artifacts/idm_i24_capacity.json",
+    "capacity_density_veh_km": 29.162757247465564,
+    "band_lo_veh_km": 28.179427433626802,
+    "capacity_density_minus_band_lo_veh_km": 0.9833298138387618,
+    "criterion_at_capacity_density_s2": -0.0018493380417478056,
+    "unstable_at_capacity_density": true
+   },
+   "k1_j0": {
+    "a_max_mean_ms2": 1.4833261177417396,
+    "T_mean_s": 1.3221695251256709,
+    "population": "artifacts/idm_i24_capacity_amax_k1.0.json",
+    "capacity_density_veh_km": 29.162757247465564,
+    "band_lo_veh_km": 39.720515207461084,
+    "capacity_density_minus_band_lo_veh_km": -10.557757959995518,
+    "criterion_at_capacity_density_s2": 0.015614511649287038,
+    "unstable_at_capacity_density": false
+   }
+  }
+ },
+ "old_hickory_probe": {
+  "artifact": {
+   "path": "artifacts/i24_merge_experiment_ohlevel.json",
+   "sha256": "7723f23951dcb3fe8ac0a2db96cd21a88163841179ae42a986618cef8ab79899"
+  },
+  "note": "docs/I24_VALIDATION.md \u00a70.11: one seed, the k = 0 arm with Old Hickory x 1 and x 0.75 (code of 2026-09-17); context for the prediction, not a criterion",
+  "seed": 6914975401685141156,
+  "observed_segment_mean_kmh": [
+   36.34,
+   32.5,
+   29.76,
+   31.34,
+   37.61,
+   36.91,
+   37.72,
+   29.03,
+   30.4,
+   33.66
+  ],
+  "variants": {
+   "flow_speedcal": {
+    "config_hash": "0192ae495d79",
+    "inserted_fraction": 0.9835,
+    "rmspe_15min": 0.2315,
+    "segment_mean_kmh": [
+     32.19,
+     26.3,
+     27.57,
+     36.98,
+     39.42,
+     38.25,
+     35.79,
+     28.81,
+     26.38,
+     31.73
+    ],
+    "peak_sections_veh_h": [
+     5885,
+     5836
+    ]
+   },
+   "flow_speedcal_oh0.75": {
+    "config_hash": "d1e1f5cde83b",
+    "inserted_fraction": 0.9913,
+    "rmspe_15min": 0.4456,
+    "segment_mean_kmh": [
+     48.68,
+     47.93,
+     44.99,
+     45.69,
+     45.08,
+     41.4,
+     39.52,
+     32.91,
+     30.74,
+     33.37
+    ],
+    "peak_sections_veh_h": [
+     5686,
+     5672
+    ]
+   }
+  }
+ }
+}

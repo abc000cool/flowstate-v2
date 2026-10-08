@@ -1,0 +1,1315 @@
+{
+ "schema": "flowstate.i94_d10_corridor/1",
+ "created_at": "2026-10-08T06:10:11+00:00",
+ "code": "3856257379af3d53a826ab10b620caed798a9663",
+ "vm_snapshot": "941f7fb8efc8cff04f66a816b6fd4f2e814ddb5f",
+ "spec": "docs/PRE_FRISCO_PROGRAM.md D10 (criteria and the B5 arm rule fixed 2026-10-07 before any run of the round)",
+ "status": "pre-registered rounds of rules (b) and (c), adopted as amendment text before the run; an arm that holds is a calibration candidate for B5's I-94 fit, not a validation result; the gate still decides validation",
+ "reference": {
+  "scenario": "scenarios/mndot_i94_wb_stpaul_weave_dc_cal_w1b_w2.yaml",
+  "label": "mndot_i94_wb_stpaul_weave_xlsfg_dc_cal_w1b_w2",
+  "source": "committed (stage p10), reproduced on today's code at one seed",
+  "reproduction": {
+   "schema": "flowstate.i94_d10_repro/1",
+   "created_at": "2026-10-08T04:51:32+00:00",
+   "code": "3856257379af3d53a826ab10b620caed798a9663",
+   "vm_snapshot": "941f7fb8efc8cff04f66a816b6fd4f2e814ddb5f",
+   "spec": "docs/PRE_FRISCO_PROGRAM.md D10, step 1 (fixed 2026-10-07 before any run of the round)",
+   "reference": {
+    "scenario": "scenarios/mndot_i94_wb_stpaul_weave_dc_cal_w1b_w2.yaml",
+    "battery": "artifacts/validation_mndot_i94_wb_stpaul_weave_xlsfg_dc_cal_w1b_w2.json",
+    "gate": "artifacts/baseline_gate_mndot_i94_wb_stpaul_weave_xlsfg_dc_cal_w1b_w2.json"
+   },
+   "one_seed": {
+    "battery": "artifacts/validation_mndot_i94_wb_stpaul_weave_xlsfg_dc_cal_w1b_w2_p16repro.json",
+    "gate": "artifacts/baseline_gate_mndot_i94_wb_stpaul_weave_xlsfg_dc_cal_w1b_w2_p16repro.json"
+   },
+   "reproduced": true,
+   "seed": 6914975401685141156,
+   "differs": [],
+   "fields_new_in_todays_record": [
+    "weave_releases"
+   ],
+   "gate_fields_compared": [
+    "calibration.rmspe.300",
+    "calibration.rmspe.900",
+    "calibration.rmspe.3600",
+    "calibration.bottlenecks.simulated",
+    "validation.rmspe.300",
+    "validation.rmspe.900",
+    "validation.rmspe.3600",
+    "validation.bottlenecks.simulated"
+   ],
+   "config_hash": {
+    "one_seed_run": "bae67e48f30b",
+    "committed": "5080d84d4725",
+    "scenario_file": {
+     "v4": "395a111cb991",
+     "v3": "5080d84d4725"
+    },
+    "scenario_file_at_one_replicate": {
+     "v4": "bae67e48f30b",
+     "v3": "f5ce04db89fa"
+    },
+    "consistent": true,
+    "note": "not compared: the one-seed run records the file's configuration with replicates 1 (scripts/corridor_battery.py --replicates), and the committed battery its policy's hash; consistent says each is the scenario file's under some policy"
+   },
+   "then": "the committed battery and gate are the reference"
+  },
+  "problems": [],
+  "summary": {
+   "config_hash": "5080d84d4725",
+   "gate_verdict": "failed",
+   "gate_rows": {
+    "replicates all runs": {
+     "value": 20.0,
+     "status": "pass",
+     "gating": true
+    },
+    "days both day sets": {
+     "value": null,
+     "status": "pass",
+     "gating": true
+    },
+    "quality both day sets": {
+     "value": null,
+     "status": "pass",
+     "gating": true
+    },
+    "C1 calibration": {
+     "value": 0.3607142857142857,
+     "status": "fail",
+     "gating": true
+    },
+    "C2 calibration": {
+     "value": 0.2523809523809524,
+     "status": "fail",
+     "gating": false
+    },
+    "C3 calibration": {
+     "value": 0.3833871553416769,
+     "status": "fail",
+     "gating": true
+    },
+    "C6 calibration": {
+     "value": 0.0,
+     "status": "pass",
+     "gating": true
+    },
+    "C1 validation": {
+     "value": 0.32976190476190476,
+     "status": "fail",
+     "gating": true
+    },
+    "C2 validation": {
+     "value": 0.23214285714285715,
+     "status": "fail",
+     "gating": false
+    },
+    "C3 validation": {
+     "value": 0.3786158256833152,
+     "status": "fail",
+     "gating": true
+    },
+    "C6 validation": {
+     "value": 0.0,
+     "status": "pass",
+     "gating": true
+    },
+    "C4 calibration": {
+     "value": 5.669352038106529,
+     "status": "fail",
+     "gating": true
+    },
+    "C5 all runs": {
+     "value": 0.0,
+     "status": "pass",
+     "gating": true
+    }
+   },
+   "rmspe_diagnostics": {
+    "calibration": {
+     "5 min": 0.39774465485367105,
+     "15 min": 0.3833871553416769,
+     "60 min": 0.3479804345005655
+    },
+    "validation": {
+     "5 min": 0.3973340243708259,
+     "15 min": 0.3786158256833152,
+     "60 min": 0.3324660103878318
+    }
+   },
+   "validation_days": {
+    "20260901": {
+     "C1": {
+      "value": 0.2869047619047619,
+      "status": "fail"
+     },
+     "C3": {
+      "value": 0.3786117953217171,
+      "status": "fail"
+     },
+     "C6": {
+      "value": 2.0,
+      "status": "fail"
+     }
+    },
+    "20260909": {
+     "C1": {
+      "value": 0.3130952380952381,
+      "status": "fail"
+     },
+     "C3": {
+      "value": 0.42807378875825314,
+      "status": "fail"
+     },
+     "C6": {
+      "value": 2.0,
+      "status": "fail"
+     }
+    },
+    "20260910": {
+     "C1": {
+      "value": 0.3829268292682927,
+      "status": "fail"
+     },
+     "C3": {
+      "value": 0.4017931842011973,
+      "status": "fail"
+     },
+     "C6": {
+      "value": 2.0,
+      "status": "fail"
+     }
+    },
+    "20260917": {
+     "C1": {
+      "value": 0.41585365853658535,
+      "status": "fail"
+     },
+     "C3": {
+      "value": 0.43892396180256465,
+      "status": "fail"
+     },
+     "C6": {
+      "value": 3.0,
+      "status": "fail"
+     }
+    }
+   },
+   "realised": {
+    "mean": 0.9839957965012054,
+    "lowest": 0.9815478766149471,
+    "per_seed": {
+     "6914975401685141156": 0.983402361377264,
+     "134183728835869882": 0.9843296037584225,
+     "2378473973028931053": 0.9840514310440749,
+     "3747978530954135749": 0.9842986956790505,
+     "677105600768189526": 0.9850713976633492,
+     "661281422688282993": 0.9848859491871175,
+     "3011106312394044631": 0.9836187179328677,
+     "6953598295321596746": 0.984020522964703,
+     "165503670820534583": 0.984638684552142,
+     "6134032994440706937": 0.9839277987265871,
+     "8557154790156791364": 0.9815478766149471,
+     "6538422657834023852": 0.9817024170118069,
+     "6904272788004776631": 0.9836496260122396,
+     "6143473282319009404": 0.9850404895839773,
+     "3944094060050347669": 0.9842059714409347,
+     "4910985839736976611": 0.983433269456636,
+     "7382187975121682178": 0.9850713976633492,
+     "5690692725577505498": 0.9834950856153799,
+     "887972120279483394": 0.9850404895839773,
+     "8026499204807041784": 0.9844841441552822
+    }
+   },
+   "safety": {
+    "collisions": 0,
+    "runs_with_collisions": [],
+    "median_departed_share": 0.9841287012425048,
+    "lock_floor": 0.7873029609940039,
+    "seeds_below_floor": [],
+    "lowest_departed_share": 0.9815478766149471,
+    "pass": true
+   },
+   "battery_locks": {
+    "n_runs_locked": 0,
+    "runs_locked": [],
+    "by_section": []
+   },
+   "breakdowns": {
+    "battery_mean": 0.9839957965012054,
+    "applies": true,
+    "replicates": []
+   },
+   "weave_exits": {
+    "threshold_share": 0.02,
+    "n_runs": 20,
+    "sections": [
+     {
+      "ramp": "on-ramp 745524613",
+      "exit": "C-D split 18208090",
+      "n_runs": 20,
+      "reached": 30717,
+      "missed_exit": {
+       "n": 599,
+       "share": 0.019500602272357326
+      },
+      "flagged": false
+     },
+     {
+      "ramp": "on-ramp 769818012",
+      "exit": "off-ramp 18207598",
+      "n_runs": 20,
+      "reached": 77870,
+      "missed_exit": {
+       "n": 990,
+       "share": 0.012713496853730577
+      },
+      "flagged": false
+     }
+    ],
+    "verdict": "ok"
+   },
+   "weave_releases": null,
+   "stations": {
+    "S1069": {
+     "06:30": {
+      "obs_veh_h": 3731.2000000000003,
+      "sim_minus_obs_veh_h": -788.5500000000002,
+      "geh_mean": 13.6557
+     },
+     "07:30": {
+      "obs_veh_h": 2387.4666666666667,
+      "sim_minus_obs_veh_h": 224.4333333333334,
+      "geh_mean": 4.4721
+     },
+     "08:30": {
+      "obs_veh_h": 2682.3777777777777,
+      "sim_minus_obs_veh_h": 225.02222222222235,
+      "geh_mean": 4.2473
+     }
+    },
+    "S1070": {
+     "06:30": {
+      "obs_veh_h": 4985.9,
+      "sim_minus_obs_veh_h": -563.5499999999993,
+      "geh_mean": 8.2202
+     },
+     "07:30": {
+      "obs_veh_h": 3595.745238095238,
+      "sim_minus_obs_veh_h": 758.2047619047617,
+      "geh_mean": 12.0161
+     },
+     "08:30": {
+      "obs_veh_h": 3783.633333333333,
+      "sim_minus_obs_veh_h": 440.71666666666715,
+      "geh_mean": 6.9597
+     }
+    },
+    "S1948": {
+     "06:30": {
+      "obs_veh_h": 4921.584126984126,
+      "sim_minus_obs_veh_h": -619.4841269841254,
+      "geh_mean": 9.1255
+     },
+     "07:30": {
+      "obs_veh_h": 3669.177777777777,
+      "sim_minus_obs_veh_h": 689.3722222222232,
+      "geh_mean": 10.8723
+     },
+     "08:30": {
+      "obs_veh_h": 3900.2000000000003,
+      "sim_minus_obs_veh_h": 339.24999999999955,
+      "geh_mean": 5.3144
+     }
+    },
+    "S792": {
+     "06:30": {
+      "obs_veh_h": 4067.5333333333333,
+      "sim_minus_obs_veh_h": -457.7333333333331,
+      "geh_mean": 7.3907
+     },
+     "07:30": {
+      "obs_veh_h": 2702.008333333333,
+      "sim_minus_obs_veh_h": 614.4416666666666,
+      "geh_mean": 11.1957
+     },
+     "08:30": {
+      "obs_veh_h": 3159.1999999999994,
+      "sim_minus_obs_veh_h": 129.40000000000055,
+      "geh_mean": 2.2764
+     }
+    },
+    "S791": {
+     "06:30": {
+      "obs_veh_h": 4395.733333333334,
+      "sim_minus_obs_veh_h": -966.4833333333336,
+      "geh_mean": 15.453
+     },
+     "07:30": {
+      "obs_veh_h": 3388.077777777778,
+      "sim_minus_obs_veh_h": -67.62777777777819,
+      "geh_mean": 1.245
+     },
+     "08:30": {
+      "obs_veh_h": 3519.966666666666,
+      "sim_minus_obs_veh_h": -242.61666666666588,
+      "geh_mean": 4.164
+     }
+    },
+    "S790": {
+     "06:30": {
+      "obs_veh_h": 4846.349999999999,
+      "sim_minus_obs_veh_h": -975.4999999999995,
+      "geh_mean": 14.7772
+     },
+     "07:30": {
+      "obs_veh_h": 3965.4,
+      "sim_minus_obs_veh_h": -83.30000000000018,
+      "geh_mean": 1.3324
+     },
+     "08:30": {
+      "obs_veh_h": 4114.433333333333,
+      "sim_minus_obs_veh_h": -240.1833333333334,
+      "geh_mean": 3.8018
+     }
+    },
+    "S97": {
+     "06:30": {
+      "obs_veh_h": 4535.533333333334,
+      "sim_minus_obs_veh_h": -899.9833333333336,
+      "geh_mean": 14.0833
+     },
+     "07:30": {
+      "obs_veh_h": 4076.888888888889,
+      "sim_minus_obs_veh_h": -260.23888888888905,
+      "geh_mean": 4.1461
+     },
+     "08:30": {
+      "obs_veh_h": 3899.5,
+      "sim_minus_obs_veh_h": -132.0,
+      "geh_mean": 2.1361
+     }
+    }
+   },
+   "th61_nb_departures": {
+    "planned": 118520,
+    "departed": 118520,
+    "share": 1.0
+   }
+  }
+ },
+ "arms": {
+  "rbc": {
+   "scenario": "scenarios/mndot_i94_wb_stpaul_weave_dc_cal_w1b_w2_rbc.yaml",
+   "label": "mndot_i94_wb_stpaul_weave_xlsfg_dc_cal_w1b_w2_rbc",
+   "rules": "(b) T.H.61 NB from the mainline difference and (c) S792 out of the demand balance, still scored",
+   "paired": {
+    "C3 15-min RMSPE, calibration days": {
+     "mean": 0.013498646850123374,
+     "lo95": 0.005251761597271943,
+     "hi95": 0.021745532102974807,
+     "n": 20
+    },
+    "C3 15-min RMSPE, validation days": {
+     "mean": 0.011680129370095724,
+     "lo95": 0.0032839083158043535,
+     "hi95": 0.020076350424387095,
+     "n": 20
+    },
+    "departed share": {
+     "mean": -0.0051374489522015895,
+     "lo95": -0.006737344150029945,
+     "hi95": -0.0035375537543732337,
+     "n": 20
+    },
+    "estimator": "mean of the per-seed differences with a 95 % t-interval (validation.metrics.ci); the gate's C3 is the mean of the per-seed values, so with every replicate scored the mean difference is the difference of the gated values"
+   },
+   "problems": [],
+   "criteria": {
+    "D1": {
+     "collisions": 0,
+     "runs_with_collisions": [],
+     "median_departed_share": 0.9794328752132351,
+     "lock_floor": 0.7835463001705881,
+     "seeds_below_floor": [],
+     "lowest_departed_share": 0.9711931507290225,
+     "pass": true,
+     "verdict": true
+    },
+    "D2": {
+     "arm": 0.9788583475490039,
+     "reference": 0.9839957965012054,
+     "floor": 0.9739957965012054,
+     "verdict": true
+    },
+    "D3": {
+     "arm": 0.5333333333333333,
+     "reference": 0.3607142857142857,
+     "difference": 0.17261904761904762,
+     "verdict": true
+    },
+    "D4": {
+     "arm": 0.3968858021918003,
+     "reference": 0.3833871553416769,
+     "ceiling": 0.4033871553416769,
+     "difference": 0.01349864685012342,
+     "verdict": true
+    }
+   },
+   "holds": true,
+   "summary": {
+    "config_hash": "ad158ff561b1",
+    "gate_verdict": "failed",
+    "gate_rows": {
+     "replicates all runs": {
+      "value": 20.0,
+      "status": "pass",
+      "gating": true
+     },
+     "days both day sets": {
+      "value": null,
+      "status": "pass",
+      "gating": true
+     },
+     "quality both day sets": {
+      "value": null,
+      "status": "pass",
+      "gating": true
+     },
+     "C1 calibration": {
+      "value": 0.5333333333333333,
+      "status": "fail",
+      "gating": true
+     },
+     "C2 calibration": {
+      "value": 0.3904761904761905,
+      "status": "fail",
+      "gating": false
+     },
+     "C3 calibration": {
+      "value": 0.3968858021918003,
+      "status": "fail",
+      "gating": true
+     },
+     "C6 calibration": {
+      "value": 0.0,
+      "status": "pass",
+      "gating": true
+     },
+     "C1 validation": {
+      "value": 0.4880952380952381,
+      "status": "fail",
+      "gating": true
+     },
+     "C2 validation": {
+      "value": 0.33690476190476193,
+      "status": "fail",
+      "gating": false
+     },
+     "C3 validation": {
+      "value": 0.3902959550534109,
+      "status": "fail",
+      "gating": true
+     },
+     "C6 validation": {
+      "value": 0.0,
+      "status": "pass",
+      "gating": true
+     },
+     "C4 calibration": {
+      "value": 5.375319819664741,
+      "status": "fail",
+      "gating": true
+     },
+     "C5 all runs": {
+      "value": 0.0,
+      "status": "pass",
+      "gating": true
+     }
+    },
+    "rmspe_diagnostics": {
+     "calibration": {
+      "5 min": 0.41041270515513045,
+      "15 min": 0.3968858021918003,
+      "60 min": 0.34761469966525427
+     },
+     "validation": {
+      "5 min": 0.4065591679727903,
+      "15 min": 0.3902959550534109,
+      "60 min": 0.3311994657512867
+     }
+    },
+    "validation_days": {
+     "20260901": {
+      "C1": {
+       "value": 0.4785714285714286,
+       "status": "fail"
+      },
+      "C3": {
+       "value": 0.37468423592119465,
+       "status": "fail"
+      },
+      "C6": {
+       "value": 3.0,
+       "status": "fail"
+      }
+     },
+     "20260909": {
+      "C1": {
+       "value": 0.5035714285714286,
+       "status": "fail"
+      },
+      "C3": {
+       "value": 0.4277802476130623,
+       "status": "fail"
+      },
+      "C6": {
+       "value": 2.0,
+       "status": "fail"
+      }
+     },
+     "20260910": {
+      "C1": {
+       "value": 0.37073170731707317,
+       "status": "fail"
+      },
+      "C3": {
+       "value": 0.4141229994848393,
+       "status": "fail"
+      },
+      "C6": {
+       "value": 3.0,
+       "status": "fail"
+      }
+     },
+     "20260917": {
+      "C1": {
+       "value": 0.6597560975609756,
+       "status": "fail"
+      },
+      "C3": {
+       "value": 0.44886793280246523,
+       "status": "fail"
+      },
+      "C6": {
+       "value": 3.0,
+       "status": "fail"
+      }
+     }
+    },
+    "realised": {
+     "mean": 0.9788583475490039,
+     "lowest": 0.9711931507290225,
+     "per_seed": {
+      "6914975401685141156": 0.9743474202581351,
+      "134183728835869882": 0.9806559593163604,
+      "2378473973028931053": 0.983456178184042,
+      "3747978530954135749": 0.9779522997199781,
+      "677105600768189526": 0.981621552029354,
+      "661281422688282993": 0.98020534938363,
+      "3011106312394044631": 0.9809456371302585,
+      "6953598295321596746": 0.9832952460652097,
+      "165503670820534583": 0.9784350960764749,
+      "6134032994440706937": 0.9785638417715408,
+      "8557154790156791364": 0.9732852682738421,
+      "6538422657834023852": 0.9737358782065725,
+      "6904272788004776631": 0.9822652805046831,
+      "6143473282319009404": 0.9814928063342881,
+      "3944094060050347669": 0.9786604010428401,
+      "4910985839736976611": 0.9771154527020502,
+      "7382187975121682178": 0.9807525185876598,
+      "5690692725577505498": 0.9837780424217065,
+      "887972120279483394": 0.9754095722424282,
+      "8026499204807041784": 0.9711931507290225
+     }
+    },
+    "safety": {
+     "collisions": 0,
+     "runs_with_collisions": [],
+     "median_departed_share": 0.9794328752132351,
+     "lock_floor": 0.7835463001705881,
+     "seeds_below_floor": [],
+     "lowest_departed_share": 0.9711931507290225,
+     "pass": true
+    },
+    "battery_locks": {
+     "n_runs_locked": 0,
+     "runs_locked": [],
+     "by_section": []
+    },
+    "breakdowns": {
+     "battery_mean": 0.9788583475490039,
+     "applies": true,
+     "replicates": []
+    },
+    "weave_exits": {
+     "threshold_share": 0.02,
+     "n_runs": 20,
+     "sections": [
+      {
+       "ramp": "on-ramp 745524613",
+       "exit": "C-D split 18208090",
+       "n_runs": 20,
+       "reached": 29359,
+       "missed_exit": {
+        "n": 436,
+        "share": 0.014850642051841003
+       },
+       "flagged": false
+      },
+      {
+       "ramp": "on-ramp 769818012",
+       "exit": "off-ramp 18207598",
+       "n_runs": 20,
+       "reached": 77449,
+       "missed_exit": {
+        "n": 976,
+        "share": 0.012601841211636045
+       },
+       "flagged": false
+      }
+     ],
+     "verdict": "ok"
+    },
+    "weave_releases": {
+     "flag_share": 0.01,
+     "n_runs": 20,
+     "sections": [
+      {
+       "ramp": "on-ramp 745524613",
+       "exit": "C-D split 18208090",
+       "n_runs": 20,
+       "n_runs_w1b": 20,
+       "n_runs_w1b_off": 0,
+       "w1b_releases": 281,
+       "entrance_departed": 20340,
+       "share": 0.013815142576204522,
+       "flagged": true,
+       "n_runs_w2": 20,
+       "n_runs_w2_off": 0,
+       "w2": {
+        "n_handback_skips": 3666,
+        "n_close_leader_withheld": 681,
+        "n_opposing_deferred": 7018,
+        "n_opposing_vetoed": 6946
+       }
+      },
+      {
+       "ramp": "on-ramp 769818012",
+       "exit": "off-ramp 18207598",
+       "n_runs": 20,
+       "n_runs_w1b": 20,
+       "n_runs_w1b_off": 0,
+       "w1b_releases": 6,
+       "entrance_departed": 91997,
+       "share": 6.521951802776177e-05,
+       "flagged": false,
+       "n_runs_w2": 20,
+       "n_runs_w2_off": 0,
+       "w2": {
+        "n_handback_skips": 2924,
+        "n_close_leader_withheld": 93,
+        "n_opposing_deferred": 16372,
+        "n_opposing_vetoed": 15589
+       }
+      }
+     ],
+     "flagged": [
+      "on-ramp 745524613"
+     ],
+     "definition": "Per weaving section (meta.json weave_sections; measured merge zones do not run W1b), pooled over the runs that list it: w1b_releases is the sum of n_entrant_took_exit (the entrants W1b rerouted to the paired exit after standing entrant_giveup_dwell_s at the auxiliary lane's end) over the n_runs_w1b runs with W1b on (params entrant_giveup_m > 0 and entrant_giveup_dwell_s > 0; a meta without params counts as on when it writes the counter), entrance_departed the sum of the weave on-ramp's meta.json ramps[k].n_departed over the same runs, share = w1b_releases / entrance_departed (NaN when nothing departed or no run had W1b on), flagged when share > flag_share (Amendment 4: flagged in the report's limitations, not a gate failure). n_runs_w1b_off counts the runs that listed the section with W1b off (an opt-out reproducing a result published before Amendment 4, or a run written before it), n_runs_w2 / n_runs_w2_off those with all three W2 switches on / any off; w2 sums each W2 counter over the runs whose switch was on (null when no run records it). The reading of the W1b and W2 rounds' clauses C5b and CW5b (artifacts/weave_loss_2026-10-07/w1b/harness/corridor_w1b.py, artifacts/weave_collision_guards_2026-10-07/harness/corridor_w2.py; docs/DECISIONS_2026-10-07.md \u00a7A2)."
+    },
+    "stations": {
+     "S1069": {
+      "06:30": {
+       "obs_veh_h": 3731.2000000000003,
+       "sim_minus_obs_veh_h": -670.8500000000004,
+       "geh_mean": 11.5182
+      },
+      "07:30": {
+       "obs_veh_h": 2387.4666666666667,
+       "sim_minus_obs_veh_h": 6.183333333333394,
+       "geh_mean": 1.03
+      },
+      "08:30": {
+       "obs_veh_h": 2682.3777777777777,
+       "sim_minus_obs_veh_h": -158.02777777777783,
+       "geh_mean": 3.1012
+      }
+     },
+     "S1070": {
+      "06:30": {
+       "obs_veh_h": 4985.9,
+       "sim_minus_obs_veh_h": -875.75,
+       "geh_mean": 12.9899
+      },
+      "07:30": {
+       "obs_veh_h": 3595.745238095238,
+       "sim_minus_obs_veh_h": 22.954761904761654,
+       "geh_mean": 0.9414
+      },
+      "08:30": {
+       "obs_veh_h": 3783.633333333333,
+       "sim_minus_obs_veh_h": -161.58333333333303,
+       "geh_mean": 2.6582
+      }
+     },
+     "S1948": {
+      "06:30": {
+       "obs_veh_h": 4921.584126984126,
+       "sim_minus_obs_veh_h": -934.1341269841259,
+       "geh_mean": 14.0015
+      },
+      "07:30": {
+       "obs_veh_h": 3669.177777777777,
+       "sim_minus_obs_veh_h": -54.17777777777701,
+       "geh_mean": 1.1061
+      },
+      "08:30": {
+       "obs_veh_h": 3900.2000000000003,
+       "sim_minus_obs_veh_h": -284.85000000000036,
+       "geh_mean": 4.6493
+      }
+     },
+     "S792": {
+      "06:30": {
+       "obs_veh_h": 4067.5333333333333,
+       "sim_minus_obs_veh_h": -378.7333333333331,
+       "geh_mean": 6.0875
+      },
+      "07:30": {
+       "obs_veh_h": 2702.008333333333,
+       "sim_minus_obs_veh_h": 765.2416666666668,
+       "geh_mean": 13.7759
+      },
+      "08:30": {
+       "obs_veh_h": 3159.1999999999994,
+       "sim_minus_obs_veh_h": 292.9500000000007,
+       "geh_mean": 5.0916
+      }
+     },
+     "S791": {
+      "06:30": {
+       "obs_veh_h": 4395.733333333334,
+       "sim_minus_obs_veh_h": -976.6333333333337,
+       "geh_mean": 15.6271
+      },
+      "07:30": {
+       "obs_veh_h": 3388.077777777778,
+       "sim_minus_obs_veh_h": -72.27777777777783,
+       "geh_mean": 1.2639
+      },
+      "08:30": {
+       "obs_veh_h": 3519.966666666666,
+       "sim_minus_obs_veh_h": -237.8166666666657,
+       "geh_mean": 4.08
+      }
+     },
+     "S790": {
+      "06:30": {
+       "obs_veh_h": 4846.349999999999,
+       "sim_minus_obs_veh_h": -985.3999999999996,
+       "geh_mean": 14.9373
+      },
+      "07:30": {
+       "obs_veh_h": 3965.4,
+       "sim_minus_obs_veh_h": -76.75,
+       "geh_mean": 1.2259
+      },
+      "08:30": {
+       "obs_veh_h": 4114.433333333333,
+       "sim_minus_obs_veh_h": -241.48333333333358,
+       "geh_mean": 3.823
+      }
+     },
+     "S97": {
+      "06:30": {
+       "obs_veh_h": 4535.533333333334,
+       "sim_minus_obs_veh_h": -891.4333333333338,
+       "geh_mean": 13.9448
+      },
+      "07:30": {
+       "obs_veh_h": 4076.888888888889,
+       "sim_minus_obs_veh_h": -252.63888888888914,
+       "geh_mean": 4.0222
+      },
+      "08:30": {
+       "obs_veh_h": 3899.5,
+       "sim_minus_obs_veh_h": -124.55000000000018,
+       "geh_mean": 2.0648
+      }
+     }
+    },
+    "th61_nb_departures": {
+     "planned": 92820,
+     "departed": 92820,
+     "share": 1.0
+    }
+   }
+  },
+  "rb": {
+   "scenario": "scenarios/mndot_i94_wb_stpaul_weave_dc_cal_w1b_w2_rb.yaml",
+   "label": "mndot_i94_wb_stpaul_weave_xlsfg_dc_cal_w1b_w2_rb",
+   "rules": "(b) T.H.61 NB from the mainline difference",
+   "paired": {
+    "C3 15-min RMSPE, calibration days": {
+     "mean": 0.09023756828854715,
+     "lo95": 0.056174648372900995,
+     "hi95": 0.1243004882041933,
+     "n": 20
+    },
+    "C3 15-min RMSPE, validation days": {
+     "mean": 0.2440552213854122,
+     "lo95": 0.2031782767880876,
+     "hi95": 0.2849321659827368,
+     "n": 20
+    },
+    "departed share": {
+     "mean": 0.0008685377226189783,
+     "lo95": 1.835513903622975e-05,
+     "hi95": 0.0017187203062017267,
+     "n": 20
+    },
+    "estimator": "mean of the per-seed differences with a 95 % t-interval (validation.metrics.ci); the gate's C3 is the mean of the per-seed values, so with every replicate scored the mean difference is the difference of the gated values"
+   },
+   "problems": [],
+   "criteria": {
+    "D1": {
+     "collisions": 0,
+     "runs_with_collisions": [],
+     "median_departed_share": 0.9848401944059996,
+     "lock_floor": 0.7878721555247997,
+     "seeds_below_floor": [],
+     "lowest_departed_share": 0.9815249927580546,
+     "pass": true,
+     "verdict": true
+    },
+    "D2": {
+     "arm": 0.9848643342238246,
+     "reference": 0.9839957965012054,
+     "floor": 0.9739957965012054,
+     "verdict": true
+    },
+    "D3": {
+     "arm": 0.7476190476190476,
+     "reference": 0.3607142857142857,
+     "difference": 0.3869047619047619,
+     "verdict": true
+    },
+    "D4": {
+     "arm": 0.47362472363022395,
+     "reference": 0.3833871553416769,
+     "ceiling": 0.4033871553416769,
+     "difference": 0.09023756828854707,
+     "verdict": false
+    }
+   },
+   "holds": false,
+   "summary": {
+    "config_hash": "1f4412f6b393",
+    "gate_verdict": "failed",
+    "gate_rows": {
+     "replicates all runs": {
+      "value": 20.0,
+      "status": "pass",
+      "gating": true
+     },
+     "days both day sets": {
+      "value": null,
+      "status": "pass",
+      "gating": true
+     },
+     "quality both day sets": {
+      "value": null,
+      "status": "pass",
+      "gating": true
+     },
+     "C1 calibration": {
+      "value": 0.7476190476190476,
+      "status": "fail",
+      "gating": true
+     },
+     "C2 calibration": {
+      "value": 0.6238095238095238,
+      "status": "fail",
+      "gating": false
+     },
+     "C3 calibration": {
+      "value": 0.47362472363022395,
+      "status": "fail",
+      "gating": true
+     },
+     "C6 calibration": {
+      "value": 0.0,
+      "status": "pass",
+      "gating": true
+     },
+     "C1 validation": {
+      "value": 0.7238095238095238,
+      "status": "fail",
+      "gating": true
+     },
+     "C2 validation": {
+      "value": 0.6297619047619047,
+      "status": "fail",
+      "gating": false
+     },
+     "C3 validation": {
+      "value": 0.6226710470687273,
+      "status": "fail",
+      "gating": true
+     },
+     "C6 validation": {
+      "value": 0.0,
+      "status": "pass",
+      "gating": true
+     },
+     "C4 calibration": {
+      "value": 4.412262871096103,
+      "status": "fail",
+      "gating": true
+     },
+     "C5 all runs": {
+      "value": 0.0,
+      "status": "pass",
+      "gating": true
+     }
+    },
+    "rmspe_diagnostics": {
+     "calibration": {
+      "5 min": 0.4965861055624334,
+      "15 min": 0.47362472363022395,
+      "60 min": 0.39929535094107144
+     },
+     "validation": {
+      "5 min": 0.6629823819994811,
+      "15 min": 0.6226710470687273,
+      "60 min": 0.47740361636983736
+     }
+    },
+    "validation_days": {
+     "20260901": {
+      "C1": {
+       "value": 0.6678571428571428,
+       "status": "fail"
+      },
+      "C3": {
+       "value": 0.7796550665410762,
+       "status": "fail"
+      },
+      "C6": {
+       "value": 3.0,
+       "status": "fail"
+      }
+     },
+     "20260909": {
+      "C1": {
+       "value": 0.7071428571428572,
+       "status": "fail"
+      },
+      "C3": {
+       "value": 0.9115550745533874,
+       "status": "fail"
+      },
+      "C6": {
+       "value": 2.0,
+       "status": "fail"
+      }
+     },
+     "20260910": {
+      "C1": {
+       "value": 0.6231707317073171,
+       "status": "fail"
+      },
+      "C3": {
+       "value": 0.5344147835334887,
+       "status": "fail"
+      },
+      "C6": {
+       "value": 3.0,
+       "status": "fail"
+      }
+     },
+     "20260917": {
+      "C1": {
+       "value": 0.6621951219512195,
+       "status": "fail"
+      },
+      "C3": {
+       "value": 0.7111778993992821,
+       "status": "fail"
+      },
+      "C6": {
+       "value": 2.0,
+       "status": "fail"
+      }
+     }
+    },
+    "realised": {
+     "mean": 0.9848643342238246,
+     "lowest": 0.9815249927580546,
+     "per_seed": {
+      "6914975401685141156": 0.9865138884418553,
+      "134183728835869882": 0.9845827030158679,
+      "2378473973028931053": 0.9861276513566578,
+      "3747978530954135749": 0.9845505165921015,
+      "677105600768189526": 0.9853873636100293,
+      "661281422688282993": 0.9849045672535325,
+      "3011106312394044631": 0.9815249927580546,
+      "6953598295321596746": 0.9827480768611799,
+      "165503670820534583": 0.9843252116257363,
+      "6134032994440706937": 0.9862242106279572,
+      "8557154790156791364": 0.9869001255270526,
+      "6538422657834023852": 0.9853229907624964,
+      "6904272788004776631": 0.983391805336509,
+      "6143473282319009404": 0.986996684798352,
+      "3944094060050347669": 0.9853551771862629,
+      "4910985839736976611": 0.9840999066593711,
+      "7382187975121682178": 0.9834883646078084,
+      "5690692725577505498": 0.9846470758634008,
+      "887972120279483394": 0.9847758215584667,
+      "8026499204807041784": 0.9854195500337958
+     }
+    },
+    "safety": {
+     "collisions": 0,
+     "runs_with_collisions": [],
+     "median_departed_share": 0.9848401944059996,
+     "lock_floor": 0.7878721555247997,
+     "seeds_below_floor": [],
+     "lowest_departed_share": 0.9815249927580546,
+     "pass": true
+    },
+    "battery_locks": {
+     "n_runs_locked": 0,
+     "runs_locked": [],
+     "by_section": []
+    },
+    "breakdowns": {
+     "battery_mean": 0.9848643342238246,
+     "applies": true,
+     "replicates": []
+    },
+    "weave_exits": {
+     "threshold_share": 0.02,
+     "n_runs": 20,
+     "sections": [
+      {
+       "ramp": "on-ramp 745524613",
+       "exit": "C-D split 18208090",
+       "n_runs": 20,
+       "reached": 30687,
+       "missed_exit": {
+        "n": 627,
+        "share": 0.020432104800078208
+       },
+       "flagged": true
+      },
+      {
+       "ramp": "on-ramp 769818012",
+       "exit": "off-ramp 18207598",
+       "n_runs": 20,
+       "reached": 78309,
+       "missed_exit": {
+        "n": 877,
+        "share": 0.01119922358860412
+       },
+       "flagged": false
+      }
+     ],
+     "verdict": "exits given up: 2.0 % at on-ramp 745524613"
+    },
+    "weave_releases": {
+     "flag_share": 0.01,
+     "n_runs": 20,
+     "sections": [
+      {
+       "ramp": "on-ramp 745524613",
+       "exit": "C-D split 18208090",
+       "n_runs": 20,
+       "n_runs_w1b": 20,
+       "n_runs_w1b_off": 0,
+       "w1b_releases": 45,
+       "entrance_departed": 20340,
+       "share": 0.0022123893805309734,
+       "flagged": false,
+       "n_runs_w2": 20,
+       "n_runs_w2_off": 0,
+       "w2": {
+        "n_handback_skips": 1519,
+        "n_close_leader_withheld": 84,
+        "n_opposing_deferred": 2072,
+        "n_opposing_vetoed": 2057
+       }
+      },
+      {
+       "ramp": "on-ramp 769818012",
+       "exit": "off-ramp 18207598",
+       "n_runs": 20,
+       "n_runs_w1b": 20,
+       "n_runs_w1b_off": 0,
+       "w1b_releases": 2,
+       "entrance_departed": 92595,
+       "share": 2.159943841460122e-05,
+       "flagged": false,
+       "n_runs_w2": 20,
+       "n_runs_w2_off": 0,
+       "w2": {
+        "n_handback_skips": 3216,
+        "n_close_leader_withheld": 67,
+        "n_opposing_deferred": 15841,
+        "n_opposing_vetoed": 15147
+       }
+      }
+     ],
+     "flagged": [],
+     "definition": "Per weaving section (meta.json weave_sections; measured merge zones do not run W1b), pooled over the runs that list it: w1b_releases is the sum of n_entrant_took_exit (the entrants W1b rerouted to the paired exit after standing entrant_giveup_dwell_s at the auxiliary lane's end) over the n_runs_w1b runs with W1b on (params entrant_giveup_m > 0 and entrant_giveup_dwell_s > 0; a meta without params counts as on when it writes the counter), entrance_departed the sum of the weave on-ramp's meta.json ramps[k].n_departed over the same runs, share = w1b_releases / entrance_departed (NaN when nothing departed or no run had W1b on), flagged when share > flag_share (Amendment 4: flagged in the report's limitations, not a gate failure). n_runs_w1b_off counts the runs that listed the section with W1b off (an opt-out reproducing a result published before Amendment 4, or a run written before it), n_runs_w2 / n_runs_w2_off those with all three W2 switches on / any off; w2 sums each W2 counter over the runs whose switch was on (null when no run records it). The reading of the W1b and W2 rounds' clauses C5b and CW5b (artifacts/weave_loss_2026-10-07/w1b/harness/corridor_w1b.py, artifacts/weave_collision_guards_2026-10-07/harness/corridor_w2.py; docs/DECISIONS_2026-10-07.md \u00a7A2)."
+    },
+    "stations": {
+     "S1069": {
+      "06:30": {
+       "obs_veh_h": 3731.2000000000003,
+       "sim_minus_obs_veh_h": -326.8000000000002,
+       "geh_mean": 5.4813
+      },
+      "07:30": {
+       "obs_veh_h": 2387.4666666666667,
+       "sim_minus_obs_veh_h": 366.8833333333332,
+       "geh_mean": 7.2196
+      },
+      "08:30": {
+       "obs_veh_h": 2682.3777777777777,
+       "sim_minus_obs_veh_h": -38.077777777777555,
+       "geh_mean": 0.8049
+      }
+     },
+     "S1070": {
+      "06:30": {
+       "obs_veh_h": 4985.9,
+       "sim_minus_obs_veh_h": -524.0499999999993,
+       "geh_mean": 7.6309
+      },
+      "07:30": {
+       "obs_veh_h": 3595.745238095238,
+       "sim_minus_obs_veh_h": 586.1047619047622,
+       "geh_mean": 9.3911
+      },
+      "08:30": {
+       "obs_veh_h": 3783.633333333333,
+       "sim_minus_obs_veh_h": -50.0333333333333,
+       "geh_mean": 0.8248
+      }
+     },
+     "S1948": {
+      "06:30": {
+       "obs_veh_h": 4921.584126984126,
+       "sim_minus_obs_veh_h": -579.0841269841258,
+       "geh_mean": 8.5157
+      },
+      "07:30": {
+       "obs_veh_h": 3669.177777777777,
+       "sim_minus_obs_veh_h": 641.2222222222226,
+       "geh_mean": 10.1464
+      },
+      "08:30": {
+       "obs_veh_h": 3900.2000000000003,
+       "sim_minus_obs_veh_h": -146.30000000000018,
+       "geh_mean": 2.3675
+      }
+     },
+     "S792": {
+      "06:30": {
+       "obs_veh_h": 4067.5333333333333,
+       "sim_minus_obs_veh_h": -456.1833333333334,
+       "geh_mean": 7.3655
+      },
+      "07:30": {
+       "obs_veh_h": 2702.008333333333,
+       "sim_minus_obs_veh_h": 596.9416666666666,
+       "geh_mean": 10.895
+      },
+      "08:30": {
+       "obs_veh_h": 3159.1999999999994,
+       "sim_minus_obs_veh_h": -119.09999999999945,
+       "geh_mean": 2.1445
+      }
+     },
+     "S791": {
+      "06:30": {
+       "obs_veh_h": 4395.733333333334,
+       "sim_minus_obs_veh_h": -958.8833333333337,
+       "geh_mean": 15.3255
+      },
+      "07:30": {
+       "obs_veh_h": 3388.077777777778,
+       "sim_minus_obs_veh_h": -75.37777777777819,
+       "geh_mean": 1.3474
+      },
+      "08:30": {
+       "obs_veh_h": 3519.966666666666,
+       "sim_minus_obs_veh_h": -420.1666666666656,
+       "geh_mean": 7.3138
+      }
+     },
+     "S790": {
+      "06:30": {
+       "obs_veh_h": 4846.349999999999,
+       "sim_minus_obs_veh_h": -968.1999999999994,
+       "geh_mean": 14.6612
+      },
+      "07:30": {
+       "obs_veh_h": 3965.4,
+       "sim_minus_obs_veh_h": -79.84999999999991,
+       "geh_mean": 1.2898
+      },
+      "08:30": {
+       "obs_veh_h": 4114.433333333333,
+       "sim_minus_obs_veh_h": -374.2333333333336,
+       "geh_mean": 5.981
+      }
+     },
+     "S97": {
+      "06:30": {
+       "obs_veh_h": 4535.533333333334,
+       "sim_minus_obs_veh_h": -883.8833333333337,
+       "geh_mean": 13.8185
+      },
+      "07:30": {
+       "obs_veh_h": 4076.888888888889,
+       "sim_minus_obs_veh_h": -254.78888888888923,
+       "geh_mean": 4.0574
+      },
+      "08:30": {
+       "obs_veh_h": 3899.5,
+       "sim_minus_obs_veh_h": -248.1500000000001,
+       "geh_mean": 4.0453
+      }
+     }
+    },
+    "th61_nb_departures": {
+     "planned": 92820,
+     "departed": 92820,
+     "share": 1.0
+    }
+   }
+  }
+ },
+ "b5_arm": {
+  "rule": "_rbc if it holds, else _rb, else the reference (D10, fixed 2026-10-07)",
+  "arm": "rbc",
+  "scenario": "scenarios/mndot_i94_wb_stpaul_weave_dc_cal_w1b_w2_rbc.yaml",
+  "p17_arm": "mndot_i94_wb_stpaul_weave_dc_cal_w1b_w2_rbc"
+ },
+ "notes": [],
+ "definitions": {
+  "D1": "zero collisions in every run (battery collisions.total, every run recording the counter) and no seed's departed share below 0.8 of the battery's median (FRISCO_PROTOCOL 9.5)",
+  "D2": "insertion.mean_departed_fraction >= the reference's - 0.01",
+  "D3": "baseline gate C1 on the calibration days (GEH < 5 share of station-hours, pooled over 20 replicates) >= the reference's",
+  "D4": "baseline gate C3 on the calibration days (15-min station-speed RMSPE, mean over replicates) <= the reference's + 0.02",
+  "allowance": "1e-12 on every comparison, for binary floating point only",
+  "reported": "C4, C6, the validation-day rows and everything under summary are reported with and without both rules (the reference, _rb, _rbc), never gating",
+  "breakdown": "report-only (2026-10-07): a replicate realising less than 0.9 of its plan while the battery's mean realised share is at least 0.95"
+ }
+}

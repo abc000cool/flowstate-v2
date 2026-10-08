@@ -1319,6 +1319,217 @@ reproduced the committed battery exactly, and its adoptability by its own rule r
 
 **Provenance note, 2026-10-07 (night).** The committed `artifacts/boundary_b1b2_corridor.json` records `code` e05866e because the readout was regenerated locally at the 2.6.0 release commit on the VM's archived outputs (§8.4.6, review-5 fixes); the batteries themselves were run from the commit pushed before the launch, c6c4387 (the coordinator's block log; the bucket's `launch.txt`, now deleted, carried it), on a VM snapshot commit that is not in the repository. From b50211d on, `scripts/gcp/vm_setup.sh` writes `.source_commit` on the VM and the readouts record it as `code` with the snapshot as `vm_snapshot`.
 
+#### 8.4.7 B2 on the k = 0 arm (A1 follow-up 1) — pre-registered 2026-10-08, not run
+
+*Written 2026-10-08, 01:15 CDT, before any run of this round. The arm, the criteria, what the binding wave half
+binds, the problems that block the reading and the reading rule are fixed now and are not to be re-thresholded.*
+Built, not run: opt-in stage `p25_i24_b2_k0` (scripts/gcp/pipeline_i24.sh, not in the default list; the same text in
+`artifacts/i24_discharge_2026-10-07/stage_p25_b2_k0.sh.txt`), harness
+`artifacts/i24_discharge_2026-10-07/harness_b2_k0/corridor_b2_k0.py` (`arm`, `check-ref`, `score`; `expected`
+locally), readout `artifacts/boundary_b2_k0_corridor.json`. Every pre-run number below is in
+`artifacts/i24_discharge_2026-10-07/b2_k0_expected.json`, which the harness computes from committed files only
+(nothing simulated). Tests: `tests/test_scripts/test_corridor_b2_k0_harness.py` and
+`tests/test_scripts/test_p25_stage.py`, on committed files and synthetic batteries.
+
+**Why.** B2 has run only on k = 1 arms (§8.4.4, §8.4.6), the calibrated-arm candidate included.
+
+- *The k = 1 population is string-stable at its own capacity density.* B6's S1 screen
+  (`artifacts/driver_joint_screen_i24.json`, rows k = 1, j = 0 and k = 0, j = 0; both have mean T 1.322 s):
+  - k = 1 (`artifacts/idm_i24_capacity_amax_k1.0.json`, mean `a_max` 1.483 m/s²): the mean driver's unstable band
+    starts at 39.72 veh/km/lane, 10.56 above its capacity density of 29.16 veh/km/lane. The criterion
+    f_v²/2 − f_v·f_Δv − f_s is +0.0156 s⁻² there: stable.
+  - k = 0 (`artifacts/idm_i24_capacity.json`, mean `a_max` 1.055 m/s²): the band starts at 28.18 veh/km/lane,
+    0.98 below the same capacity density. The criterion is −0.0018 s⁻²: unstable, as CLAUDE.md §3.1 requires.
+- *Every k = 1 battery fails the wave row.* There are eleven batteries over seven configurations: `_dc`,
+  `_dc_refit`, the B2 arm, their B1 copies, B1 + B2 and the p14 refit. In each, the stack detector finds no
+  qualifying peak. The k = 0 flow-family arms pass the row at 15.4–15.9 km/h (docs/I24_VALIDATION.md §0.1, §0.10;
+  `artifacts/i24_validation_flow_speedcal_ref.json`: 15.89 km/h).
+- *Amendment 2 (proposed, not adopted) keeps k = 0 on I-24.* Its k = 0.25 and k = 0.5 refits kept the wave row but
+  held 7–8 % of the planned vehicles off the network (FRISCO_PROTOCOL, Result of Amendment 2).
+
+So k = 0 is the I-24 arm that satisfies §3.1 and passes the §7.1 wave row. Its inputs still carry the ramp traffic
+that Amendment 5 removed on the k = 1 candidate. Decision A1 pre-registered this round as follow-up 1
+(docs/DECISIONS_2026-10-07.md §A1 §5, item 1; FRISCO_PROTOCOL Amendment 5, follow-up 1).
+
+**What "with the wave half binding" binds.** The sources:
+
+- §A1 §5, item 1: "B2 on the k = 0 arm (`flow_speedcal` → `_rc`), read by R1–R5 with the wave half binding."
+- Amendment 5, follow-up 1: "read by R1–R5 with the wave half binding (B2 has run only on k = 1 arms, which fail the
+  wave row)."
+- §8.4.3's R5: "wave verdict unchanged where it passes today". Its implementation note adds that "R5's wave part
+  binds only if the same-code reference's `wave_speed` row passes".
+
+Taken to mean: the k = 0 reference passes the wave row, so R5 holds only if the B2 arm's `wave_speed` row also
+passes (stack detector, 14–22 km/h, unseeded). The verdict may not regress from pass to fail. This is the half of
+R5 that never applied on k = 1, and it is Amendment 2's constraint ("an arm qualifies when its battery passes the
+wave criterion") applied to an input correction instead of a driver shift.
+
+It adds no criterion and moves no threshold. The arm's wave speed may move within the band. Backward fronts per
+replicate are reported, not gated: the one-third floor is B1's A4, not part of R5. A same-code reference whose row
+does not pass is a problem, not a waiver. It cannot happen if the reference reproduces the committed battery, as
+the stage requires.
+
+**The arm.**
+
+| | scenario | config hash, policy 4 (policy 3) | how it is made |
+|---|---|---|---|
+| reference (k = 0 arm) | `scenarios/i24_replica_flow_speedcal.yaml` | 5a8e079c4bfa (ae5861a4d906; 8075db417a5a under policy 2, as its header quotes) | `scripts/i24_fit_demand_scale.py` `scaled_config` at s = 0.800 (`best.scale` of `artifacts/demand_scale_i24_flow.json`), fleet `artifacts/idm_i24_capacity.json`, on `scenarios/i24_replica_flow_corrected.yaml`; the recipe reproduces the committed file (checked) |
+| base of the arm | `scenarios/i24_replica_flow_rc_corrected.yaml` | 55f92397b4c5 (c1f91268f596, the hash `artifacts/i24_replica_inputs_flow_rc.json` records) | stage p13's build, committed in 3b2306e |
+| **B2 arm** | `scenarios/i24_replica_flow_rc_speedcal.yaml` | **9030f087e0af** (fa9eb07d549b) | the same recipe on the base, with s = 0.800 carried, not refit, as p13 carried 0.925 |
+
+B2 is applied exactly as on `_dc_refit`:
+
+- the same builder flags: `scripts/i24_build_replica.py --suffix flow_rc --osm corrected --lc-strategic 5
+  --lc-strategic-ramp 1 --entry-lanes observed_flow --ramp-through-traffic exclude`;
+- the same consistency artifact: `artifacts/i24_count_consistency.json`, sha256 ea403bcf…;
+- the same demand method: the fitter's `scaled_config` at the arm's own carried scale.
+
+One step differs from p13, which rebuilt the `_rc` family on the VM because none was committed. That family is now
+committed, and it is the input Amendment 5 adopted. The stage therefore writes the arm on the VM from the committed
+`_rc` corrected arm and inputs and does not rebuild them. A rebuild would also put rebuilt copies of committed `_rc`
+files in the archive, and the ingest would copy them back over the committed ones.
+
+The arm is written only if all of the following hold, otherwise nothing runs:
+
+1. the recipe on the flow family's corrected arm reproduces the committed k = 0 arm, and that arm is the file the
+   committed battery ran;
+2. the `_rc` inputs record `exclude` on the committed count check (by sha256), and they equal the flow family's
+   inputs in everything B2 does not touch (p13's comparison);
+3. the base is the corrected arm those inputs record;
+4. the arm differs from the k = 0 arm only in its `name` and the four ramps' values (p13's scenario-diff check,
+   `harness_b2/corridor_b2.py` `same_configuration`, reused);
+5. those values are the builder's arithmetic on the corrected counts, to the digit;
+6. the arm is the configuration above (fa9eb07d549b under policy 3).
+
+The ramp values that change are those of Old Hickory on and Hickory Hollow on in all 24 windows, Hickory Hollow off
+in 11 and Bell Road off in 13 (the windows with a flag).
+
+**Expected values (computed from committed inputs; nothing run).** Planned 2-h values over 06:30–08:30. The mainline
+is unchanged at 5,061.5 veh/h. The planned vehicles over the study period fall from 13,395.7 to 12,661.8 (−733.8,
+−5.5 %).
+
+| ramp | unit | k = 0 reference | k = 0 B2 arm | change | R3 target (corrected, pooled coverage) | planned flow's GEH to the target, reference / arm |
+|---|---|---|---|---|---|---|
+| Old Hickory Blvd on (950 m) | veh/h | 998.1 | 857.9 | −140.2 (−14.0 %) | 915.1 | 2.68 / 1.92 |
+| Hickory Hollow Pkwy off (3,700 m) | mean exit fraction | 0.0913 | 0.0894 | −2.1 % | 581.2 veh/h | — |
+| Hickory Hollow Pkwy on (4,600 m) | veh/h | 638.3 | 411.6 | −226.7 (−35.5 %) | 442.6 | 8.42 / 1.50 |
+| Bell Road off (5,050 m) | mean exit fraction | 0.0529 | 0.0498 | −5.9 % | 309.0 veh/h | — |
+
+The relative changes are those of the k = 1 round (§8.4.3). At s = 0.925 that round moved 1,154.0 → 991.9 and
+738.0 → 475.9 veh/h. An on-ramp's planned flow is what the model is asked to insert, so its GEH to the target is
+where R3 starts before any insertion loss.
+
+The reference readings that R1–R5 are read against come from the committed battery, which the re-run must
+reproduce exactly:
+
+- R1: 0 collisions in 20 runs.
+- R2: realised share 0.98677 (minimum 0.9771).
+- R4: 2-h flows at 2,200 / 3,200 m of 5,849.6 / 5,820.7 veh/h against 6,626.2 / 6,639.0, GEH 9.83 / 10.37.
+- R5: 15-min RMSPE 0.2303 (bound 0.2503); the wave row passes at 15.89 km/h.
+- Also recorded: 7.3 standard and 105.1 stripe fronts per replicate; GEH < 5 share 21.5 %; 5-min RMSPE 0.372.
+
+Two expectations, stated before the run (predictions, not criteria):
+
+- *R4 is close to mechanical on this arm.* Below the targets, GEH falls as flow rises, so R4 holds if and only if
+  the arm's 2-h flows at 2,200 and 3,200 m are not below the reference's.
+  - Only Old Hickory lies upstream of those sections, so the planned supply past them (mainline plus Old Hickory)
+    falls from 6,059.5 to 5,919.3 veh/h.
+  - The reference delivers 96.5 % / 96.1 % of its planned supply there. To hold R4 the arm must deliver
+    98.8 % / 98.3 % of its own.
+  - Even if every planned vehicle passed, the peak GEH could fall only to 8.92 / 9.08. No outcome brings the k = 0
+    peak sections within GEH 5: its scale of 0.800 is below the targets, and that is B5's question.
+  - R4 therefore reads whether the k = 0 peak sections are supply-limited (R4 fails by construction) or
+    discharge-limited.
+- *The k = 0 congestion depends on the Old Hickory level.* docs/I24_VALIDATION.md §0.11
+  (`artifacts/i24_merge_experiment_ohlevel.json`; one seed, code of 2026-09-17) ran this arm with Old Hickory × 0.75.
+  - The upstream segments then ran free (48.7 km/h against the observed 36.3 km/h in the first segment).
+  - The 15-min RMSPE rose from 0.232 to 0.446, and the peak flows moved from 5,885 / 5,836 to 5,686 / 5,672 veh/h.
+  - B2 plans Old Hickory at × 0.860 and Hickory Hollow on at × 0.645. If the corridor loses its congestion, R5
+    fails on speeds or on the wave row. That is the risk the binding wave half reads.
+
+**Criteria (fixed).** These are §8.4.3's R1–R5, read by the stage's harness exactly as p13's readout read them.
+The harness ports p13's arithmetic line for line, and a test reproduces p13's committed
+`artifacts/boundary_b2_corridor.json` from p13's own inputs, value for value. The arm is read against the
+same-code reference on step 3's 20 seeds (spawn_seeds(42, 20)), paired.
+
+| # | criterion | reference (committed) | fixed now |
+|---|---|---|---|
+| R1 | safety | 0 | 0 collisions in every B2 run, each run recording the counter |
+| R2 | no winning by backlog | 0.9868 | B2's mean realised share ≥ the reference's (literal; Amendment 2's one-point reading reported beside it) |
+| R3 | ramp-lane flows | reported | each ramp's modelled 2-h flow within GEH 5 of its corrected count at the pooled recommended coverage (915.1 / 581.2 / 442.6 / 309.0 veh/h) |
+| R4 | peak sections | GEH 9.83 / 10.37 | B2's 2-h GEH at 2,200 and 3,200 m not above the reference's (targets 6,626 / 6,639) |
+| R5 | waves and speeds | 15.89 km/h, passes; 0.2303 | **the wave half binding:** B2's `wave_speed` row passes; and B2's 15-min segment-speed RMSPE ≤ 0.2503 |
+
+Reported, not gating:
+
+- the pairing: realised share, peak flows, fronts and per-replicate 15-min RMSPE, as per-seed 95 % t-intervals;
+- braking steps below −8.9 m/s² (`harness/hard_braking.py`, run on the VM before the trajectories are pruned);
+- `no_locks` and the locked seeds, and the coordinator's breakdown reading;
+- both batteries' gate rows;
+- p13's k = 1 reading side by side. For `_dc_refit` → B2 it was: collisions 0 / 0; realised 0.921 → 0.967; R3 GEH
+  1.8 / 1.2 / 1.3 / 2.0; R4 7.28 / 8.25 → 3.86 / 4.63; R5 wave half n/a, RMSPE 0.273 → 0.254; all pass.
+
+**Problems that block the reading** (`holds` null, exit 3):
+
+- the same-code reference does not reproduce `artifacts/i24_validation_flow_speedcal_ref.json` exactly. The fields
+  are: the config hash (policy 4 here, 3 committed), seeds, per-replicate counts, realised fractions, collisions,
+  segment speeds, standard and stripe fronts, every criteria row's value and verdict except `no_locks`, and the
+  observed side except its build time. The stage then stops before the arm's battery (`check-ref`);
+- a battery's hash does not name its scenario (the committed k = 0 arm, or the pre-registered derivation);
+- the seeds differ between the batteries or are not step 3's;
+- the batteries were scored against different observed sides;
+- a ramp-flow reduction is not its battery's;
+- the count check is void;
+- the reference's wave row does not pass;
+- an input is missing.
+
+**Reading rule (fixed now).**
+
+- *Holds* (R1–R5 hold, the wave half included, and no problem is recorded). B2 is adoptable on the k = 0 arm by its
+  own rule. On corrected ramp counts the k = 0 arm keeps the emergent-wave row, so Amendment 5's correction and
+  §3.1's instability requirement are compatible on I-24 at k = 0. `i24_replica_flow_rc_speedcal` becomes the
+  candidate for the k = 0 arm's corrected inputs, in the role Amendment 2's reference and p12's canonical arm hold.
+  Adopting it, and relabelling the k = 0 record, is the coordinator's or the owner's decision. It is not validation:
+  the gate rows still fail.
+- *The wave half fails.* On corrected ramp counts no I-24 arm passes the emergent-wave row; every k = 1 arm already
+  fails it. The k = 0 arm's wave pass in the record (docs/I24_VALIDATION.md §0.1, §0.10; Amendment 2's reference)
+  then rests on the double-counted ramp traffic and must be labelled so wherever it is quoted. This round does not
+  revert Amendment 5, whose basis is the count check's mass balance (§8.4.2), which this round does not test. The
+  conflict between corrected inputs and §3.1 / §7.1 on I-24 goes to the owner; no scenario is tuned to resolve it.
+- *Other criteria fail while the wave half holds.* B2 is not adoptable on the k = 0 arm by its own rule, and the
+  failing criteria are named. The k = 0 arm stays on the uncorrected counts as recorded. B2's provisional adoption on
+  the k = 1 candidate is not re-read here: its R1–R5 were read on that arm (§8.4.4).
+- *Undetermined.* A problem above is recorded; nothing is read, and the owner decides.
+
+**Cost [estimate].** On one n2d-standard-16 at 14 processes:
+
+- two batteries of about 18–20 min each (p12's k = 0 batteries took 1,149 and 1,077 s);
+- about 7–8 min of braking counts per battery, and about a minute of ramp flows.
+
+That is about 50–55 min of stage time, or 70–80 min billed with boot, setup and the I-24 data through the bucket:
+about $1.0–1.3, as p13's. A failed check-ref stops the stage after about 30 min. `--cap-min 150` bounds the cost at
+about $2.0.
+
+**Launch.** From a pushed commit that carries this section, the stage, the harness, the expected artifact and their
+tests (the launcher refuses a dirty tree or a HEAD not on origin/main):
+
+```
+scripts/gcp/launch_i24_pipeline.sh --vm flowstate-p25 --machine n2d-standard-16 \
+  --zone us-east1-b,us-east1-c,us-east1-d --bucket gs://<bucket>/p25 \
+  --self-delete --via-bucket --data-set i24 --cap-min 150 --pipeline-args '--stages "p25_i24_b2_k0"'
+```
+
+**Limits.**
+
+- One recording, one morning, no holdout.
+- The flags are lower bounds (§8.4.3).
+- s = 0.800 was fitted on the uncorrected inputs and is carried, as p13 carried 0.925; B5 on `_rc` is follow-up 3.
+- The Old Hickory correction stays revertible pending follow-up 2.
+- R3 checks delivery of the model's own corrected inputs, not whether those inputs are true.
+- R4 is a 2-h peak-section reading.
+- I-24 has no weaving section, so Amendment 4's weave defaults do not act on these runs. Their hashes moved by the
+  policy version alone, and the reference re-run checks this.
+
 ### 8.5 Corrections the record needs (owner's call)
 
 - docs/DISCHARGE_CALIBRATION.md §1: "The I-24 fixture's 1,460–1,470 × 4 lanes =
