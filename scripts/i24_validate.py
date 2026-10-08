@@ -55,6 +55,23 @@ scores the ``no_collisions`` criteria row from them; the committed observed
 side (``artifacts/i24_validation_observed.json``) is not rewritten. The arms'
 behaviour and outputs are unchanged.
 
+**Locks** (2026-10-07, every battery, arms and explicit scenarios alike):
+each replicate's permanent standstills are detected in the analysis worker
+by :func:`validation.locks.detect_run_locks` — the corridor batteries'
+reader — from the replicate's ``meta.json``, ``edges.parquet`` (the
+space-time reader) and ``vehicles.parquet`` (the run-end reader), never its
+trajectories. Additively, the artifact records each replicate's
+:class:`validation.locks.RunLocks` record in seed order
+(``simulated.locks_per_replicate``, the record the corridor battery keeps in
+``per_seed[i].locks``) and, last, the corridor batteries' ``locks`` block
+(:func:`validation.locks.lock_summary` labelled by seed) and ``zero_locks``
+flag (:func:`validation.battery.lock_free`); the records score the
+``no_locks`` criteria row (PASS / FAIL instead of NOT RECORDED), and
+``--criteria-only`` re-scores it from the stored records. Every other key
+and value is unchanged. Artifacts written before carry none of the three
+keys, and their row stays NOT RECORDED (``scripts/i24_rescore_locks.py``
+re-scores an archived run tree into a sidecar).
+
 Usage (repo root)::
 
     uv run --no-sync python scripts/i24_validate.py --replicates 2 --arms tracked   # smoke
@@ -74,6 +91,7 @@ import re
 import shutil
 import sys
 import time
+from collections.abc import Mapping, Sequence
 from dataclasses import asdict
 from datetime import UTC, datetime
 from pathlib import Path
@@ -90,9 +108,16 @@ from flowstate_core.config import ScenarioConfig, config_hash
 from flowstate_core.rng import spawn_seeds
 from microsim.runner import _versions, run_replicates
 from microsim.scenarios import load_scenario
-from validation.battery import collision_counts, collision_free, collision_summary, load_meta
+from validation.battery import (
+    collision_counts,
+    collision_free,
+    collision_summary,
+    load_meta,
+    lock_free,
+)
 from validation.criteria import evaluate, get_profile
 from validation.fields import speed_field
+from validation.locks import RunLocks, detect_run_locks, lock_summary
 from validation.metrics import aggregate, compute_metrics, geh, rmspe
 from validation.waves import WAVE_DETECTORS, WaveDetector, get_detector
 
@@ -306,6 +331,93 @@ def _sim_frame(run_dir: Path, a: float, b: float) -> pd.DataFrame:
     return df[df["t"] >= 0.0]
 
 
+def replicate_locks(run_dir: Path, meta: Mapping[str, Any]) -> dict[str, Any]:
+    """One replicate's lock record (:meth:`validation.locks.RunLocks.to_dict`).
+
+    The corridor batteries' reader, :func:`validation.locks.detect_run_locks`,
+    on the replicate's ``edges.parquet`` and ``vehicles.parquet`` with its
+    parsed ``meta.json``; a replicate with neither table is not recorded
+    (``locked`` null), never unlocked.
+    """
+    return detect_run_locks(run_dir, meta=meta).to_dict()
+
+
+def stored_lock_records(sim: Mapping[str, Any]) -> list[RunLocks | None] | None:
+    """The per-replicate lock records an artifact's ``simulated`` block stores.
+
+    Args:
+        sim: The ``simulated`` block (:func:`micro_arm`'s result).
+
+    Returns:
+        One :class:`validation.locks.RunLocks` per replicate in seed order
+        (None for an entry stored as null), or None when the block predates
+        ``locks_per_replicate`` (the ``no_locks`` row then reads NOT RECORDED).
+    """
+    stored = sim.get("locks_per_replicate")
+    if not isinstance(stored, list):
+        return None
+    return [RunLocks.from_dict(r) if isinstance(r, dict) else None for r in stored]
+
+
+def add_lock_blocks(
+    results: dict[str, Any], lock_records: Sequence[RunLocks | None] | None, seeds: Sequence[int]
+) -> None:
+    """Append the corridor batteries' ``locks`` and ``zero_locks`` keys to an artifact.
+
+    ``locks`` is :func:`validation.locks.lock_summary` labelled by seed (null
+    when no replicate is recorded) and ``zero_locks``
+    :func:`validation.battery.lock_free` (true only when every replicate is
+    completely recorded and none locked, false on any lock, null otherwise);
+    both null without records. Added last, so every existing key keeps its
+    place and value.
+    """
+    results["locks"] = (
+        None if lock_records is None else lock_summary(lock_records, labels=list(seeds))
+    )
+    results["zero_locks"] = None if lock_records is None else lock_free(lock_records)
+
+
+def lock_console_line(results: Mapping[str, Any]) -> str:
+    """The console line for an artifact's ``locks`` block (beside the collisions line).
+
+    The corridor battery's ``locks`` line (``scripts/corridor_battery.lock_line``)
+    plus the locked seeds.
+    """
+    locks = results.get("locks")
+    text = "    locks              "
+    if locks is None:
+        return text + "not recorded (no replicate has edges.parquet or vehicles.parquet)"
+    share = locks["share_locked"]
+    text += (
+        f"{locks['n_runs_locked']} of {locks['n_runs_recorded']} replicate(s) locked "
+        f"({100.0 * share['value']:.0f} %, 95 % CI {100.0 * share['lo95']:.0f}–"
+        f"{100.0 * share['hi95']:.0f} %)"
+    )
+    if locks["runs_not_recorded"]:
+        text += f"; not recorded for {len(locks['runs_not_recorded'])} replicate(s)"
+    locked = {row["run"] for row in locks["runs_locked"]}
+    partial = [r for r in locks.get("runs_partially_recorded") or [] if r not in locked]
+    if partial:
+        text += (
+            f"; no lock established for {len(partial)} replicate(s) read at the run's end only "
+            "(no edges.parquet)"
+        )
+    seeded = locks.get("seeded_standstills") or []
+    if seeded:
+        text += f"; {len(seeded)} seeded standstill(s) not counted"
+    places = [
+        f"{row['section']} ({row['n_runs']}, onset {row['onset_s_min']:.0f}"
+        + (f"–{row['onset_s_max']:.0f}" if row["onset_s_max"] != row["onset_s_min"] else "")
+        + " s)"
+        for row in locks["by_section"]
+    ]
+    if places:
+        text += "; at " + ", ".join(places)
+    if locks["runs_locked"]:
+        text += "; seeds " + ", ".join(str(row["run"]) for row in locks["runs_locked"])
+    return text
+
+
 def _analyze_replicate(payload: tuple[str, float, float, float, float, int]) -> dict:
     """Per-replicate comparison tables + metrics (process-pool worker)."""
     run_dir_s, a, b, span_lo, span_hi, n_win = payload
@@ -315,6 +427,9 @@ def _analyze_replicate(payload: tuple[str, float, float, float, float, int]) -> 
     meta = json.loads((run_dir / "meta.json").read_text())
     df = _sim_frame(run_dir, a, b)
     return {
+        # the replicate's locks, read from its meta.json, edges.parquet and
+        # vehicles.parquet (never the trajectories; module docstring)
+        "locks": replicate_locks(run_dir, meta),
         "realized": meta["n_vehicles_departed"] / meta["n_vehicles_planned"],
         "ramps": meta.get("ramps"),
         "counts": np.array(
@@ -443,6 +558,8 @@ def micro_arm(
         "criterion_detector": CRITERION_DETECTOR.name,
         "criterion_wave_speed_kmh": criterion["mean_backward_speed_kmh"],
         "metrics_ci": metrics_ci,
+        # each replicate's RunLocks record in seed order (module docstring, "Locks")
+        "locks_per_replicate": [r["locks"] for r in analyses],
     }
 
 
@@ -599,11 +716,14 @@ def build_results(
     scenario: str | None = None,
     demand_arm: str | None = None,
     collisions: list[int | None] | None = None,
+    lock_records: Sequence[RunLocks | None] | None = None,
 ) -> dict:
     """The arm's artifact. ``scenario`` / ``demand_arm`` / ``collisions`` serve an
     explicit scenario (``--scenario``): its name, its demand text and its runs'
     collision counts for the ``no_collisions`` row (None: not recorded, as for
-    every arm)."""
+    every arm). ``lock_records`` (one :class:`validation.locks.RunLocks` per
+    replicate, :func:`stored_lock_records`) scores the ``no_locks`` row (None:
+    not recorded); :func:`add_lock_blocks` writes the blocks that go with it."""
     sim_hourly = np.asarray(sim["hourly_flows_veh_h_mean"], dtype=np.float64)
     geh_tracked = _geh_table(sim_hourly, np.asarray(obs["hourly_flows_veh_h_tracked"]))
     geh_corrected = _geh_table(sim_hourly, np.asarray(obs["hourly_flows_veh_h_corrected"]))
@@ -636,6 +756,7 @@ def build_results(
         n_seeds=replicates,
         sweep_grid=_sweep_grid(),
         collision_counts=collisions,
+        lock_records=lock_records,
     )
     inputs = _inputs()
     ring_note = (
@@ -791,6 +912,8 @@ def refresh_criteria(arm: str, ring_block: dict | None = None) -> Path:
         sweep_grid=_sweep_grid(),
         # recorded by explicit-scenario batteries only; absent (not recorded) for every arm
         collision_counts=(d.get("simulated") or {}).get("n_collisions_per_replicate"),
+        # recorded by every battery run since 2026-10-07; absent (not recorded) before
+        lock_records=stored_lock_records(d.get("simulated") or {}),
     )
     d["criteria"] = [_json_safe(asdict(r)) for r in rows]
     d.setdefault("notes", []).append(
@@ -867,6 +990,7 @@ def explicit_battery(
         scenario=cfg.name,
         demand_arm=f"as written in the scenario file {_rel_repo(scenario)} (its header says how)",
         collisions=sim["n_collisions_per_replicate"],
+        lock_records=stored_lock_records(sim),
     )
     results["scenario_file"] = {
         "path": _rel_repo(scenario),
@@ -880,6 +1004,7 @@ def explicit_battery(
         "simulated.n_collisions_per_replicate, pooled in 'collisions' and scored in the "
         "no_collisions row."
     )
+    add_lock_blocks(results, stored_lock_records(sim), sim["seeds"])
     out_path = artifact_path(label)
     out_path.write_text(json.dumps(_json_safe(results), indent=2, allow_nan=False))
     shutil.copy(scenario, OUT_ROOT / f"{cfg.name}.yaml")
@@ -896,6 +1021,7 @@ def explicit_battery(
         + f" -> {_rel_repo(out_path)}",
         flush=True,
     )
+    print(lock_console_line(results), flush=True)
     return results
 
 
@@ -1048,7 +1174,11 @@ def main(argv: list[str] | None = None) -> None:
             analysis_procs=args.analysis_procs,
             reuse_runs=args.reuse_runs,
         )
-        results = build_results(arm, cfg, sim, obs, args.replicates, ring)
+        lock_records = stored_lock_records(sim)
+        results = build_results(
+            arm, cfg, sim, obs, args.replicates, ring, lock_records=lock_records
+        )
+        add_lock_blocks(results, lock_records, sim["seeds"])
         out_path = artifact_path(arm)
         out_path.write_text(json.dumps(_json_safe(results), indent=2, allow_nan=False))
         shutil.copy(
@@ -1056,6 +1186,7 @@ def main(argv: list[str] | None = None) -> None:
             OUT_ROOT / f"{scenario_name(arm)}.yaml",
         )
         _print_arm(arm, results, sim, obs, args.replicates)
+        print(lock_console_line(results), flush=True)
     print(f"done in {time.perf_counter() - t0:.0f} s -> {OUT_ROOT}")
 
 

@@ -92,6 +92,8 @@ sensitivity row is fed from
 [I24_SWEEP.md](I24_SWEEP.md)). Battery run 2026-09-05 on a 32-vCPU cloud VM,
 170–800 s of wall time per arm.
 
+*Locks recorded (2026-10-07).* From this date every battery `scripts/i24_validate.py` runs (arms and `--scenario/--label` alike) records each replicate's locks — `validation.locks`, the corridor batteries' reader, on the replicate's `edges.parquet` and `vehicles.parquet` — as `simulated.locks_per_replicate`, `locks` and `zero_locks`, and scores the `no_locks` row PASS or FAIL (docs/CONTRACTS.md, "Locks"). No committed I-24 artifact records locks: the batteries written since the row existed (stages p12–p14, `artifacts/i24_validation_{p12_*,dc_refit_p13ref,dc_refit_rc,p14_*}.json`) read it NOT RECORDED, those quoted in this section predate it and carry no such row, and none is re-scored in place. `scripts/i24_rescore_locks.py` re-scores an archived battery into a sidecar without simulating; the archives allow it for stages p12 and p14, not p13 (19 of 20 replicates archived `meta.json` alone). `artifacts/i24_locks_p14_b1b2.json` and `artifacts/i24_locks_p14_b2_ref.json`: no lock in 20 of 20 seeds of either. The B1 + B2 seed 134183728835869882 that broke down (docs/I24_DISCHARGE_DIAGNOSIS.md §8.4.6) is not a lock by the definition — no cell stood without discharge for more than 180 s of the 600 s a lock needs (`standing_per_replicate`); its queue crawled but kept discharging — so the `no_locks` row does not catch that breakdown.
+
 ### 0.1 Criteria
 
 *Re-run 2026-09-17 (cloud round, part two).* The five arms were re-simulated with the same

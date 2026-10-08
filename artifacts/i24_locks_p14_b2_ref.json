@@ -1,0 +1,536 @@
+{
+  "schema": "flowstate.i24_locks/1",
+  "created_at": "2026-10-08T02:13:05Z",
+  "label": "p14_b2_ref",
+  "scenario": "i24_replica_flow_rc_speedcal_dc_refit",
+  "config_hash": "909b89f298c5",
+  "seeds": [
+    6914975401685141156,
+    134183728835869882,
+    2378473973028931053,
+    3747978530954135749,
+    677105600768189526,
+    661281422688282993,
+    3011106312394044631,
+    6953598295321596746,
+    165503670820534583,
+    6134032994440706937,
+    8557154790156791364,
+    6538422657834023852,
+    6904272788004776631,
+    6143473282319009404,
+    3944094060050347669,
+    4910985839736976611,
+    7382187975121682178,
+    5690692725577505498,
+    887972120279483394,
+    8026499204807041784
+  ],
+  "battery_artifact": {
+    "path": "artifacts/i24_validation_p14_b2_ref.json",
+    "sha256": "88b93dbeb398ce4e1d43ed80e4e8880f4902e969264417e0ebde93e3a340b468",
+    "no_locks_row": {
+      "name": "no_locks",
+      "value": null,
+      "threshold": "no run locked (no queue standing without discharge for 10 min or more), every run recorded",
+      "passed": false,
+      "evaluated": false,
+      "detail": "not recorded: no per-run lock records supplied; FlowState internal standard (CLAUDE.md \u00a70.1; docs/I94_COLLAPSE_DIAGNOSIS.md \u00a77, 2026-10-07), not an FHWA or DOT criterion"
+    }
+  },
+  "source": {
+    "archive": "p14_final.tgz",
+    "archive_sha256": "53cf9405d53f2a978c744f4cbda47d9d605b2b40d3ea7fd2a2b1fced4a62ba68",
+    "run_tree": "runs/i24_validation/p14_b2_ref/909b89f298c5",
+    "files_read": {
+      "6914975401685141156": [
+        "edges.parquet",
+        "meta.json"
+      ],
+      "134183728835869882": [
+        "edges.parquet",
+        "meta.json"
+      ],
+      "2378473973028931053": [
+        "edges.parquet",
+        "meta.json"
+      ],
+      "3747978530954135749": [
+        "edges.parquet",
+        "meta.json"
+      ],
+      "677105600768189526": [
+        "edges.parquet",
+        "meta.json"
+      ],
+      "661281422688282993": [
+        "edges.parquet",
+        "meta.json"
+      ],
+      "3011106312394044631": [
+        "edges.parquet",
+        "meta.json"
+      ],
+      "6953598295321596746": [
+        "edges.parquet",
+        "meta.json"
+      ],
+      "165503670820534583": [
+        "edges.parquet",
+        "meta.json"
+      ],
+      "6134032994440706937": [
+        "edges.parquet",
+        "meta.json"
+      ],
+      "8557154790156791364": [
+        "edges.parquet",
+        "meta.json"
+      ],
+      "6538422657834023852": [
+        "edges.parquet",
+        "meta.json"
+      ],
+      "6904272788004776631": [
+        "edges.parquet",
+        "meta.json"
+      ],
+      "6143473282319009404": [
+        "edges.parquet",
+        "meta.json"
+      ],
+      "3944094060050347669": [
+        "edges.parquet",
+        "meta.json"
+      ],
+      "4910985839736976611": [
+        "edges.parquet",
+        "meta.json"
+      ],
+      "7382187975121682178": [
+        "edges.parquet",
+        "meta.json"
+      ],
+      "5690692725577505498": [
+        "edges.parquet",
+        "meta.json"
+      ],
+      "887972120279483394": [
+        "edges.parquet",
+        "meta.json"
+      ],
+      "8026499204807041784": [
+        "edges.parquet",
+        "meta.json"
+      ]
+    },
+    "never_read": "trajectories.parquet and every other member of the archive"
+  },
+  "code": {
+    "commit": "cd470a9",
+    "dirty": true,
+    "sha256": {
+      "scripts/i24_rescore_locks.py": "4ab9060e018b3ed4fc625f208e24479ef7828e1aeb50474b9265c710d21b1eee",
+      "packages/validation/validation/locks.py": "0a3441febe913b88d77d2cb2ad41c0118b3997413ecee038962197929a97e2bc",
+      "packages/validation/validation/criteria.py": "b2fd2673ad1bf38ce4a9e82a4fcb9776166dc7879799cc70b7486a2b9cd9c0a3",
+      "packages/validation/validation/battery.py": "0876ab41c15c675d67767492077226516970b954534eede4764e8aa19eaa4275"
+    }
+  },
+  "simulated": {
+    "locks_per_replicate": [
+      {
+        "locked": false,
+        "sources": [
+          "edges"
+        ],
+        "end_s": 7800.0,
+        "n_locks": 0,
+        "locks": []
+      },
+      {
+        "locked": false,
+        "sources": [
+          "edges"
+        ],
+        "end_s": 7800.0,
+        "n_locks": 0,
+        "locks": []
+      },
+      {
+        "locked": false,
+        "sources": [
+          "edges"
+        ],
+        "end_s": 7800.0,
+        "n_locks": 0,
+        "locks": []
+      },
+      {
+        "locked": false,
+        "sources": [
+          "edges"
+        ],
+        "end_s": 7800.0,
+        "n_locks": 0,
+        "locks": []
+      },
+      {
+        "locked": false,
+        "sources": [
+          "edges"
+        ],
+        "end_s": 7800.0,
+        "n_locks": 0,
+        "locks": []
+      },
+      {
+        "locked": false,
+        "sources": [
+          "edges"
+        ],
+        "end_s": 7800.0,
+        "n_locks": 0,
+        "locks": []
+      },
+      {
+        "locked": false,
+        "sources": [
+          "edges"
+        ],
+        "end_s": 7800.0,
+        "n_locks": 0,
+        "locks": []
+      },
+      {
+        "locked": false,
+        "sources": [
+          "edges"
+        ],
+        "end_s": 7800.0,
+        "n_locks": 0,
+        "locks": []
+      },
+      {
+        "locked": false,
+        "sources": [
+          "edges"
+        ],
+        "end_s": 7800.0,
+        "n_locks": 0,
+        "locks": []
+      },
+      {
+        "locked": false,
+        "sources": [
+          "edges"
+        ],
+        "end_s": 7800.0,
+        "n_locks": 0,
+        "locks": []
+      },
+      {
+        "locked": false,
+        "sources": [
+          "edges"
+        ],
+        "end_s": 7800.0,
+        "n_locks": 0,
+        "locks": []
+      },
+      {
+        "locked": false,
+        "sources": [
+          "edges"
+        ],
+        "end_s": 7800.0,
+        "n_locks": 0,
+        "locks": []
+      },
+      {
+        "locked": false,
+        "sources": [
+          "edges"
+        ],
+        "end_s": 7800.0,
+        "n_locks": 0,
+        "locks": []
+      },
+      {
+        "locked": false,
+        "sources": [
+          "edges"
+        ],
+        "end_s": 7800.0,
+        "n_locks": 0,
+        "locks": []
+      },
+      {
+        "locked": false,
+        "sources": [
+          "edges"
+        ],
+        "end_s": 7800.0,
+        "n_locks": 0,
+        "locks": []
+      },
+      {
+        "locked": false,
+        "sources": [
+          "edges"
+        ],
+        "end_s": 7800.0,
+        "n_locks": 0,
+        "locks": []
+      },
+      {
+        "locked": false,
+        "sources": [
+          "edges"
+        ],
+        "end_s": 7800.0,
+        "n_locks": 0,
+        "locks": []
+      },
+      {
+        "locked": false,
+        "sources": [
+          "edges"
+        ],
+        "end_s": 7800.0,
+        "n_locks": 0,
+        "locks": []
+      },
+      {
+        "locked": false,
+        "sources": [
+          "edges"
+        ],
+        "end_s": 7800.0,
+        "n_locks": 0,
+        "locks": []
+      },
+      {
+        "locked": false,
+        "sources": [
+          "edges"
+        ],
+        "end_s": 7800.0,
+        "n_locks": 0,
+        "locks": []
+      }
+    ]
+  },
+  "locks": {
+    "n_runs": 20,
+    "n_runs_recorded": 20,
+    "runs_not_recorded": [],
+    "n_runs_locked": 0,
+    "share_locked": {
+      "value": 0.0,
+      "lo95": 0.0,
+      "hi95": 0.16843347098308528,
+      "method": "Clopper-Pearson exact binomial, two-sided 95 %"
+    },
+    "runs_locked": [],
+    "by_section": [],
+    "sources": {
+      "edges": 20,
+      "vehicles": 0
+    },
+    "runs_partially_recorded": [],
+    "seeded_standstills": [],
+    "params": {
+      "min_duration_s": 600.0,
+      "max_flow_veh_s": 0.005,
+      "min_density_veh_m": 0.02,
+      "head_merge_distance_m": 300.0,
+      "section_distance_m": 250.0,
+      "section_tolerance_m": 1.0,
+      "end_empty_downstream_m": 100.0,
+      "end_queue_span_m": 200.0,
+      "end_queue_min_vehicles": 10,
+      "cross_upstream_m": 50.0,
+      "cross_downstream_m": 10.0
+    },
+    "definition": "validation.locks (docs/CONTRACTS.md, 'Locks'). A run locks when vehicles stand with zero discharge past a point for at least params.min_duration_s while vehicles are queued upstream of it. Space-time reader (edges.parquet): a 15 s x 100 m cell stands when its Edie density is at least params.min_density_veh_m and its flow at most params.max_flow_veh_s; a cell standing for min_duration_s is locked; in each bin the locked cells form standing queues (gaps under params.head_merge_distance_m bridged), followed from bin to bin by overlap; a queue joining one downstream before standing min_duration_s on its own is part of that lock; a lock's head is the most downstream cell its front reached; onset_s is its first locked bin, release_s the last locked bin of its last queue's cells (null: to the run's end). Run-end reader (vehicles.parquet): a vehicle in the network at the end with none within params.end_empty_downstream_m ahead and at least params.end_queue_min_vehicles within params.end_queue_span_m behind, past which no vehicle from upstream was last seen within min_duration_s of the end; onset_s is then an upper bound and duration_s a lower bound. section: the weave, merge or diverge whose gore (ramp attach_end_x_m) lies in [x_lo_m - params.section_tolerance_m, x_hi_m + params.section_distance_m]. n_trapped_in_network: vehicles in the network at the end, upstream of the head and bound past it; n_never_departed_upstream: vehicles of origins at or upstream of the head that never entered the network (any ordinary backlog of those origins included). A run with neither file is not recorded (locked null), never unlocked; a run with vehicles.parquet alone is partially recorded (runs_partially_recorded): a lock found there counts, but with none found locked is null, not false, since the run-end reader cannot see a lock released before the end. A standstill explained by a seeded disturbance (a lane closure or the seeded perturbation reaching the head, with less than min_duration_s of the standstill outside its time window) is listed in seeded_standstills, not as a lock. share_locked is the locked share of the recorded runs with its two-sided Clopper-Pearson interval (a lower bound when runs are partially recorded)."
+  },
+  "zero_locks": true,
+  "criteria": [
+    {
+      "name": "no_locks",
+      "value": 0.0,
+      "threshold": "no run locked (no queue standing without discharge for 10 min or more), every run recorded",
+      "passed": true,
+      "evaluated": true,
+      "detail": "no lock in 20 run(s); FlowState internal standard (CLAUDE.md \u00a70.1; docs/I94_COLLAPSE_DIAGNOSIS.md \u00a77, 2026-10-07), not an FHWA or DOT criterion"
+    }
+  ],
+  "standing_per_replicate": [
+    {
+      "n_standing_bins": 0,
+      "n_bins": 44720,
+      "longest_standing_s": 0.0,
+      "longest_x_lo_m": null,
+      "longest_t_start_s": null,
+      "lock_duration_s": 600.0
+    },
+    {
+      "n_standing_bins": 0,
+      "n_bins": 44720,
+      "longest_standing_s": 0.0,
+      "longest_x_lo_m": null,
+      "longest_t_start_s": null,
+      "lock_duration_s": 600.0
+    },
+    {
+      "n_standing_bins": 0,
+      "n_bins": 44720,
+      "longest_standing_s": 0.0,
+      "longest_x_lo_m": null,
+      "longest_t_start_s": null,
+      "lock_duration_s": 600.0
+    },
+    {
+      "n_standing_bins": 0,
+      "n_bins": 44720,
+      "longest_standing_s": 0.0,
+      "longest_x_lo_m": null,
+      "longest_t_start_s": null,
+      "lock_duration_s": 600.0
+    },
+    {
+      "n_standing_bins": 0,
+      "n_bins": 44720,
+      "longest_standing_s": 0.0,
+      "longest_x_lo_m": null,
+      "longest_t_start_s": null,
+      "lock_duration_s": 600.0
+    },
+    {
+      "n_standing_bins": 0,
+      "n_bins": 44720,
+      "longest_standing_s": 0.0,
+      "longest_x_lo_m": null,
+      "longest_t_start_s": null,
+      "lock_duration_s": 600.0
+    },
+    {
+      "n_standing_bins": 0,
+      "n_bins": 44720,
+      "longest_standing_s": 0.0,
+      "longest_x_lo_m": null,
+      "longest_t_start_s": null,
+      "lock_duration_s": 600.0
+    },
+    {
+      "n_standing_bins": 0,
+      "n_bins": 44720,
+      "longest_standing_s": 0.0,
+      "longest_x_lo_m": null,
+      "longest_t_start_s": null,
+      "lock_duration_s": 600.0
+    },
+    {
+      "n_standing_bins": 0,
+      "n_bins": 44720,
+      "longest_standing_s": 0.0,
+      "longest_x_lo_m": null,
+      "longest_t_start_s": null,
+      "lock_duration_s": 600.0
+    },
+    {
+      "n_standing_bins": 0,
+      "n_bins": 44720,
+      "longest_standing_s": 0.0,
+      "longest_x_lo_m": null,
+      "longest_t_start_s": null,
+      "lock_duration_s": 600.0
+    },
+    {
+      "n_standing_bins": 0,
+      "n_bins": 44720,
+      "longest_standing_s": 0.0,
+      "longest_x_lo_m": null,
+      "longest_t_start_s": null,
+      "lock_duration_s": 600.0
+    },
+    {
+      "n_standing_bins": 0,
+      "n_bins": 44720,
+      "longest_standing_s": 0.0,
+      "longest_x_lo_m": null,
+      "longest_t_start_s": null,
+      "lock_duration_s": 600.0
+    },
+    {
+      "n_standing_bins": 0,
+      "n_bins": 44720,
+      "longest_standing_s": 0.0,
+      "longest_x_lo_m": null,
+      "longest_t_start_s": null,
+      "lock_duration_s": 600.0
+    },
+    {
+      "n_standing_bins": 0,
+      "n_bins": 44720,
+      "longest_standing_s": 0.0,
+      "longest_x_lo_m": null,
+      "longest_t_start_s": null,
+      "lock_duration_s": 600.0
+    },
+    {
+      "n_standing_bins": 0,
+      "n_bins": 44720,
+      "longest_standing_s": 0.0,
+      "longest_x_lo_m": null,
+      "longest_t_start_s": null,
+      "lock_duration_s": 600.0
+    },
+    {
+      "n_standing_bins": 0,
+      "n_bins": 44720,
+      "longest_standing_s": 0.0,
+      "longest_x_lo_m": null,
+      "longest_t_start_s": null,
+      "lock_duration_s": 600.0
+    },
+    {
+      "n_standing_bins": 0,
+      "n_bins": 44720,
+      "longest_standing_s": 0.0,
+      "longest_x_lo_m": null,
+      "longest_t_start_s": null,
+      "lock_duration_s": 600.0
+    },
+    {
+      "n_standing_bins": 0,
+      "n_bins": 44720,
+      "longest_standing_s": 0.0,
+      "longest_x_lo_m": null,
+      "longest_t_start_s": null,
+      "lock_duration_s": 600.0
+    },
+    {
+      "n_standing_bins": 0,
+      "n_bins": 44720,
+      "longest_standing_s": 0.0,
+      "longest_x_lo_m": null,
+      "longest_t_start_s": null,
+      "lock_duration_s": 600.0
+    },
+    {
+      "n_standing_bins": 0,
+      "n_bins": 44720,
+      "longest_standing_s": 0.0,
+      "longest_x_lo_m": null,
+      "longest_t_start_s": null,
+      "lock_duration_s": 600.0
+    }
+  ],
+  "notes": [
+    "Re-scored from the archived run tree without simulating: each replicate's meta.json, edges.parquet and vehicles.parquet (where archived) read by validation.locks.detect_run_locks with its default thresholds; the committed battery artifact is not modified.",
+    "simulated.locks_per_replicate, locks and zero_locks are the keys scripts/i24_validate.py writes into a battery artifact since 2026-10-07; criteria holds the no_locks row those records score, battery_artifact.no_locks_row the committed row.",
+    "A replicate with edges.parquet is completely recorded; one with vehicles.parquet alone is partially recorded (no lock found there is not 'no lock'); one with neither is not recorded.",
+    "standing_per_replicate is a diagnostic, not a criterion: per seed (seed order), the bins of edges.parquet meeting the space-time reader's standing test at its default thresholds and the longest interval one cell stood without a break, against the lock duration; null without edges.parquet."
+  ]
+}
