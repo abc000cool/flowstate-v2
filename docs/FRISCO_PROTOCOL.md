@@ -416,7 +416,11 @@ replicates) no more than 1 percentage point below the reference arm's (0.987,
 `artifacts/i24_validation_flow_speedcal_ref.json`), i.e. at least 0.977; the
 backlog is reported for every arm.
 
-### Amendment 3 — 2026-10-07: PROPOSED, not adopted (the ramp-to-ramp share at a weave with no origin–destination count)
+### Amendment 3 — 2026-10-07: proposed; ADOPTED 2026-10-07 (the ramp-to-ramp share at a weave with no origin–destination count)
+
+*Adopted 2026-10-07 at 21:20 CDT by the coordinator under the owner's delegation, as proposed, with the
+additions and the pre-registered range round in "Adoption of Amendment 3" at the end of this file. The proposal
+below is unchanged.*
 
 Drafted by the coordinator during the owner's absence, while the fixture
 sensitivity of docs/TH52_CROSSING_SHARE.md §10 was running and before any of
@@ -602,3 +606,160 @@ artifacts/demand_scale_i24_flow.json --min-inserted 0.97 --min-inserted 0.98`. T
 
 A future amendment may pass `--min-inserted 0.98` to the refit stages (`p4_i24_refit`, `p7_i24_amax_wave`
 in `scripts/gcp/pipeline_i24.sh`). Those stages are unchanged.
+
+### Adoption of Amendment 3 — 2026-10-07, 21:20 CDT (the coordinator's decision under the owner's delegation)
+
+Decided by the coordinator, to whom the owner delegated the decision, before any corridor run that varies the
+share; the basis is the evidence of docs/DECISIONS_2026-10-07.md §A3. Amendment 3 is adopted as proposed: its
+range stands, from the proportional split P_w to 0.70, and nothing below the proportional split is sampled (no
+lower end is added). Adoption changes no verdict: the range was fixed before any run (docs/TH52_CROSSING_SHARE.md
+§5), and the gate is judged where it was.
+
+**What adoption fixes.**
+- **(a) An uncertain input.** The T.H.52 ramp-to-ramp share s = v_RR / v_ON (US 52 NB, `on-ramp 769818012`, to
+  exit 242B, `off-ramp 18207598`) is an uncertain input of every I-94 result, not a calibrated value. The Ruth St
+  weave stays at the proportional split and is listed as an unexamined split assumption (rule 3).
+- **(b) The gate is judged at the proportional split** (u = 0), as before: a fail stays a fail; a pass at u = 1
+  never counts; a pass that fails at u = 1 is reported as "not robust to the share". A T.H.52 shortfall is
+  described as "at the proportional split", not as a merge-model finding, while the range moves it.
+- **(c) The range reading beside every headline.** Once the round below has run, every I-94 result the T.H.52
+  section can move (C1, C3, C4, C6, collisions, locks, S790 and S97 flows) is reported at u = 0 with its u = 1
+  value beside it, labelled "range over the T.H.52 ramp-to-ramp share [proportional, 0.70], stated assumption".
+  Until then the limitations name the share and its range (rule 5).
+- **(d) No share is chosen.** No share in the range is selected, from the round or otherwise, except by a §7
+  amendment resting on route (a), (b) or (c) above, with results reported under both splits.
+
+**The range round, pre-registered now** (pre-registration P-A3 of docs/DECISIONS_2026-10-07.md §A3.3, fixed before
+any corridor run that varies the share; not run).
+1. **Prerequisite.** The per-window form of the key (rule 4, s_max = 0.70): s_w = P_w + u · (0.70 − P_w), clipped
+   to v_OFF,w / v_ON,w, the clipped windows counted in `meta.json["ramp_to_ramp_shares"]`, and byte-identical to
+   today's runs when unset (checked as W1b was). The round runs only after this form is built and tested. The
+   single-share key cannot serve: on the calibration-day inputs it refuses 0.70 in eight windows, 07:30–08:10
+   (lowest v_OFF / v_ON 0.36 at 07:50). The timing item of "What adoption needs" above (mainline vehicles windowed
+   at their departure, about 10 km upstream of the weave) is not decided by this adoption; the build states how it
+   windows them before the round launches.
+2. **Families.** F1 `mndot_i94_wb_stpaul_weave_xlsfg_dc_cal_w1b` (0d26de2a5f01, p10's arm A) and F2
+   `mndot_i94_wb_stpaul_weave_xlsfg_dc_cal_w1b_w2` (5080d84d4725, p10's arm B). Amendment 4 below is adopted, so
+   both run: F2 is the reference, and its u0 arm is Amendment 4's re-run of p10's arm B; F1 shows whether the
+   share's effect depends on W2, whose opposing-entry rule acts on the crossings the share removes (16,767 T.H.52
+   deferrals in p10).
+3. **Arms.** u0, u05 and u1 (u = 0, 0.5, 1) on the T.H.52 block only (Ruth St stays proportional, reported
+   unexamined), step 3's 20 seeds, paired. u0 re-runs the committed scenario; departed shares unequal to p10's are
+   reported. Expected on the calibration-day inputs [computed, not run]: s at 05:30–05:50 / 06:30–07:30 of
+   0.29 / 0.18, 0.50 / 0.44 and 0.70 / 0.70; 1,955, 1,282 and 609 crossers/h at 06:30–07:30; 0, 1 and 8 clipped
+   windows.
+4. **Readings.** S790 and S97 hourly flows and GEH; gate C1, C3, C4, C6; realised demand; collisions by section;
+   locks (`corridor_w1b.py`'s front-row reader beside `validation.locks`); given-up exits and W1b releases per
+   weave; crossings (`n_changed_in`, `n_changed_out`); realised share and clipped windows; per-lane hourly flows
+   at S790 and the gore from each battery's one kept trajectory (seed 6914975401685141156, read on the VM).
+   Contrasts against u0: paired t, 19 df.
+5. **Material** if at u1 against u0: (M1) S790 06:30–07:30 lower bound ≥ +100 veh/h (10 % of the 962 veh/h
+   shortfall; p9/p10 half-widths 17–19), mean realised demand at most 1 pp lower; or (M2) S790's or S97's GEH < 5
+   count differs by ≥ 5 of 20 seeds in any hour; or (M3) calibration-day C1 or C3, paired, interval wholly beyond
+   ±2 pp; or (M4) a collision or lock in one arm only. **Not material** if none holds and the S790 interval lies
+   within ±100 veh/h; otherwise **inconclusive**, and no seeds are added.
+6. **Never.** No share is chosen from the round; u05 shows shape only; every result is reported.
+7. **Cost** [estimate, from p10's batteries: 3,084 and 3,093 s on n2d-standard-16, scoring included]: about $2.0
+   per family at `--procs 10` (`--cap-min 240`); both families, about $3.9 (`--cap-min 420`).
+
+### Amendment 4 — 2026-10-07: weave rules W1b and W2 are part of the model (adopted, the coordinator's decision under the owner's delegation)
+
+Decided 2026-10-07 at 21:20 CDT by the coordinator, to whom the owner delegated the decision; the basis is the
+evidence of docs/DECISIONS_2026-10-07.md §A2. Written after the p9 and p10 rounds were read, including p10's failed
+clause CW5b (Ruth St releases 1.26 % against ≤ 1 %: 257 of 20,340 entrants, the same pooled share in both arms;
+docs/I94_CAL_COLLISIONS.md §16). p10's verdict, "W2 not adopted on this round", stays on record. This amendment
+re-reads no clause and moves no threshold: it adopts both rules with the release share disclosed as a standing cost.
+
+**Why.** W1b (docs/WEAVE_LOSS_DIAGNOSIS.md §10.2) releases the gore lock, minutes of standstill at the auxiliary
+lane's end that have no field counterpart: 3 of step 3's 20 I-94 replicates locked, none under W1b (p9). W2's three
+switches (docs/I94_CAL_COLLISIONS.md §13.2) each remove a command-layer artefact, not a driver behaviour: a one-step
+weave speed target held to `decel` by SUMO 1.27.1 (WP-95), a leader inside `minGap` read as a free road (WP-96), and
+same-step entries into one lane from opposite sides executed in order. On the stress fixtures they removed all four
+reproducing collisions. Neither rule is deliverable alone: W1b alone collided at T.H.52 (p10's arm A, failing C5),
+and W2 alone ends one fixture run (`th52_upstream_fleet`, seed 3) in the gore lock W1b releases. Neither seeds a
+disturbance (CLAUDE.md §0.2): both react to state at the gore.
+
+**Rule.**
+1. Every weaving section runs with `entrant_giveup_m` 5, `entrant_giveup_dwell_s` 60, and `weave_handback`,
+   `weave_close_leader` and `weave_resolve_opposing` at 1; never tuned per corridor (§7.4), never W2 without W1b.
+   This covers the I-94 families (`_dc_cal`, `_dc`) and every later corridor; the I-24 replica models no weaving
+   section (its merges are `lane_change`), so its arms are untouched.
+2. Every battery and report states each weave's W1b releases (`n_entrant_took_exit`) as a share of its entrance's
+   departures, pooled over seeds, beside `no_locks`, with W2's counters. A share above 1 % is listed in the report's
+   limitations; it is not a gate failure. With W1b on, the gore lock no longer fails `no_locks`; this share is the
+   reading that still shows it.
+3. Any of the five settings may be turned off only to reproduce a result published before this amendment, as
+   CLAUDE.md §3.3 allows for the AV command guards. Every published I-94 result except the rules' own rounds (p9's
+   `_dc_w1b`, p10's two arms) ran with both off: the phase-1 rehearsal, step 3's `_dc` gate (C1 61.8 %), the driver
+   grid, the netfix probe, p8's `_dc_cal*` batteries and the strategy rehearsals. Those results stand, and on I-94
+   the batteries with both off (step 3, p8) stay reported beside the results under this amendment.
+
+**Before the default flips in code.** Until both items below hold, the five settings stay unset (off) by default
+in `weave_params`, and a run under this amendment sets them in its scenario, as p10's arm B did. The flip moves the
+weave scenarios' config hashes, as WP-98's did; no scenario file is renamed.
+- (i) **A reproduction re-run of p10's arm B on the current code.** Arm B ran on 5516e05, before the veto-capture
+  fix (`_lc_mode_owned`, the third regression review). The capture cannot occur on I-94's geometry (the two gores
+  are about 5.4 km apart, beyond the 500-m vacate window; there is no measured zone; the scripted merges are
+  upstream), so the arm is expected to reproduce `artifacts/weave_w2_corridor.json` per seed; until it is re-run,
+  that is an inference. The u0 arm of Amendment 3's range round on F2 (above) serves as this re-run; it is read
+  against arm B per seed and every difference is reported.
+- (ii) **`validation.battery` and the report count W1b releases** per weave, as rule 2 states them.
+
+**Limits, stated in every report.** Neither rule is measured driver behaviour: neither 60 s nor 5 m is measured,
+nor whether real drivers take the exit after a minute (docs/WEAVE_LOSS_DIAGNOSIS.md §10.12), and at Ruth St the
+dwell also ends ordinary waits (5 of the first 6 fixture releases). In p10's arm B, W2 suspended undriven vehicles'
+own lane changing for a step 22,919 times (vetoes, Ruth St / T.H.52: 6,908 / 16,011). The deadlock's cause and
+T.H.52's 465 veh/h shortfall remain. The client report uses the wording of docs/DECISIONS_2026-10-07.md §A2.5.
+
+### Amendment 5 — 2026-10-07: ramp counts that carry mainline traffic (adopted provisionally, the coordinator's decision under the owner's delegation)
+
+Decided 2026-10-07 at 21:20 CDT by the coordinator, to whom the owner delegated the decision; the basis is the
+evidence of docs/DECISIONS_2026-10-07.md §A1. Written after the count check (stage p11) and the corridor rounds p13
+and p14 were read. B2's criteria R1–R5 were fixed before p13 (docs/I24_DISCHARGE_DIAGNOSIS.md §8.4.3) and hold on
+the calibrated arm (§8.4.4 there), so this adopts B2 by its own pre-registered rule; it makes no gate check pass.
+
+**Why.** Between 2,200 and 5,400 m the I-24 recording's counts do not conserve (−403 [−689, −135] veh/h at pooled
+coverage). Per-section coverage does not explain it (+294); removing the through traffic counted in ramp lanes does
+(−191 [−466, +68]) (`artifacts/i24_count_consistency.json`, `verdict`, `pairs[5]`). Vehicles in a mainline lane
+before an on-ramp count were already in the upstream mainline counts, so the builder inserted them twice. That is a
+ramp count failing its segment's mass balance, the case of §2.3, not a fitted demand level under §7.1.
+
+**Rule: §2.3 is extended.** Where trajectories show that vehicles counted in a ramp lane were in a mainline lane
+before an on-ramp count, or returned to one after an off-ramp count, those vehicles are subtracted from that ramp's
+count per 5-minute window, before coverage scaling: corrected = max(counted − flagged, 0). This is a §2
+data-quality step, not a §7 calibration change; it changes no target (the I-24 section targets 6,626 / 6,639 /
+6,009 veh/h stand). Reports state that the flags are lower bounds. Loop data carry no trajectories, so on a
+loop-detector corridor the part that applies is §2.3's mass-balance test.
+
+**On I-24.** The step is `scripts/i24_build_replica.py --ramp-through-traffic exclude` with
+`artifacts/i24_count_consistency.json` (sha256 ea403bcf…). Tracked crossings 06:30–08:30, counted → corrected: Old
+Hickory on 1,329 → 1,142 (−14.1 %), Hickory Hollow off 740 → 724 (−2.2 %), Hickory Hollow on 862 → 557 (−35.4 %),
+Bell Road off 406 → 382 (−5.9 %).
+- The calibrated-arm candidate becomes `i24_replica_flow_rc_speedcal_dc_refit` (909b89f298c5), replacing
+  `i24_replica_flow_speedcal_dc_refit` (ada3f406504b); the two differ only in name and ramp values. No file is
+  renamed: names enter the config hash, and the `_rc` headers record their bases' sha256.
+- `_dc_refit`'s results stay in the record, reported beside the candidate and labelled as built on uncorrected
+  counts, as change control requires.
+- Not adopted: B1, `…_rc_speedcal_dc_refit_b1` (fails A5) and `…_rc_speedcal_dc_refit2` (fails C2 and C3). The
+  published `speedcal` record (the penetration × compliance battery, cap sweep and controller probe on
+  `i24_replica_speedcal`; the VSL/ALINEA sweep on `i24_replica_flow_speedcal_ramps`) is unchanged; that it rests
+  on the uncorrected counts is a stated limitation.
+
+**Provisional.** The Old Hickory part of the correction (about 150 veh/h at pooled coverage) lies outside the span
+the conservation test covers, so its sign rests on the flag alone; it is revertible pending the Old Hickory flag
+audit or external counts. If either contradicts a ramp's correction in sign, that ramp reverts and the arm is
+re-read against R1–R5.
+
+**Not validation.** The candidate still fails the full gate on its 20-seed battery
+(`artifacts/i24_validation_dc_refit_rc.json`): hourly GEH < 5 on 30.6 % of comparisons against ≥ 85 %, 5-min
+segment-speed RMSPE 0.343 against ≤ 15 %, and the wave row fails. It is one morning with no holdout, the same data
+corrected and scored: a calibration candidate, not a validated arm.
+
+**Pre-registered follow-ups**, each with its rule fixed before its run:
+1. B2 on the k = 0 congested arm (`i24_replica_flow_speedcal` → `_rc`), read by R1–R5 with the wave half binding
+   (B2 has run only on k = 1 arms, which fail the wave row).
+2. A data-only audit of the Old Hickory flags: the lateral position and duration of each flagged fragment's
+   lanes-1–4 samples, with the rule fixed first.
+3. B5, the insertion-aware demand fit, on the `_rc` family, read by C1–C5 (docs/I24_DISCHARGE_DIAGNOSIS.md §8.4.5).
+4. A diagnosis of the hourly GEH shortfall on `_rc`.
+5. External ramp counts (TDOT radar counts for 30 Nov 2022, not in hand; docs/ROADMAP.md §6, item 7).

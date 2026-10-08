@@ -1070,6 +1070,18 @@ A5 on the canonical arm) and this round, it is the natural next run, with the FH
 (the flags are lower bounds, §8.4.3); the wave row fails on both arms, so R5's wave half does not bind; the
 reference's R3 reading is reported, not gating.
 
+**Adopted provisionally — 2026-10-07, 21:20 CDT** (docs/FRISCO_PROTOCOL.md Amendment 5; docs/DECISIONS_2026-10-07.md
+§A1; the coordinator's decision under the owner's delegation, on the evidence of this round and §8.4.6). B2 is
+adopted as a ramp-count correction under protocol §2.3, not §7.1, and the B2 arm `i24_replica_flow_rc_speedcal_dc_refit`
+(909b89f298c5) is the I-24 calibrated-arm candidate in place of `i24_replica_flow_speedcal_dc_refit` (ada3f406504b); no
+file is renamed. The Old Hickory correction is revertible pending the flag audit or external counts; the arm still
+fails the gate above and is not validation. **The `_dc_refit` numbers in the record were built on uncorrected ramp
+counts:** the CHANGELOG's 2.6.0 "Step 3" entry (I-24 refit: GEH < 5 share 25.7 %, RMSPE 33.3 %, realised demand
+0.921, peak sections about 6,030 veh/h), docs/PAPER_DRAFT.md (§5.7's driver-calibration table, claim 57), §8.4.2's
+model-against-targets reading here, and p12's `_dc_refit` + B1 arm (§8.3.1). They stay correct for those inputs and
+are reported beside the candidate. docs/PAPER_DRAFT.md also still describes B2 as not run (§5.8, §8.1, §8.2,
+limitation 21); its correction is a follow-up.
+
 #### 8.4.5 Proposed round p14 — B1 + B2 and the demand re-sequence
 
 *Proposed, not adopted, not run. Written 2026-10-07 after §8.3.1 and §8.4.4 and before any run of this round; the
