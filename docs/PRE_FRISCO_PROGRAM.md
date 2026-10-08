@@ -21,6 +21,8 @@ owner's.
 
 ---
 
+**Status — 2026-10-08: B2 on the k = 0 arm run** (p25, code f0f76c2; I24_DISCHARGE_DIAGNOSIS §8.4.7 "Run"). The wave half held (16.13 km/h); R4 (GEH 10.65 / 10.98) and R5's speeds (RMSPE 0.417 against 0.250) failed. B2 does not hold on k = 0, which stays on the uncorrected counts; the k = 1 candidate is unchanged. About $0.5–0.7 [estimate]. Nothing adopted. With the corrected counts neither population matches both flows and speeds.
+
 **Status — 2026-10-08: Amendment 3's range round run** (p24, code 466193f; docs/A3_RANGE_ROUND.md §8; FRISCO_PROTOCOL "Adoption of Amendment 3", "Run"). Material in both families: at u = 1 against u = 0, S790 06:30 +700.7 [668.8, 732.6] veh/h, calibration-day C1 36.1 → 79.4 %, C3 38.3 → 73.0 % (F2); the gate fails at both ends and no share is chosen. F2's u0 reproduced p10's arm B in 20 of 20 seeds: Amendment 4 (i) holds and the W1b/W2 defaults stand (Amendment 4, "Resolved"). About $2.7 [estimate]. Open: the range reading for I-94 arms not run at u = 1 (D10's, B5's). p24 is not in the schedule table; it ran on a Central slot.
 
 ## B5 — a demand fitter whose objective sees insertion

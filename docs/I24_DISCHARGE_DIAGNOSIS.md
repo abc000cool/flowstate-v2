@@ -1530,6 +1530,93 @@ scripts/gcp/launch_i24_pipeline.sh --vm flowstate-p25 --machine n2d-standard-16 
 - I-24 has no weaving section, so Amendment 4's weave defaults do not act on these runs. Their hashes moved by the
   policy version alone, and the reference re-run checks this.
 
+##### Run — 2026-10-08 (stage p25_i24_b2_k0, 16:34–17:11 UTC, one n2-standard-16 in us-east1-b, self-deleted)
+
+*Written 2026-10-08, 12:26 CDT, after the run, from the readout and the files it names; the text above is the
+pre-registration, unchanged. Nothing is adopted.*
+
+**Provenance.** Readout `artifacts/boundary_b2_k0_corridor.json`: `problems` empty, policy 4, `code` f0f76c2 (its six
+`code_sha256` entries equal those files at f0f76c2 and at f0551e7; `code_dirty_paths` empty; `vm_snapshot` f32192a is
+the VM's snapshot commit, not in the repository). Batteries `artifacts/i24_validation_flow_speedcal_p25ref.json` (the
+same-code reference, 5a8e079c4bfa) and `…_rc.json` (the B2 arm, 9030f087e0af; fa9eb07d549b under policy 3, as
+pre-registered); ramp flows `artifacts/i24_b2_ramp_flows_flow_speedcal_{p25ref,rc}.json` and braking counts
+`artifacts/i24_hard_braking_flow_speedcal_{p25ref,rc}.json`, each naming its battery's hash and seeds; the arm
+`scenarios/i24_replica_flow_rc_speedcal.yaml`. Stage time 2,200 s (simulation 1,028 / 818 s). The launch line above
+names n2d-standard-16; N2D capacity was refused in us-east1 and us-central1 (no VM created), so it ran on
+n2-standard-16. About $0.5–0.7 [estimate]. Checked at f0551e7, $0: the harness's `arm` rewrites the arm byte for byte
+from committed files, and its `score` reproduces every readout field but `code`, `vm_snapshot` and `created_at`.
+
+**The reproduction.** All ten `reference_reproduces_committed` checks are true: config hash (5a8e079c4bfa under policy
+4 is the committed ae5861a4d906 under policy 3, one scenario file), scenario, seeds, per-replicate counts, realised
+fractions, collisions, per-replicate segment speeds, standard and stripe fronts, every criteria row but `no_locks`,
+and the observed side. Both batteries ran step 3's seeds (`same_seeds_as_step3` true), paired. Each arm: 0 of 20
+replicates locked, no breakdown replicate (minimum realised 0.9771 / 0.9821).
+
+| # | reference (re-run) | B2 arm; paired B2 − reference [95 %] | verdict |
+|---|---|---|---|
+| R1 collisions | 0 in 20 | 0 in 20 | pass |
+| R2 realised share | 0.9868 | 0.9890; +0.0022 [−0.0002, +0.0047] | pass (Amendment 2's one-point reading too) |
+| R3 ramp GEH, corrected counts (OH on / HH off / HH on / Bell off) | 2.27 / 2.47 / 8.24 / 1.35 (reported) | 2.13 / 3.05 / 1.79 / 2.95 | pass |
+| R4 2-h GEH at 2,200 / 3,200 m (targets 6,626 / 6,639) | 9.83 / 10.37 (5,849.6 / 5,820.7 veh/h) | **10.65 / 10.98** (5,787.4 / 5,774.0); −62.2 [−90.5, −33.9] / −46.6 [−75.7, −17.6] | **fail** |
+| R5 wave half (binding) | passes, 15.89 km/h | passes, 16.13 km/h | pass |
+| R5 15-min segment-speed RMSPE (bound 0.2503) | 0.2303 | **0.4166** | **fail** |
+
+Reported, not gating: backward fronts per replicate 7.3 → 25.9 standard (+18.6 [16.2, 21.0]), 105.1 → 107.7 stripe
+(+2.6 [−4.7, 9.9]); steps below −8.9 m/s² 11 → 14 in 20 runs; gate rows: link flows 21.5 % on both (31 of 144 bins),
+5-min speed RMSPE 0.372 → 0.608, wave row passes on both.
+
+**§8.4.7's predictions, scored.**
+- *Ramp changes* (planned −14.0 % / −35.5 %): modelled Old Hickory 985.0 → 851.9 veh/h (−13.5 %), Hickory Hollow on
+  633.7 → 405.9 (−36.0 %); the on-ramps' planned GEH 1.92 / 1.50 became 2.13 / 1.79 as delivered. Held.
+- *R4 close to mechanical:* the peak flows fell, so R4 failed. The arm delivered 97.8 % / 97.5 % of its 5,919.3 veh/h
+  planned supply there against the 98.8 % / 98.3 % R4 needed (reference 96.5 % / 96.1 % of 6,059.5) [computed]: over
+  2 h the k = 0 peak sections read supply-limited. "No outcome within GEH 5": held.
+- *R5 at risk if the congestion goes:* borne out on speeds, not on the wave row. The one-seed probe (Old Hickory × 0.75)
+  gave 48.7 km/h in the first segment, RMSPE 0.446 and peak flows 5,686 / 5,672; B2 gave 42.8 km/h, 0.417 and
+  5,787 / 5,774, between the probe's arm and that variant.
+
+**Reading, by the rule fixed above.** Other criteria fail while the wave half holds: B2 is not adoptable on the k = 0
+arm by its own rule (R4 and R5's speed half fail). The k = 0 arm stays on the uncorrected counts as recorded. B2's
+provisional adoption on the k = 1 candidate is not re-read; its R1–R5 were read on that arm (§8.4.4). The wave-fail
+branch did not fire, so the record's k = 0 wave pass (docs/I24_VALIDATION.md §0.1, §0.10) needs no label for the
+double-counted ramp traffic.
+
+**What happened physically** [computed from the batteries' `segment_speeds_ms_*` and `counts_per_replicate`; not in
+the readout]. The upstream congestion freed partly, as the probe predicted, and the corridor beyond it freed too:
+- All ten 549-m segments ran faster than the reference (paired +3.2 to +14.5 km/h, every interval above zero) and
+  than the recording (35.4–47.4 km/h against 29.0–37.7; reference 26.7–40.4); the first at 42.8 against 36.3 observed
+  and 34.5 reference. The largest rises, +14.5 / +14.1 km/h, are at 3.8–4.9 km, around the Hickory Hollow on-ramp
+  (4,600 m), whose planned flow fell most.
+- The recording's congested second hour is not reproduced: second-hour segment speeds 31.4–45.0 km/h against
+  25.7–33.4 observed (reference 23.9–37.2).
+- Flow fell at every section downstream of Old Hickory (1,000 m −90 [−116, −64], 4,800 m −191 [−216, −166], 5,400 m
+  −154 [−177, −132] veh/h; 200 m +16 [−1, +33]). At 2,200 / 3,200 m the 2-h loss nets a first-hour gain (+91 [48, 134]
+  / +126 [77, 174]) and a second-hour loss (−215 [−252, −178] / −219 [−254, −184]): consistent with a first hour
+  throttled by the reference's congestion and a second hour carrying the smaller demand.
+
+**What it shows, and what not.** On the k = 0 population the corrected counts free the corridor, and speeds and peak
+flows move away from the recording. On the k = 1 population (p13, §8.4.4) the same correction brought the peak
+sections within GEH 5 (3.86 / 4.63), but that arm, like every k = 1 arm, fails the wave row. At the demand levels
+carried, neither population reproduces peak flows, speeds and emergent waves together on corrected counts. Not shown:
+any adoption; anything about A1 or Amendment 5 (the count check's mass balance, §8.4.2, is not tested here); the k = 0
+level on corrected inputs (s = 0.800 is carried; B5 refit the level only on k = 1's `rcs`, §8.4.9).
+
+**For the I-24 candidate.** It stays `i24_replica_flow_rc_speedcal_dc_refit` (909b89f298c5), failing the gate and the
+wave row. Switching population does not close the gap: B6's screen admits only k = 0 pairs
+(`artifacts/driver_joint_screen_i24.json`; at j = 0, k = 0's unstable band starts at 28.18 veh/km/lane, k = 1's at
+39.72, against a capacity density of 29.16), and k = 0 on corrected counts loses flows and speeds. That points past
+the drivers' `a_max` and the ramp counts, to items the record already names, none pre-registered here: lane-set
+scoring at 1,000 and 4,800 m (a hidden 628 veh/h shortfall at 4,800 m on k = 1; docs/I24_GEH_DIAGNOSIS.md §7.1,
+docs/I24_CONSISTENCY_C7B.md §11); the 72-m map offset (docs/I24_CONSISTENCY_C7B.md §9, cause not established); queue
+discharge at the downstream end and its boundary representation (§8.1; B1 not adopted, §8.3.1; docs/MERGE_MODEL.md,
+"Gate C"); merge behaviour at the Old Hickory gore (§8.2; the measured merge model not accepted, docs/MERGE_MODEL.md).
+The k = 0 level on corrected inputs is also untested.
+
+**Limits.** One recorded morning, no holdout, the same data corrected and scored: not validation. s = 0.800 was
+fitted on uncorrected inputs and carried. The flags are lower bounds. The physical reading uses replicate-mean speed
+fields and 5-min counts, not trajectories, and counts every lane at 1,000 and 4,800 m (docs/I24_GEH_DIAGNOSIS.md
+§7.1). The probe is one seed on the code of 2026-09-17 and moved Old Hickory alone. R4 is a 2-h peak-section reading.
+
 #### 8.4.8 C7b round (p23) — 2026-10-08
 
 Stage `p23_c7b` (04:18–06:31 UTC, code 8ea59ec, policy 4); readout `artifacts/i24_consistency_c7b.json`, written up in

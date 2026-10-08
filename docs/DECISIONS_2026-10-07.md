@@ -175,7 +175,7 @@ Adopt B2 provisionally, then run B5, by this amendment to docs/FRISCO_PROTOCOL.m
 - correct docs/PAPER_DRAFT.md, which says neither correction has run.
 
 **Pre-register:**
-1. B2 on the k = 0 arm (`flow_speedcal` → `_rc`), read by R1–R5 with the wave half binding.
+1. B2 on the k = 0 arm (`flow_speedcal` → `_rc`), read by R1–R5 with the wave half binding. **Run — 2026-10-08** (stage p25, code f0f76c2; docs/I24_DISCHARGE_DIAGNOSIS.md §8.4.7, "Run"): held R1–R3 and the binding wave half (16.13 km/h, in 14–22) but failed R4 (2-h GEH 10.65 / 10.98 against 9.83 / 10.37) and R5's speed half (15-min RMSPE 0.417 against 0.250). By the fixed rule B2 is not adoptable on k = 0, which stays on the uncorrected counts; this decision (B2 on the k = 1 candidate) is not re-read.
 2. A data-only audit of the Old Hickory flags: the lateral position and duration of each flagged fragment's lanes-1–4 samples, with the rule fixed first.
 3. B5 on `_rc`, read by C1–C5.
 4. A diagnosis of the hourly GEH shortfall on `_rc`.
