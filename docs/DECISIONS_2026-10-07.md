@@ -5,6 +5,8 @@ evidence, and each is recorded in the dated **Decision** paragraph under its mem
 otherwise unchanged. The protocol text is in docs/FRISCO_PROTOCOL.md: "Adoption of Amendment 3", Amendment 4
 (W1b and W2) and Amendment 5 (B2).*
 
+*Reading notes — 2026-10-08.* Every config hash quoted in these memos is a policy-v3 hash (the policy of 2026-10-07 before 8ea59ec); `flowstate_core.config.config_hash_v3` reproduces it, and docs/CONTRACTS.md §2 "Policy v4" gives the current one (B2 arm 909b89f298c5 → 7082bcea5442). §A3.3's stage name `p15_i94_a3_share` collided with B5's p15; the round was built as `p24_i94_a3` (docs/A3_RANGE_ROUND.md).
+
 ## A2 — Adopt W1b and W2?
 
 **Decision — 2026-10-07, 21:20 CDT.** Adopted: W1b and W2 together, on by default at every weaving section, never

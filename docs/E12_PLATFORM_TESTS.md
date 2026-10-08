@@ -527,3 +527,7 @@ show `0 OUTCOME DIFFERS`:
   `xpassed` labels, which now read `passed`.
 
 The probe files should compare as in §7.3 on Linux, and as `identical` on macOS.
+
+## 8. Confirmed on CI — 2026-10-08
+
+Workflow run 37733321865 on main at 466193f (both runners, three runs each; artifacts archived with the block's records): macOS `8 passed, 11 xfailed` and Linux `5 passed, 14 xfailed` in every run, every pytest exit 0, no xpass, no non-strict mark. This meets E12's criteria: identical outcomes in three consecutive runs per platform, every mark strict, and no assertion, threshold, golden or hash changed. Only darwin-arm64 and linux-x86_64 are measured; the marks key on `sys.platform`, so a Linux arm64 host is held to the x86_64 outcome and an Intel Mac to the arm64 one (§7).

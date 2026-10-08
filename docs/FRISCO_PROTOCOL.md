@@ -715,6 +715,8 @@ T.H.52's 465 veh/h shortfall remain. The client report uses the wording of docs/
 
 **Implemented — 2026-10-07.** The five keys are defaults of every weaving section (`WEAVE_AMENDMENT4_DEFAULTS`; docs/CONTRACTS.md §2 "Policy v4" and the dated section "Weave rules W1b and W2 on by default"): config-hash policy version 4, every hash moved once, `config_hash_v3` reproduces the version-3 hashes this protocol's rounds p9–p14 quote. W2 on with W1b off is refused by name. The committed weave scenarios that set none of the keys (10) or only W1b's (2) now run both rules; p9's and p10's arm A reproduce only with `WEAVE_AMENDMENT4_OFF` (all five keys 0), allowed for reproduction alone. Every battery and report states the W1b release share per weave beside `no_locks` (status REPORTED, never gating; above 1 % flagged). No corridor battery has yet run under the defaults; the first is Amendment 3's range round (stage p24) or D10's p16, whichever launches first, and its release share is read against CW5b's 1 % as a disclosed cost, not a criterion.
 
+**Deviation recorded — 2026-10-08, 01:05 CDT (the coordinator).** The code default flipped on 2026-10-07 (8ea59ec) before item (i) of "Before the default flips in code" held: the reproduction re-run of p10's arm B on the current code has not run (item (ii), the release counts in every battery and report, holds since the same commit). That re-run is Amendment 3's range round's F2 u0 arm (stage `p24_i94_a3`, built 2026-10-08, to launch next on the I-94 slot); it is read against arm B (`artifacts/validation_mndot_i94_wb_stpaul_weave_xlsfg_dc_cal_w1b_w2.json`, `weave_w2_corridor.json`) per seed and every difference is reported. Until it has run, every I-94 result produced under the defaults (stage p16, D10, running at this writing) is labelled "Amendment 4 defaults; the reproduction re-run of p10's arm B is pending" in its readout and report. If the re-run does not reproduce arm B within the per-seed reading, the five keys revert to unset defaults (a further hash-policy version), the results produced under the defaults stay reported under their label, and the amendment's adoption is re-read by the owner. The flip was not a decision to skip (i): it was an error of sequence by the coordinator, found by the short-paper draft's cross-check (docs/PAPER_SHORT.md), and is recorded here rather than undone because reverting would move every hash a second time before the re-run can settle it.
+
 ### Amendment 5 — 2026-10-07: ramp counts that carry mainline traffic (adopted provisionally, the coordinator's decision under the owner's delegation)
 
 Decided 2026-10-07 at 21:20 CDT by the coordinator, to whom the owner delegated the decision; the basis is the
@@ -791,6 +793,10 @@ not more than a third below the reference's. At most two pairs reach stage 3, th
 all k = 0. Every pair with k > 0 is stable at its own capacity density. The nearest miss is k = 0.25, j = −2:
 33.87 against 33.27 veh/km. The Stop rule fires: no `a_max` gain on this grid is compatible with §3.1 at
 T 1.06–1.58 s. What passes moves T alone, which is Amendment 1's objection, and S2 is one-sided. Nothing launched.
+
+### Amendment 8 — reserved (C8, the timing fit; no text)
+
+Number reserved by docs/PRE_FRISCO_PROGRAM.md for C8. C7's fixed rule did not select C8 (docs/I24_GEH_DIAGNOSIS.md), so no amendment was written; the number stays reserved so the program's references resolve. The amendments below are numbered in the order they were proposed, not the order of this file.
 
 ### Amendment 9 — 2026-10-07: a day already used to calibrate stays in calibration; CIRCLES test-fleet days are events (approved by the coordinator under the owner's delegation, before any new day's file was read)
 

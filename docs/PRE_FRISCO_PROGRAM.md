@@ -15,7 +15,7 @@ with `scripts/gcp/launch_i24_pipeline.sh --machine n2d-standard-16 --self-delete
 --via-bucket --cap-min N` from a pushed commit; the owner approves each launch.
 
 **Common rules.** 20 seeds = `spawn_seeds(42, 20)`. Zero collisions in every run
-(protocol C5). No lock = no seed's departed share below 0.8 of the battery median
+(protocol C5). No lock = no queue standing without discharge for 10 min or more in any replicate (`validation.locks`, the rule every battery records since 2026-10-07, b50211d); a seed whose realised demand falls below 0.9 while the battery's mean stays at or above 0.95 is a report-only *breakdown* (the coordinator's reading below), not a lock. (Superseded wording, 2026-10-08: "no seed's departed share below 0.8 of the battery median".)
 (§9.5). A failed criterion is reported, never re-thresholded. Adoption is the
 owner's.
 
@@ -394,6 +394,8 @@ reasons carry both platforms' numbers.
 
 **Cost.** $0. **Frisco.** A laptop pass means a CI pass. **Risk.** Option (a)
 needs colima on the 16 GB laptop with nothing else running.
+
+**Status 2026-10-08.** E12 is complete. Steps 1–2 (3856257) and step 3 (466193f): the 19 platform-sensitive tests, every mark strict, per platform where the outcome depends on it (option (b): on every probed fixture SUMO 1.27.1's own state diverged first between arm64 macOS and x86_64 Linux, the runner's commands still identical; docs/E12_PLATFORM_TESTS.md §7). Confirmed on CI run 37733321865 at 466193f: macOS 8 passed / 11 xfailed and Linux 5 passed / 14 xfailed, identical in three consecutive runs on each runner, no xpass, no non-strict mark; the laptop matches the macOS runner at every step. The criteria (identical outcomes in three runs per platform; every mark strict; no assertion, threshold, golden or hash changed) hold. Finding: fixture-built configs hash by checkout path (absolute OSM paths); committed scenarios are unaffected.
 
 ## E13 — one merge model, a validation report, a concise paper (item 23)
 
