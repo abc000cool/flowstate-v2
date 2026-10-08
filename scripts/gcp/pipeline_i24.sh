@@ -33,8 +33,12 @@
 #
 # Usage on the VM (from the repo root, under systemd-run so it survives logout):
 #   scripts/gcp/pipeline_i24.sh [--procs N] [--no-shutdown] [--quick] [--stages "name name ..."]
+#       [--p15-arm FROM:BASE:LABEL[:SCALE]] [--p17-arm STEM]
 # --stages runs only the named stages (the others are skipped as not selected); the
-# committed artifacts and scenarios stand in for the skipped ones.
+# committed artifacts and scenarios stand in for the skipped ones. --p15-arm names stage p15_i24_b5's from-arm
+# (scenarios/FROM.yaml, its base scenarios/BASE.yaml, its battery artifacts/i24_validation_LABEL.json, its level
+# when not the p4 fit's 0.925; default the B2 arm), --p17-arm stage p17_i94_b5's (scenarios/STEM.yaml, the arm
+# D10's rule selects; default mndot_i94_wb_stpaul_weave_dc_cal_w1b_w2).
 set -u
 cd "$(dirname "$0")/../.."
 export PATH="$HOME/.local/bin:$PATH"
@@ -48,6 +52,8 @@ STAGES=""
 DIAG_SEED=677105600768189526   # the seed the mndot_weave_seed5 stage maps (VM L default)
 DIAG_REPS=5                    # its spawn index + 1: the battery runs the first DIAG_REPS replicates
 DIAG_WEAVE_PARAMS=""            # e.g. exit_prepare=1.0[,k=v]: the map runs a copy of the weave scenario with these weave_params
+P15_ARM_ARG=""                  # stage p15_i24_b5's from-arm (--p15-arm FROM:BASE:LABEL[:SCALE]); empty: the B2 arm
+P17_ARM_ARG=""                  # stage p17_i94_b5's from-arm stem (--p17-arm); empty: its default
 while [ $# -gt 0 ]; do
   case "$1" in
     --procs) PROCS="$2"; shift 2 ;;
@@ -57,6 +63,8 @@ while [ $# -gt 0 ]; do
     --diag-seed) DIAG_SEED="$2"; shift 2 ;;
     --diag-reps) DIAG_REPS="$2"; shift 2 ;;
     --diag-weave-params) DIAG_WEAVE_PARAMS="$2"; shift 2 ;;
+    --p15-arm) P15_ARM_ARG="$2"; shift 2 ;;
+    --p17-arm) P17_ARM_ARG="$2"; shift 2 ;;
     *) echo "unknown argument: $1" >&2; exit 2 ;;
   esac
 done
@@ -148,6 +156,10 @@ make_archive() {  # make_archive light|full [tries] — atomic replace of $ARCHI
   # evaluate re-reads with the ramp-flow reductions (artifacts/i24_b2_ramp_flows_p14_*.json); never trajectories or
   # vehicles.parquet
   extra="$extra $(ls runs/i24_validation/p14_*/*/*/meta.json runs/i24_validation/p14_*/*/*/edges.parquet runs/i24_validation/p14_*/hard_braking.json 2>/dev/null | tr '\n' ' ')"
+  # stage p15's battery (runs/i24_validation/p15_*/<config hash>/<seed>/): the same files as p12's and p14's, never
+  # trajectories or vehicles.parquet. Stage p17's fit runs (runs/mndot_i94_b5_fit/<factor>/<hash>/<seed>/) ride with the
+  # runs/mndot_* line above; here its pair manifest and the per-factor scenario files the runs were made from
+  extra="$extra $(ls runs/i24_validation/p15_*/*/*/meta.json runs/i24_validation/p15_*/*/*/edges.parquet runs/i24_validation/p15_*/hard_braking.json runs/mndot_i94_b5_fit/PAIRS.json runs/mndot_i94_b5_fit/scenarios/*.yaml 2>/dev/null | tr '\n' ' ')"
   # shellcheck disable=SC2086
   if tar czf "$ARCHIVE.part" --exclude=net artifacts/*.json scenarios/*.yaml logs $extra 2>/dev/null; then
     mv -f "$ARCHIVE.part" "$ARCHIVE"; ARCHIVE_FRESH=1
@@ -1891,6 +1903,145 @@ p14_steps() {
 }
 if echo " $STAGES " | grep -q " p14_i24_b1b2 "; then
   stage p14_i24_b1b2 p14_steps || say "p14_i24_b1b2 failed; continuing"
+fi
+
+# p15 (opt-in; docs/PRE_FRISCO_PROGRAM.md B5, I-24; not in the default list; needs the launcher's default --data-set i24:
+#     the battery's observed side checks the recording's hash). The demand level refit by docs/FRISCO_PROTOCOL.md
+#     Amendment 6 (approved by the coordinator 2026-10-07, before any run; PROPOSED, not adopted): link-flow GEH as the
+#     objective under the insertion constraint, then the chosen arm's battery read by §8.4.5's C1-C5 against its
+#     from-arm (docs/I24_DISCHARGE_DIAGNOSIS.md). The from-arm is --p15-arm FROM:BASE:LABEL[:SCALE] (the plan's
+#     schedule change of 2026-10-07 runs C7b first and lets its fixed rule select the arm), by default the B2 arm
+#     i24_replica_flow_rc_speedcal_dc_refit:i24_replica_flow_rc_corrected_dc:dc_refit_rc. Steps, every value fixed
+#     in the plan:
+#     1. scripts/fit_demand_level.py --corridor i24 on that arm. The default: the B2 arm
+#        scenarios/i24_replica_flow_rc_speedcal_dc_refit.yaml (909b89f298c5 under hash policy 3), checked to be its base
+#        scenarios/i24_replica_flow_rc_corrected_dc.yaml (219f7db55a74) x the carried s = 0.925; constraint: the mean
+#        inserted fraction over the fit seeds >= the from-arm battery's realised share (artifacts/i24_validation_dc_
+#        refit_rc.json, 0.9666) - 0.01; objective: the criterion row's (section, 5-min) bins of 06:30-07:30 against
+#        hourly_flows_veh_h_recommended on the five seeds' mean flow, ties to the smaller mean GEH, then the smaller
+#        change from 0.925; five seeds per scale (the battery's first five); coarse 0.6-1.1 by 0.1 (30 runs), then
+#        +-2 x 0.025 around the coarse round's constrained choice (20 runs), plus one run of the from-arm on the first
+#        seed that must reproduce the from-arm battery's first replicate. The runs are the I-24 fitter's own
+#        (scripts/i24_fit_demand_scale.py _job), at most 8 at once: each reads its 2-h trajectory in-process, as the
+#        battery's analysis does at --analysis-procs 8 on this machine (stages p12-p14); 14 at once is untested.
+#        Writes artifacts/demand_level_fit_i24.json and scenarios/FROM_b5.yaml (default
+#        scenarios/i24_replica_flow_rc_speedcal_dc_refit_b5.yaml, named the same). Exit 3 =
+#        constraint_unmet (no scale inserts enough): no scenario, the stage stops here and fails (B5's stop rule; the
+#        fit artifact is archived); exit 2 = an input is not what the plan names: nothing is run.
+#     2. one 20-seed battery of the chosen arm through stage p12's path (p12_battery: scripts/i24_validate.py, 20
+#        replicates on spawn_seeds(42, 20), the 20-seed ring rows, --analysis-procs 8; hard_braking.py before p4_prune),
+#        label p15_b5; then the ramp-flow reduction (harness_b2/corridor_b2.py reduce), as in p14;
+#     3. the readout artifacts/pre_frisco_2026-10-07/harness_b5/demand_level_readout.py i24 ->
+#        artifacts/demand_level_i24.json: the fit's per-scale, per-seed readings, its re-derivation by
+#        calibration.demand_level, and C1-C5 against the committed from-arm battery on the same seeds (exit 3 when a
+#        problem blocks the reading: the stage fails, the archive stands).
+#     Resumable: the fit (logs/p15_fit_FROM.ok with its artifact and scenario) and the battery (logs/p15_b5.battery.ok) are
+#     not repeated. Everything it writes is artifacts/*.json or scenarios/*.yaml; the run tree runs/i24_validation/
+#     p15_b5/ rides in every archive as meta.json, edges.parquet and hard_braking.json (never trajectories).
+#     Cost on n2d-standard-16 (16 vCPU, 64 GB; $PROCS = 14) [estimate]: the fit's 51 single-seed runs took 135-650 s
+#     each in p14's fit at 6 at once (artifacts/demand_scale_i24_flow_rc.json wall_s; longer at higher scales): about
+#     25-30 min for the coarse round and 20-25 min for the refine at 8 at once; the battery about 25-27 min (p13:
+#     1,522 s) plus about 7 min of braking counts and the reduce: about 80-90 min of stage time, about 95-100 min billed
+#     with boot, setup and the I-24 data through the bucket: about $1.2-1.3 at about $0.78/h (disk and bucket cents
+#     extra). --cap-min 180 bounds it at about $2.3.
+#       scripts/gcp/launch_i24_pipeline.sh --vm flowstate-p15 --machine n2d-standard-16 \
+#         --zone us-east1-b,us-east1-c,us-east1-d --bucket gs://<bucket>/p15 \
+#         --self-delete --via-bucket --data-set i24 --cap-min 180 --pipeline-args '--stages "p15_i24_b5"'
+#     (on the arm C7b selects: --pipeline-args '--stages "p15_i24_b5" --p15-arm FROM:BASE:LABEL[:SCALE]')
+P15_FIT=artifacts/demand_level_fit_i24.json
+IFS=: read -r P15_FROM P15_BASE P15_FROM_LABEL P15_CARRIED <<< \
+  "${P15_ARM_ARG:-i24_replica_flow_rc_speedcal_dc_refit:i24_replica_flow_rc_corrected_dc:dc_refit_rc}"
+P15_SCN="scenarios/${P15_FROM}_b5.yaml"
+P15_LABEL=p15_b5
+P15_H=artifacts/pre_frisco_2026-10-07/harness_b5/demand_level_readout.py
+P15_FIT_PROCS=$(( PROCS < 8 ? PROCS : 8 ))
+b5_fit() {  # b5_fit <stage> <marker> <fit artifact> <scenario> <fit args...>: the B5 fit once; non-zero stops the stage
+  local st="$1" ok="$2" fit="$3" scn="$4" frc
+  shift 4
+  if [ -f "$ok" ] && [ -f "$fit" ] && [ -f "$scn" ]; then say "$st: the fit was done earlier ($fit), not repeated"; return 0; fi
+  $RUN scripts/fit_demand_level.py "$@" --write-scenario --out "$fit" --scenario-out "$scn"; frc=$?
+  case "$frc" in
+    0) touch "$ok"; return 0 ;;
+    3) say "$st: constraint_unmet (no scale's mean inserted fraction reaches the floor): the fit stops, no battery (B5's stop rule; $fit)" ;;
+    2) say "$st: the fit refused its inputs (one is not what the plan names); nothing run" ;;
+    *) say "$st: the fit failed (exit $frc); no battery" ;;
+  esac
+  return 1
+}
+p15_steps() {
+  local rc=0 f
+  local -a carried=()
+  [ -n "$P15_CARRIED" ] && carried=(--carried-scale "$P15_CARRIED")
+  for f in "scenarios/$P15_FROM.yaml" "scenarios/$P15_BASE.yaml" "artifacts/i24_validation_$P15_FROM_LABEL.json"; do
+    [ -f "$f" ] || { say "p15: no $f; nothing run"; return 1; }
+  done
+  say "p15: the from-arm is scenarios/$P15_FROM.yaml (base scenarios/$P15_BASE.yaml, battery artifacts/i24_validation_$P15_FROM_LABEL.json${P15_CARRIED:+, level $P15_CARRIED})"
+  # ${carried[@]+...}: an empty array under set -u (bash 3.2 calls it unbound)
+  b5_fit p15 "logs/p15_fit_$P15_FROM.ok" "$P15_FIT" "$P15_SCN" --corridor i24 --procs "$P15_FIT_PROCS" \
+      --from-scenario "scenarios/$P15_FROM.yaml" --base-yaml "scenarios/$P15_BASE.yaml" \
+      --from-battery "artifacts/i24_validation_$P15_FROM_LABEL.json" ${carried[@]+"${carried[@]}"} || return 1
+  p12_battery "$P15_LABEL" "$P15_SCN" || rc=1
+  if [ -f "artifacts/i24_validation_$P15_LABEL.json" ]; then
+    $RUN "$P13_H" reduce --battery "artifacts/i24_validation_$P15_LABEL.json" --out "artifacts/i24_b2_ramp_flows_$P15_LABEL.json" \
+      || { say "p15: ramp flows of $P15_LABEL failed"; rc=1; }
+  fi
+  $RUN "$P15_H" i24 --out artifacts/demand_level_i24.json --fit "$P15_FIT" --label "$P15_LABEL" \
+    || { say "p15: the readout failed or is blocked (artifacts/demand_level_i24.json says why)"; rc=1; }
+  return $rc
+}
+if echo " $STAGES " | grep -q " p15_i24_b5 "; then
+  stage p15_i24_b5 p15_steps || say "p15_i24_b5 failed; continuing"
+fi
+
+# p17 (opt-in; docs/PRE_FRISCO_PROGRAM.md B5, I-94; not in the default list; needs no data set, every input is tracked:
+#     launch with --data-set none). Amendment 6's fit on I-94, then stage p8's battery, gate and gated report of the
+#     chosen arm, read by C1-C5 plus the no-lock check against its from-arm. The from-arm is the arm D10's rule selects
+#     (docs/PRE_FRISCO_PROGRAM.md D10, fixed before its run: _rbc if it holds, else _rb, else the reference), passed to
+#     the pipeline as --p17-arm STEM (scenarios/STEM.yaml; default mndot_i94_wb_stpaul_weave_dc_cal_w1b_w2, the
+#     reference); its battery is artifacts/validation_<its name>.json and its gate artifacts/baseline_gate_<its name>.json,
+#     both committed before the launch (the fit refuses without its battery). Steps:
+#     1. scripts/fit_demand_level.py --corridor i94: one corridor-wide factor f on the mainline and every on-ramp inflow
+#        (f = 1 is the from-arm's document exactly), grid 0.95-1.05 by 0.025, which must lie inside the data-quality
+#        artifact's count error (artifacts/p1_rehearsal_2026-10-04/dq/data_quality.json parameters.count_error, 0.05;
+#        refused otherwise); constraint: the mean inserted fraction over the fit seeds >= the from-arm battery's
+#        insertion.mean_departed_fraction - 0.01; objective: the calibration-day station-hours of C1 (hours anchored
+#        at the study period's start), every seed's pooled; five seeds per factor (the battery's first five): 25
+#        four-hour runs plus one run of the from-arm on the first seed that must reproduce its battery's first
+#        replicate, at $PROCS at once (pass --procs 10 on n2d-standard-16, as p8 and p10), scored by the battery's own
+#        scorer in a memory-planned pool, trajectories pruned after scoring. Run tree runs/mndot_i94_b5_fit/ (every
+#        run's meta.json, metrics.json, observed_scores.json and vehicles.parquet ride in every archive). Writes
+#        artifacts/demand_level_fit_i94.json and scenarios/STEM_b5.yaml (name <the from-arm's name>_b5). Exit 3 =
+#        constraint_unmet: the stage stops and fails; exit 2 = refused: nothing run. Resumable: a finished or scored
+#        fit run is not repeated, and the fit as a whole not once logs/p17_fit_STEM.ok exists.
+#     2. p8_one STEM_b5: the 20-seed four-hour battery on the calibration-day observations (profile fhwa_tat3_2004),
+#        scripts/baseline_gate.py on both day sets with the per-day validation table, and the gated report;
+#     3. the readout demand_level_readout.py i94 -> artifacts/demand_level_i94.json: C1 zero collisions, C2 realised
+#        share >= from-arm - 0.01, C3 the gate's calibration-day C1 not below the from-arm's, C4 its calibration-day C3
+#        <= from-arm + 0.02, C5 its C4 unchanged where the from-arm passes, NL no seed's departed share below 0.8 of the
+#        battery median (§9.5); the gate's C1-C4 and C6 on both day sets reported (exit 3 when a problem blocks it).
+#     Cost on n2d-standard-16 at --procs 10 [estimate]: p10's four-hour batteries took 3,084 and 3,093 s here, scoring
+#     included (20 runs, two waves): the fit's 26 runs in three waves plus their scoring about 75-90 min, the battery
+#     about 52-60 min, gate and gated report about 4 min: about 130-155 min of stage time, about 145-167 min billed with
+#     boot and setup: about $1.9-2.2 at about $0.78/h. --cap-min 300 bounds it at about $3.9.
+#       scripts/gcp/launch_i24_pipeline.sh --vm flowstate-p17 --machine n2d-standard-16 \
+#         --zone us-central1-a,us-central1-b,us-central1-c --bucket gs://<bucket>/p17 \
+#         --self-delete --via-bucket --data-set none --cap-min 300 \
+#         --pipeline-args '--procs 10 --stages "p17_i94_b5" --p17-arm mndot_i94_wb_stpaul_weave_dc_cal_w1b_w2'
+P17_ARM="${P17_ARM_ARG:-mndot_i94_wb_stpaul_weave_dc_cal_w1b_w2}"
+P17_FIT=artifacts/demand_level_fit_i94.json
+p17_steps() {
+  local rc=0 scn="scenarios/$P17_ARM.yaml" out_stem="${P17_ARM}_b5"
+  [ -f "$scn" ] || { say "p17: no from-arm scenario $scn; nothing run"; return 1; }
+  say "p17: the from-arm is $scn"
+  b5_fit p17 "logs/p17_fit_$P17_ARM.ok" "$P17_FIT" "scenarios/$out_stem.yaml" \
+      --corridor i94 --from-scenario "$scn" --procs "$PROCS" || return 1
+  p8_one "$out_stem" || rc=1
+  $RUN "$P15_H" i94 --out artifacts/demand_level_i94.json --fit "$P17_FIT" \
+    || { say "p17: the readout failed or is blocked (artifacts/demand_level_i94.json says why)"; rc=1; }
+  return $rc
+}
+if echo " $STAGES " | grep -q " p17_i94_b5 "; then
+  stage p17_i94_b5 p17_steps || say "p17_i94_b5 failed; continuing"
 fi
 # 9. Done marker; the EXIT trap builds the final archives (light, then full with the first-seed replicates).
 echo "PIPELINE_DONE $(date -u +%FT%TZ)" > logs/PIPELINE_DONE

@@ -28,9 +28,12 @@ cp -R "$TMP"/logs/. logs/pipeline_vm/ 2>/dev/null || true
 # score re-reads: the archive carries at most the first seed's vehicles.parquet) and boundary_b2_corridor.json
 # (2026-10-07 review: the reductions, inputs and demand were dropped). Stage p14 (B1 + B2, the demand re-sequence)
 # writes its batteries (i24_validation_p14_*), their reductions (i24_b2_ramp_flows_p14_*, taken by the line above),
-# the re-sequence's fit (demand_scale_i24_flow_rc[_b1].json) and boundary_b1b2_corridor.json
+# the re-sequence's fit (demand_scale_i24_flow_rc[_b1].json) and boundary_b1b2_corridor.json. Stages p15 / p17 (B5)
+# write the fits (demand_level_fit_{i24,i94}.json), the readouts (demand_level_{i24,i94}.json), p15's battery
+# (i24_validation_p15_*) and its reduction (taken by i24_b2_ramp_flows_*), and p17's battery, gate and gated report
+# (validation_mndot_*, baseline_gate_*_b5.json)
 for f in "$TMP"/artifacts/*.json; do [ -f "$f" ] || continue; b=$(basename "$f"); case "$b" in
-  i24_validation_zip_*|i24_validation_flow_*|i24_validation_tracked.json|i24_validation_corrected.json|i24_validation_speedcal.json|i24_validation_ramps.json|i24_validation_speedcal_heavy.json|us101_validation_calibrated.json|i24_merge_experiment_zipper_jm.json|i24_merge_experiment_scripted.json|i24_merge_experiment_entryflow.json|i24_merge_experiment_ohlevel.json|i24_merge_experiment_heavylanes.json|demand_scale_i24_zip.json|demand_scale_i24_flow.json|i24_boundary_ramps_fit_zip.json|i24_boundary_ramps_fit_flow.json|i24_replica_inputs_zip.json|i24_replica_inputs_flow.json|demand_i24_zip.json|demand_i24_flow.json|i24_cap_sweep_summary.json|i24_sweep_summary.json|i24_merge_experiment_mergefleet.json|idm_i24_merge.json|idm_i24_capacity_equilibrium.json|validation_mndot_*|sweep_mndot_*|i24_lane_change_gaps.json|i24_critical_gaps.json|lane_change_relaxation_*|coverage_thinning_*|sweep_*_hb_summary.json|sweep_*_cc_summary.json|collisions_*_hb.json|collisions_*_cc.json|sweep_*_wp96*_summary.json|collisions_*_wp96*.json|i24_validation_dc*.json|validation_*_dc*.json|baseline_gate_*_dc.json|baseline_gate_*_dc_cal*.json|demand_scale_*_dc.json|i94_netfix_probe.json|merge_anticipation_i24.json|weave_w1b_corridor.json|i94_cal_collisions_trace.json|i24_count_consistency.json|weave_w2_corridor.json|i24_validation_p12_*.json|boundary_b1_corridor.json|boundary_b2_corridor.json|i24_b2_ramp_flows_*.json|i24_replica_inputs_flow_rc.json|demand_i24_flow_rc.json|i24_validation_p14_*.json|boundary_b1b2_corridor.json|demand_scale_i24_flow_rc.json|demand_scale_i24_flow_rc_b1.json)
+  i24_validation_zip_*|i24_validation_flow_*|i24_validation_tracked.json|i24_validation_corrected.json|i24_validation_speedcal.json|i24_validation_ramps.json|i24_validation_speedcal_heavy.json|us101_validation_calibrated.json|i24_merge_experiment_zipper_jm.json|i24_merge_experiment_scripted.json|i24_merge_experiment_entryflow.json|i24_merge_experiment_ohlevel.json|i24_merge_experiment_heavylanes.json|demand_scale_i24_zip.json|demand_scale_i24_flow.json|i24_boundary_ramps_fit_zip.json|i24_boundary_ramps_fit_flow.json|i24_replica_inputs_zip.json|i24_replica_inputs_flow.json|demand_i24_zip.json|demand_i24_flow.json|i24_cap_sweep_summary.json|i24_sweep_summary.json|i24_merge_experiment_mergefleet.json|idm_i24_merge.json|idm_i24_capacity_equilibrium.json|validation_mndot_*|sweep_mndot_*|i24_lane_change_gaps.json|i24_critical_gaps.json|lane_change_relaxation_*|coverage_thinning_*|sweep_*_hb_summary.json|sweep_*_cc_summary.json|collisions_*_hb.json|collisions_*_cc.json|sweep_*_wp96*_summary.json|collisions_*_wp96*.json|i24_validation_dc*.json|validation_*_dc*.json|baseline_gate_*_dc.json|baseline_gate_*_dc_cal*.json|demand_scale_*_dc.json|i94_netfix_probe.json|merge_anticipation_i24.json|weave_w1b_corridor.json|i94_cal_collisions_trace.json|i24_count_consistency.json|weave_w2_corridor.json|i24_validation_p12_*.json|boundary_b1_corridor.json|boundary_b2_corridor.json|i24_b2_ramp_flows_*.json|i24_replica_inputs_flow_rc.json|demand_i24_flow_rc.json|i24_validation_p14_*.json|boundary_b1b2_corridor.json|demand_scale_i24_flow_rc.json|demand_scale_i24_flow_rc_b1.json|demand_level_fit_i24.json|demand_level_fit_i94.json|demand_level_i24.json|demand_level_i94.json|i24_validation_p15_*.json|baseline_gate_*_b5.json)
     cp "$f" artifacts/"$b"; echo "artifact $b" ;;
   *)  # not on the list: say so when it is new or differs from the repository's copy (2026-10-07 review: stage 23's
       # calibrated batteries and gate were dropped without a word)
@@ -42,12 +45,13 @@ esac; done
 # p8's *_dc_cal*, p9's W1b copy *_dc_w1b; 2026-10-07 review: the W1b copy its battery names was dropped). Stage
 # p13's rc scenarios fall under i24_replica_flow*.yaml (i24_replica_flow_rc{,_corrected,_corrected_dc,
 # _speedcal_dc_refit}.yaml), and so do stage p14's (i24_replica_flow_rc_speedcal_dc_refit_b1, _rc_corrected_dc_b1,
-# _rc_speedcal_dc_refit2[_b1]). Any other scenario that is new or differs from the repository's copy is named, as the
-# artifacts are.
+# _rc_speedcal_dc_refit2[_b1]); stage p15's arm (i24_replica_flow_rc_speedcal_dc_b5) too, and stage p17's
+# (<from-arm stem>_b5.yaml, by the *_b5.yaml case whatever D10's arm is). Any other scenario that is new or differs from
+# the repository's copy is named, as the artifacts are.
 ingested_scenario() {
   case "$1" in
     i24_replica_zip*.yaml|i24_replica_flow*.yaml|*_hb.yaml|us101_replica_boundary_*.yaml|*_wp96f.yaml|*_wp96fh.yaml) return 0 ;;
-    *_dc.yaml|*_dc_*.yaml) return 0 ;;
+    *_dc.yaml|*_dc_*.yaml|*_b5.yaml) return 0 ;;
   esac
   return 1
 }
@@ -86,6 +90,8 @@ for d in "$TMP"/runs/i24_validation/dc*; do [ -d "$d" ] && rsync -a "$d/" "runs/
 for d in "$TMP"/runs/i24_validation/p12_*; do [ -d "$d" ] && rsync -a "$d/" "runs/i24_validation/$(basename "$d")/" && echo "runs: i24_validation/$(basename "$d")"; done
 # stage p14's batteries (the same files as p12's)
 for d in "$TMP"/runs/i24_validation/p14_*; do [ -d "$d" ] && rsync -a "$d/" "runs/i24_validation/$(basename "$d")/" && echo "runs: i24_validation/$(basename "$d")"; done
+# stage p15's battery (the same files as p12's); stage p17's fit runs and battery are runs/mndot_* trees, taken above
+for d in "$TMP"/runs/i24_validation/p15_*; do [ -d "$d" ] && rsync -a "$d/" "runs/i24_validation/$(basename "$d")/" && echo "runs: i24_validation/$(basename "$d")"; done
 for arm in tracked corrected speedcal ramps; do [ -d "$TMP/runs/i24_validation/$arm" ] && rsync -a "$TMP/runs/i24_validation/$arm/" "runs/i24_validation/$arm/" && echo "runs: $arm"; done
 [ -d "$TMP/runs/m3_us101" ] && rsync -a "$TMP/runs/m3_us101/" runs/m3_us101/ && echo "runs: m3_us101"
 rm -rf "$TMP"
