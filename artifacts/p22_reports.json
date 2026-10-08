@@ -1,0 +1,338 @@
+{
+  "schema": "flowstate.p22_reports/1",
+  "stage": "p22_reports",
+  "created_at": "2026-10-08T17:16:25Z",
+  "code": "f0551e7a873c4a84bf22cd3eb79a1b48a7d91b8a",
+  "checkout_head": "ca1cf7c7fac1b0ec5e311c974a724fd95cc617a6",
+  "seed": 6914975401685141156,
+  "config_hash_version": 4,
+  "max_figure_bytes": 300000,
+  "repro_rel_tol": 1e-09,
+  "definition": "per arm: the report's tables are read from the committed battery artifact (all of its replicates); its figures come from one replicate (seed) re-run with its trajectories; reproduction compares that replicate's recorded values with the battery's record of the same seed (identical: bit for bit after the artifact's JSON round trip; reproduces: identical, or floating-point values within repro_rel_tol)",
+  "complete": true,
+  "arms": [
+    {
+      "label": "e13_i24_b2",
+      "kind": "i24",
+      "status": "written",
+      "battery": "artifacts/i24_validation_dc_refit_rc_p23.json",
+      "battery_sha256": "14771142d57bcefb888f27620e7b3db652ce51d8f5d6f2861996ac9352cdbf1b",
+      "scenario": "scenarios/i24_replica_flow_rc_speedcal_dc_refit.yaml",
+      "scenario_file": "scenarios/i24_replica_flow_rc_speedcal_dc_refit.yaml",
+      "scenario_sha256": "f5d59576a0e39daaf4cd0daeb60a697dc8261873cbdddb855f99a21af43b8ddb",
+      "config_hash_battery": "7082bcea5442",
+      "config_hash_today": "7082bcea5442",
+      "hash_policy": "v4",
+      "seed": 6914975401685141156,
+      "tables_from": "artifacts/i24_validation_dc_refit_rc_p23.json",
+      "figures_from": "replicate 6914975401685141156",
+      "figure_runs": [
+        "runs/p22/e13_i24_b2/7082bcea5442/6914975401685141156"
+      ],
+      "figure_run_meta": {
+        "config_hash": "7082bcea5442",
+        "seed": "6914975401685141156",
+        "wall_time_s": 469.01193341699997,
+        "n_collisions": 0,
+        "versions": {
+          "python": "3.12.15",
+          "numpy": "2.5.2",
+          "pandas": "3.0.5",
+          "pyarrow": "25.0.1",
+          "eclipse-sumo": "1.27.1",
+          "libsumo": "1.27.1",
+          "flowstate_core": "2.0.0",
+          "microsim": "2.0.0"
+        }
+      },
+      "reproduction": {
+        "checked": true,
+        "identical": true,
+        "reproduces": true,
+        "compared": [
+          "ramps",
+          "demand_realized_fraction",
+          "n_collisions"
+        ],
+        "inexact": [],
+        "differences": [],
+        "rel_tol": 1e-09,
+        "reason": ""
+      },
+      "report": "docs/reports/e13_i24_b2/report.md",
+      "pdf": "docs/reports/e13_i24_b2/report.pdf",
+      "figures": [
+        {
+          "path": "docs/reports/e13_i24_b2/figures/speed_contour_00_seed_6914975401685141156.png",
+          "bytes_rendered": 189588,
+          "bytes": 189588,
+          "downsampled": false,
+          "scale": 1.0
+        },
+        {
+          "path": "docs/reports/e13_i24_b2/figures/observed_vs_simulated_seed_6914975401685141156.png",
+          "bytes_rendered": 120241,
+          "bytes": 120241,
+          "downsampled": false,
+          "scale": 1.0
+        }
+      ]
+    },
+    {
+      "label": "e13_i24_b5",
+      "kind": "i24",
+      "status": "written",
+      "battery": "artifacts/i24_validation_p15_b5.json",
+      "battery_sha256": "a437997dc7649683c4be383672eaa1251f96ac8811af7c573cf17e4c665e66dc",
+      "scenario": "scenarios/i24_replica_flow_rcs_speedcal_dc_refit_b5.yaml",
+      "scenario_file": "scenarios/i24_replica_flow_rcs_speedcal_dc_refit_b5.yaml",
+      "scenario_sha256": "f3a51cb0343b8f4649c6968c62fa64f5a1edfa9aecaedf4b7752dec2b99eef1e",
+      "config_hash_battery": "ef355b83cc00",
+      "config_hash_today": "ef355b83cc00",
+      "hash_policy": "v4",
+      "seed": 6914975401685141156,
+      "tables_from": "artifacts/i24_validation_p15_b5.json",
+      "figures_from": "replicate 6914975401685141156",
+      "figure_runs": [
+        "runs/p22/e13_i24_b5/ef355b83cc00/6914975401685141156"
+      ],
+      "figure_run_meta": {
+        "config_hash": "ef355b83cc00",
+        "seed": "6914975401685141156",
+        "wall_time_s": 451.769169265,
+        "n_collisions": 0,
+        "versions": {
+          "python": "3.12.15",
+          "numpy": "2.5.2",
+          "pandas": "3.0.5",
+          "pyarrow": "25.0.1",
+          "eclipse-sumo": "1.27.1",
+          "libsumo": "1.27.1",
+          "flowstate_core": "2.0.0",
+          "microsim": "2.0.0"
+        }
+      },
+      "reproduction": {
+        "checked": true,
+        "identical": true,
+        "reproduces": true,
+        "compared": [
+          "ramps",
+          "demand_realized_fraction",
+          "n_collisions"
+        ],
+        "inexact": [],
+        "differences": [],
+        "rel_tol": 1e-09,
+        "reason": ""
+      },
+      "report": "docs/reports/e13_i24_b5/report.md",
+      "pdf": "docs/reports/e13_i24_b5/report.pdf",
+      "figures": [
+        {
+          "path": "docs/reports/e13_i24_b5/figures/speed_contour_00_seed_6914975401685141156.png",
+          "bytes_rendered": 189251,
+          "bytes": 189251,
+          "downsampled": false,
+          "scale": 1.0
+        },
+        {
+          "path": "docs/reports/e13_i24_b5/figures/observed_vs_simulated_seed_6914975401685141156.png",
+          "bytes_rendered": 120245,
+          "bytes": 120245,
+          "downsampled": false,
+          "scale": 1.0
+        }
+      ]
+    },
+    {
+      "label": "e13_i94_rbc",
+      "kind": "corridor",
+      "status": "written",
+      "battery": "artifacts/validation_mndot_i94_wb_stpaul_weave_xlsfg_dc_cal_w1b_w2_rbc_gated.json",
+      "battery_sha256": "951dc6b75443878964bf988740e3e3330ef63cd3e7a528444cc6a814bfb9e6fb",
+      "scenario": "scenarios/mndot_i94_wb_stpaul_weave_dc_cal_w1b_w2_rbc.yaml",
+      "scenario_file": "scenarios/mndot_i94_wb_stpaul_weave_dc_cal_w1b_w2_rbc.yaml",
+      "scenario_sha256": "d9eae2e7b164793a70cf46994ff770043748a9111ca402d92e4eea0b6414cc1a",
+      "config_hash_battery": "ad158ff561b1",
+      "config_hash_today": "ad158ff561b1",
+      "hash_policy": "v4",
+      "seed": 6914975401685141156,
+      "tables_from": "artifacts/validation_mndot_i94_wb_stpaul_weave_xlsfg_dc_cal_w1b_w2_rbc_gated.json",
+      "figures_from": "replicate 6914975401685141156",
+      "figure_runs": [
+        "runs/p22/e13_i94_rbc/ad158ff561b1/6914975401685141156"
+      ],
+      "figure_run_meta": {
+        "config_hash": "ad158ff561b1",
+        "seed": "6914975401685141156",
+        "wall_time_s": 978.082020938,
+        "n_collisions": 0,
+        "versions": {
+          "python": "3.12.15",
+          "numpy": "2.5.2",
+          "pandas": "3.0.5",
+          "pyarrow": "25.0.1",
+          "eclipse-sumo": "1.27.1",
+          "libsumo": "1.27.1",
+          "flowstate_core": "2.0.0",
+          "microsim": "2.0.0"
+        }
+      },
+      "reproduction": {
+        "checked": true,
+        "identical": true,
+        "reproduces": true,
+        "compared": [
+          "insertion",
+          "n_collisions",
+          "weave_releases"
+        ],
+        "inexact": [],
+        "differences": [],
+        "rel_tol": 1e-09,
+        "reason": ""
+      },
+      "report": "docs/reports/e13_i94_rbc/report.md",
+      "pdf": "docs/reports/e13_i94_rbc/report.pdf",
+      "figures": [
+        {
+          "path": "docs/reports/e13_i94_rbc/figures/speed_contour_00_seed_6914975401685141156.png",
+          "bytes_rendered": 251346,
+          "bytes": 251346,
+          "downsampled": false,
+          "scale": 1.0
+        }
+      ]
+    },
+    {
+      "label": "e13_i94_b5",
+      "kind": "corridor",
+      "status": "written",
+      "battery": "artifacts/validation_mndot_i94_wb_stpaul_weave_xlsfg_dc_cal_w1b_w2_rbc_b5_gated.json",
+      "battery_sha256": "26c03f83170b91041482f7f5a2592ae81300aad227d678c604aa00a57c93cf35",
+      "scenario": "scenarios/mndot_i94_wb_stpaul_weave_dc_cal_w1b_w2_rbc_b5.yaml",
+      "scenario_file": "scenarios/mndot_i94_wb_stpaul_weave_dc_cal_w1b_w2_rbc_b5.yaml",
+      "scenario_sha256": "947e6141e1f679a61193388b8fa223c531d3a770a90a2d9a3bf3dbab433a273c",
+      "config_hash_battery": "bd00fbaba89a",
+      "config_hash_today": "bd00fbaba89a",
+      "hash_policy": "v4",
+      "seed": 6914975401685141156,
+      "tables_from": "artifacts/validation_mndot_i94_wb_stpaul_weave_xlsfg_dc_cal_w1b_w2_rbc_b5_gated.json",
+      "figures_from": "replicate 6914975401685141156",
+      "figure_runs": [
+        "runs/p22/e13_i94_b5/bd00fbaba89a/6914975401685141156"
+      ],
+      "figure_run_meta": {
+        "config_hash": "bd00fbaba89a",
+        "seed": "6914975401685141156",
+        "wall_time_s": 653.5088530849999,
+        "n_collisions": 0,
+        "versions": {
+          "python": "3.12.15",
+          "numpy": "2.5.2",
+          "pandas": "3.0.5",
+          "pyarrow": "25.0.1",
+          "eclipse-sumo": "1.27.1",
+          "libsumo": "1.27.1",
+          "flowstate_core": "2.0.0",
+          "microsim": "2.0.0"
+        }
+      },
+      "reproduction": {
+        "checked": true,
+        "identical": true,
+        "reproduces": true,
+        "compared": [
+          "insertion",
+          "n_collisions",
+          "weave_releases"
+        ],
+        "inexact": [],
+        "differences": [],
+        "rel_tol": 1e-09,
+        "reason": ""
+      },
+      "report": "docs/reports/e13_i94_b5/report.md",
+      "pdf": "docs/reports/e13_i94_b5/report.pdf",
+      "figures": [
+        {
+          "path": "docs/reports/e13_i94_b5/figures/speed_contour_00_seed_6914975401685141156.png",
+          "bytes_rendered": 241629,
+          "bytes": 241629,
+          "downsampled": false,
+          "scale": 1.0
+        }
+      ]
+    },
+    {
+      "label": "e13_ring",
+      "kind": "ring",
+      "status": "written",
+      "battery": "artifacts/i24_validation_dc_refit_rc.json",
+      "battery_sha256": "9b40c583edd129629446e1c606fabda8be5a49a19123cb741f04d87ea7162be3",
+      "scenario": "ring_sugiyama",
+      "scenario_file": "scenarios/ring_sugiyama.yaml",
+      "scenario_sha256": "61094aaabef80528d464c2a96df996d20b607e2a8471d2de3c6418dbd6ae60b2",
+      "config_hash_battery": [
+        "d5472987265c",
+        "148959d59786"
+      ],
+      "config_hash_today": [
+        "258c09ac0074",
+        "58a2c186d609"
+      ],
+      "hash_policy": [
+        "v3",
+        "v3"
+      ],
+      "seed": 6914975401685141156,
+      "tables_from": "artifacts/i24_validation_dc_refit_rc.json",
+      "figures_from": "replicate 6914975401685141156",
+      "figure_runs": [
+        "runs/p22/e13_ring/258c09ac0074/6914975401685141156",
+        "runs/p22/e13_ring/58a2c186d609/6914975401685141156"
+      ],
+      "figure_run_meta": {
+        "config_hash": "258c09ac0074",
+        "seed": "6914975401685141156",
+        "wall_time_s": 0.4610687589999998,
+        "n_collisions": 0,
+        "versions": {
+          "python": "3.12.15",
+          "numpy": "2.5.2",
+          "pandas": "3.0.5",
+          "pyarrow": "25.0.1",
+          "eclipse-sumo": "1.27.1",
+          "libsumo": "1.27.1",
+          "flowstate_core": "2.0.0",
+          "microsim": "2.0.0"
+        }
+      },
+      "reproduction": {
+        "checked": true,
+        "identical": true,
+        "reproduces": true,
+        "compared": [
+          "emergence",
+          "dampening"
+        ],
+        "inexact": [],
+        "differences": [],
+        "rel_tol": 1e-09,
+        "reason": ""
+      },
+      "report": "docs/reports/e13_ring/report.md",
+      "pdf": "docs/reports/e13_ring/report.pdf",
+      "figures": [
+        {
+          "path": "docs/reports/e13_ring/figures/speed_contour_pair_01_seed_6914975401685141156.png",
+          "bytes_rendered": 57848,
+          "bytes": 57848,
+          "downsampled": false,
+          "scale": 1.0
+        }
+      ]
+    }
+  ]
+}

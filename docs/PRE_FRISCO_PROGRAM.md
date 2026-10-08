@@ -413,6 +413,8 @@ needs colima on the 16 GB laptop with nothing else running.
 
 ## E13 — one merge model, a validation report, a concise paper (item 23)
 
+**Status — 2026-10-08: p22 run** (code f0551e7; `artifacts/p22_reports.json`; docs/reports/e13_*/). Five regenerated reports, each figure replicate reproducing its battery's seed. E13's remaining items: VALIDATION_REPORT.md and PAPER_SHORT.md are drafts (ef28156) that must be updated with p23, p15, p16, p17, p24 and p25's results; the deletion of `merge: measured` (four scenarios) awaits the owner.
+
 **Design.**
 - **Merge model.** Retire `merge: measured` unless E11 rescues it.
   - Delete `microsim.merge_model`, its runner paths, its tests and scenarios
