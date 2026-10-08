@@ -77,6 +77,21 @@ RECORDED) and the artifact a top-level ``zero_locks`` after
 ``zero_collisions`` (:func:`validation.battery.lock_free`). Added
 2026-10-07, additively.
 
+**Weave releases.** Weave rules W1b and W2 are part of the model at every
+weaving section (Amendment 4, 2026-10-07, docs/FRISCO_PROTOCOL.md), and W1b
+ends the gore lock that ``no_locks`` would catch by sending a vehicle that
+stood a full minute at the auxiliary lane's end into the paired exit. Each
+seed's per-section releases (``weave_sections[i].n_entrant_took_exit``), its
+entrance's departures and W2's counters are in its ``per_seed`` row
+(``weave_releases``, :func:`validation.battery.weave_release_rows`);
+:func:`validation.battery.weave_release_summary` pools them into the
+artifact's ``weave_releases`` block after ``zero_locks`` (null without a
+weaving section), the criteria carry one reported ``w1b_release_share
+(<section>)`` row per section after ``no_locks`` (status REPORTED: never a
+pass or a fail; a share above 1 % is flagged), and one ``weave releases``
+line per section is printed after the locks line. Added 2026-10-07,
+additively: a corridor without a weaving section gets ``null`` and no row.
+
 **Phases.** ``simulate`` (the SUMO pool, ``--procs``), ``score`` (per-replicate
 metrics, observed scores and wave speed, :func:`validation.battery.analyse_replicates`
 in a second spawn pool of ``--score-procs`` workers — one trajectory frame per
@@ -201,6 +216,8 @@ from validation.battery import (
     trajectory_rows,
     waiting_summary,
     weave_exit_summary,
+    weave_release_rows,
+    weave_release_summary,
 )
 from validation.criteria import CriteriaProfile, CriteriaResult, evaluate, get_profile
 from validation.locks import RunLocks, detect_run_locks, lock_summary
@@ -568,6 +585,17 @@ def build_artifact(
     true only when every seed is recorded and none locked, false on any lock,
     null otherwise). Without ``lock_records`` all three are null.
 
+    ``metas`` also adds, additively (2026-10-07, Amendment 4),
+    ``per_seed[i]["weave_releases"]`` (:func:`validation.battery.weave_release_rows`
+    of that seed's meta: W1b's releases, the entrance's departures and W2's
+    counters per weaving section; null when the seed lists none) and, after
+    ``zero_locks``, the ``weave_releases`` block
+    (:func:`validation.battery.weave_release_summary`; null when no seed
+    lists a weaving section; its ``definition`` says what it counts). Without
+    ``metas`` both are null. Every other key and value, ``notes`` included, is
+    as before; only ``criteria_rows`` (the caller's) gain the reported
+    ``w1b_release_share`` rows of a run set with weaving sections.
+
     ``scored_end_s`` (``--scored-end-s``) adds, additively, a top-level
     ``scored_end_s`` after ``x_offset_m`` and a note saying the cool-down after
     it was simulated but not scored; without it neither is written.
@@ -608,6 +636,8 @@ def build_artifact(
             "n_collisions": None if meta is None else collision_count(meta),
             "waiting": None if wait is None else asdict(wait),
             "locks": None if lk is None else lk.to_dict(),
+            # Amendment 4 (2026-10-07): W1b releases, entrance departures, W2 counters
+            "weave_releases": None if meta is None else weave_release_rows(meta),
         }
         for seed, run_dir, s, wave, m, ins, meta, wait, lk in zip(
             seeds,
@@ -623,6 +653,9 @@ def build_artifact(
         )
     ]
     collisions = None if metas is None else collision_summary(metas, labels=list(seeds))
+    weave_releases = None if metas is None else weave_release_summary(metas)
+    if weave_releases is not None and not weave_releases["sections"]:
+        weave_releases = None
     insertion = aggregate_insertion(list(insertion_list))
     _, _, _, _, provenance = pool_scores(observed, list(scores_list), path=observations_path)
     pooled_hours = pool_link_hours(list(scores_list))
@@ -658,6 +691,9 @@ def build_artifact(
         # and onsets, and the zero-locks requirement (true / false / null).
         "locks": (None if lock_records is None else lock_summary(lock_records, labels=list(seeds))),
         "zero_locks": None if lock_records is None else lock_free(lock_records),
+        # Amendment 4 (2026-10-07): W1b's releases per weave as a share of the
+        # entrance's departures, pooled, with W2's counters (reported, not gating).
+        "weave_releases": weave_releases,
         "geh": {
             "pooled_values": [round(g, 4) for g in pooled_geh],
             "n_comparisons": len(pooled_geh),
@@ -827,6 +863,36 @@ def weave_exit_line(section: dict[str, Any], threshold_share: float) -> str:
         f"reached exiters given up ({share_text}, {state} the "
         f"{100.0 * threshold_share:g} % threshold, {section['n_runs']} run(s))"
     )
+
+
+def weave_release_line(section: dict[str, Any], flag_share: float) -> str:
+    """The console line for one ``weave_releases`` section (after the locks line)."""
+    share = section["share"]
+    if section["n_runs_w1b"] and math.isfinite(share):
+        state = "ABOVE" if section["flagged"] else "within"
+        w1b = (
+            f"W1b {section['w1b_releases']} of {section['entrance_departed']} entrance "
+            f"departures ({100.0 * share:.2f} %, {state} the {100.0 * flag_share:g} % bound, "
+            f"{section['n_runs_w1b']} run(s))"
+        )
+    elif section["n_runs_w1b"]:
+        w1b = f"W1b no entrance departure recorded ({section['n_runs_w1b']} run(s))"
+    else:
+        w1b = "W1b releases not counted (off in every run)"
+    if section["n_runs_w1b_off"]:
+        w1b += f"; W1b OFF in {section['n_runs_w1b_off']} run(s)"
+    w2 = section["w2"]
+    w2_text = ", ".join(
+        f"{label} {'-' if w2[key] is None else w2[key]}"
+        for key, label in (
+            ("n_handback_skips", "handback"),
+            ("n_close_leader_withheld", "close-leader"),
+            ("n_opposing_deferred", "opposing"),
+            ("n_opposing_vetoed", "vetoed"),
+        )
+    )
+    off = f", OFF in {section['n_runs_w2_off']} run(s)" if section["n_runs_w2_off"] else ""
+    return f"    {'weave releases':<18} {section['ramp']}: {w1b}; W2 {w2_text}{off}"
 
 
 def collision_line(collisions: dict[str, Any] | None) -> str:
@@ -1206,6 +1272,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     # same weave and collision counters as a fresh battery.
     metas = [load_meta(run_dir) for run_dir in dirs]
     weave_exits = weave_exit_summary(metas)
+    # Amendment 4 (2026-10-07): W1b's releases per weave, reported beside no_locks
+    weave_releases = weave_release_summary(metas)
     # Each replicate's locks: stored by the scoring (or re-read from a stored
     # metrics.json); an analysis without them is detected from the run files.
     lock_records: list[RunLocks | None] = [
@@ -1240,6 +1308,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         n_seeds=len(seeds),
         collision_counts=collision_counts(metas),
         lock_records=lock_records,
+        weave_releases=weave_releases if weave_releases["sections"] else None,
     )
 
     report_dir = Path(args.report_dir)
@@ -1341,6 +1410,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(weave_exit_line(section, weave_exits["threshold_share"]), flush=True)
     print(collision_line(artifact["collisions"]), flush=True)
     print(lock_line(artifact["locks"]), flush=True)
+    for section in weave_releases["sections"]:
+        print(weave_release_line(section, weave_releases["flag_share"]), flush=True)
     print(waiting_line(artifact["waiting"]), flush=True)
     for row in criteria_rows:
         print(f"    {row.name:<18} {row.status:<14} {row.value}  ({row.threshold})", flush=True)

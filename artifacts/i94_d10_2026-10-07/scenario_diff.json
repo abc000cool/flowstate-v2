@@ -1,0 +1,274 @@
+{
+ "schema": "flowstate.d10_scenario_diff/1",
+ "spec": "docs/PRE_FRISCO_PROGRAM.md, D10; docs/I94_CALIBRATION_DAYS.md sections 3 and 4",
+ "arms": {
+  "rb": {
+   "scenario": "scenarios/mndot_i94_wb_stpaul_weave_dc_cal_w1b_w2_rb.yaml",
+   "base": "scenarios/mndot_i94_wb_stpaul_weave_dc_cal_w1b_w2.yaml",
+   "name": "mndot_i94_wb_stpaul_weave_xlsfg_dc_cal_w1b_w2_rb",
+   "expected": [
+    "name",
+    "ramp / on-ramp 53062592 / inflow"
+   ],
+   "text": {
+    "n_lines_base": 2193,
+    "n_lines_arm": 2193,
+    "n_changed_lines": 43,
+    "structural_changes": [],
+    "changed_lines_by_path": {
+     "name": 1,
+     "ramp / on-ramp 53062592 / inflow": 42
+    }
+   },
+   "values_differing": [
+    "name",
+    "ramp / on-ramp 53062592 / inflow"
+   ],
+   "only_expected_differ": true,
+   "series": {
+    "ramp / on-ramp 53062592 / inflow": {
+     "unit": "veh/h",
+     "hours": [
+      "06:30",
+      "07:30",
+      "08:30",
+      "05:30-09:30"
+     ],
+     "base": [
+      1715.6,
+      1683.2,
+      1320.6,
+      1485.9
+     ],
+     "arm": [
+      1254.7,
+      1208.3,
+      1101.3,
+      1165.4
+     ],
+     "n_steps": 48,
+     "n_steps_changed": 42
+    }
+   },
+   "plan_free_flow_veh_h": {
+    "on-ramp 53062592": {
+     "hours": [
+      "06:30",
+      "07:30",
+      "08:30",
+      "05:30-09:30"
+     ],
+     "base": [
+      1715.6,
+      1683.2,
+      1320.6,
+      1485.9
+     ],
+     "arm": [
+      1254.7,
+      1208.3,
+      1101.3,
+      1165.4
+     ]
+    }
+   }
+  },
+  "rbc": {
+   "scenario": "scenarios/mndot_i94_wb_stpaul_weave_dc_cal_w1b_w2_rbc.yaml",
+   "base": "scenarios/mndot_i94_wb_stpaul_weave_dc_cal_w1b_w2.yaml",
+   "name": "mndot_i94_wb_stpaul_weave_xlsfg_dc_cal_w1b_w2_rbc",
+   "expected": [
+    "name",
+    "ramp / off-ramp 18207912 / exit_fraction",
+    "ramp / off-ramp 42165869 / exit_fraction",
+    "ramp / on-ramp 53062592 / inflow"
+   ],
+   "text": {
+    "n_lines_base": 2193,
+    "n_lines_arm": 2193,
+    "n_changed_lines": 138,
+    "structural_changes": [],
+    "changed_lines_by_path": {
+     "name": 1,
+     "ramp / on-ramp 53062592 / inflow": 42,
+     "ramp / off-ramp 18207912 / exit_fraction": 48,
+     "ramp / off-ramp 42165869 / exit_fraction": 47
+    }
+   },
+   "values_differing": [
+    "name",
+    "ramp / off-ramp 18207912 / exit_fraction",
+    "ramp / off-ramp 42165869 / exit_fraction",
+    "ramp / on-ramp 53062592 / inflow"
+   ],
+   "only_expected_differ": true,
+   "series": {
+    "ramp / on-ramp 53062592 / inflow": {
+     "unit": "veh/h",
+     "hours": [
+      "06:30",
+      "07:30",
+      "08:30",
+      "05:30-09:30"
+     ],
+     "base": [
+      1715.6,
+      1683.2,
+      1320.6,
+      1485.9
+     ],
+     "arm": [
+      1254.7,
+      1208.3,
+      1101.3,
+      1165.4
+     ],
+     "n_steps": 48,
+     "n_steps_changed": 42
+    },
+    "ramp / off-ramp 18207912 / exit_fraction": {
+     "unit": "exit fraction",
+     "hours": [
+      "06:30",
+      "07:30",
+      "08:30",
+      "05:30-09:30"
+     ],
+     "base": [
+      0.1757,
+      0.2632,
+      0.1909,
+      0.1673
+     ],
+     "arm": [
+      0.0522,
+      0.0372,
+      0.0478,
+      0.0529
+     ],
+     "n_steps": 48,
+     "n_steps_changed": 48
+    },
+    "ramp / off-ramp 42165869 / exit_fraction": {
+     "unit": "exit fraction",
+     "hours": [
+      "06:30",
+      "07:30",
+      "08:30",
+      "05:30-09:30"
+     ],
+     "base": [
+      0.0147,
+      0.0,
+      0.0033,
+      0.0328
+     ],
+     "arm": [
+      0.0555,
+      0.0394,
+      0.0507,
+      0.0565
+     ],
+     "n_steps": 48,
+     "n_steps_changed": 47
+    }
+   },
+   "plan_free_flow_veh_h": {
+    "on-ramp 53062592": {
+     "hours": [
+      "06:30",
+      "07:30",
+      "08:30",
+      "05:30-09:30"
+     ],
+     "base": [
+      1715.6,
+      1683.2,
+      1320.6,
+      1485.9
+     ],
+     "arm": [
+      1254.7,
+      1208.3,
+      1101.3,
+      1165.4
+     ]
+    },
+    "off-ramp 18207912": {
+     "hours": [
+      "06:30",
+      "07:30",
+      "08:30",
+      "05:30-09:30"
+     ],
+     "base": [
+      946.3,
+      1066.1,
+      762.3,
+      732.6
+     ],
+     "arm": [
+      267.8,
+      136.2,
+      182.4,
+      220.0
+     ]
+    },
+    "off-ramp 42165869": {
+     "hours": [
+      "06:30",
+      "07:30",
+      "08:30",
+      "05:30-09:30"
+     ],
+     "base": [
+      84.2,
+      0.0,
+      12.3,
+      136.7
+     ],
+     "arm": [
+      267.8,
+      136.2,
+      182.4,
+      220.0
+     ]
+    }
+   }
+  }
+ },
+ "evidence": {
+  "th61": {
+   "segment": "S1069->S1070",
+   "means_4h_veh_h": {
+    "S1069": 2914.3,
+    "S1070": 4079.8,
+    "rnd_88807": 1481.6
+   },
+   "residual_4h_mean_veh_h": -316.2,
+   "residual_of_rounded_means_veh_h": -317,
+   "quadrature_band_veh_h": 261.4,
+   "count_error": 0.05,
+   "quoted_in_section_3": {
+    "residual_veh_h": -317,
+    "band_veh_h": 261
+   },
+   "day_residuals_veh_h": [
+    -303.9,
+    -284.5,
+    -301.8,
+    -426.1,
+    -286.6
+   ],
+   "same_sign_every_calibration_day": true
+  },
+  "s792": {
+   "s791_minus_s792_veh_h": {
+    "06:30": 328.2,
+    "07:30": 686.1,
+    "08:30": 360.8,
+    "05:30-09:30": 234.0
+   }
+  }
+ }
+}

@@ -1,4 +1,4 @@
-# Stage p21 for scripts/gcp/pipeline_i24.sh — NOT inserted (E11's scripts are built; the pipeline file is another agent's).
+# Stage p21 for scripts/gcp/pipeline_i24.sh — inserted 2026-10-07 above the done marker, byte for byte from the block below (its preamble before that: NOT inserted; the pipeline file was another agent's).
 # Paste it just above the "# 9. Done marker" block, next to the other opt-in stages (p10-p14). It uses only
 # the pipeline's say, stage, make_archive, $RUN and $PROCS.
 # Before a launch: commit and push scripts/i80_data.py, scripts/i80_merge_measures.py, scripts/i80_build_replica.py,

@@ -1,4 +1,4 @@
-# Stage p20 for scripts/gcp/pipeline_i24.sh — NOT inserted (that file is not this change's to edit).
+# Stage p20 for scripts/gcp/pipeline_i24.sh — inserted 2026-10-07 above the done marker, byte for byte from the block below (its preamble before that: NOT inserted; the pipeline file was another agent's).
 # Paste it just above the "# 9. Done marker" block, next to the other opt-in stages (p11-p14).
 # Before a launch:
 #   1. the owner uploads the two INCEPTION westbound zips to the launch bucket, unopened, under

@@ -78,9 +78,10 @@ class TestDefault:
             update={"fleet": omitted.fleet.model_copy(update={"speed_factor": 1.19})}
         )
         assert config_hash(changed) != config_hash(omitted)
-        # the pinned policy-v3 hash of the versioned ring (test_config_hash.py)
+        # the pinned policy-v4 hash of the versioned ring (test_config_hash.py;
+        # d5472987265c under policy v3, which config_hash_v3 reproduces)
         ring = ScenarioConfig.from_yaml(REPO_ROOT / "scenarios" / "ring_sugiyama.yaml")
-        assert config_hash(ring) == "d5472987265c"
+        assert config_hash(ring) == "258c09ac0074"
 
     def test_the_default_plan_and_vtypes_are_as_before(self, tmp_path: Path) -> None:
         plan = _plan(FleetSpec(heavy=HEAVY))

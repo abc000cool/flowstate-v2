@@ -37,7 +37,7 @@ import pytest
 import yaml
 
 from flowstate_core.artifacts import IDMCalibration
-from flowstate_core.config import ScenarioConfig, config_hash
+from flowstate_core.config import ScenarioConfig, config_hash, config_hash_v3
 from flowstate_core.rng import spawn_seeds
 from validation.driver_calibration import K_GRID
 from validation.lane_use import LaneSegment
@@ -84,7 +84,8 @@ def test_the_i94_reference_is_the_pipeline_recipe(tmp_path: Path) -> None:
     shell = yaml.safe_load(out.read_text())
     ours = g.reference_raw(g.SPECS["i94"])
     assert ours == shell
-    h = config_hash(ScenarioConfig.model_validate(ours))
+    # the rehearsal (2026-10-04/05) recorded its base under config-hash policy 3
+    h = config_hash_v3(ScenarioConfig.model_validate(ours))
     tune = json.loads(
         (
             REPO_ROOT / "artifacts" / "tune_mndot_i94_wb_stpaul_weave_slice_xlsfg_p1_rehearsal.json"
@@ -111,7 +112,9 @@ def test_the_plan_varies_only_the_two_settings(corridor: str) -> None:
         gate_a = json.loads(
             (REPO_ROOT / "artifacts" / "i24_merge_experiment_measured.json").read_text()
         )
-        assert plan.reference_hash == gate_a["base_config_hash"] == "ae5861a4d906"
+        # the plan carries the current policy's hash; gate A recorded policy 3's
+        assert plan.reference_hash == config_hash(ScenarioConfig.model_validate(plan.reference))
+        assert config_hash_v3(plan.reference) == gate_a["base_config_hash"] == "ae5861a4d906"
     for name, (k, kr) in zip(plan.names, plan.pairs, strict=True):
         cfg = plan.configs[name]
         assert cfg["fleet"]["lc_keep_right"] == kr
@@ -167,7 +170,8 @@ def test_plan_only_prints_and_writes_nothing(
     out = capsys.readouterr().out
     assert code == 0
     assert "25 pairs" in out and "50 runs" in out and "nothing written" in out
-    assert "k1.0_kr1.0" in out and "1dc4729644dd" in out
+    reference = g.build_plan(g.SPECS["i94"]).reference_hash  # policy 4; 1dc4729644dd under 3
+    assert "k1.0_kr1.0" in out and reference in out
     assert list(tmp_path.iterdir()) == []
 
 

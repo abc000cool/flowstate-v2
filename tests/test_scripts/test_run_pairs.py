@@ -24,6 +24,8 @@ from typing import Any
 import pytest
 import yaml
 
+from flowstate_core.config import config_hash_v3
+
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SCRIPTS = REPO_ROOT / "scripts"
 
@@ -160,8 +162,36 @@ def test_dry_run_and_the_command_line(tmp_path: Path, capsys: pytest.CaptureFixt
     assert "run_pairs:" in capsys.readouterr().err
 
 
-def test_the_calibration_day_scenarios_hash_as_stage_p8s_runs(tmp_path: Path) -> None:
-    """Stage p8c's guard (``--expect-hash``) on the committed scenarios: load and hash only."""
+def test_the_calibration_day_scenarios_hash_as_stage_p8s_runs(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Stage p8c's guard (``--expect-hash``) on the committed scenarios: load and hash only.
+
+    Stage p8c pinned version-3 hashes (2026-10-07, before Amendment 4's bump to
+    config-hash policy 4): under the current policy the guard refuses its pins,
+    as it must (the files hash otherwise now), and with ``config_hash_v3`` in
+    place of ``config_hash`` it accepts them, as when the stage ran."""
+    stem = REPO_ROOT / "scenarios" / "mndot_i94_wb_stpaul_weave_dc_cal"
+    stale = rp.run_pairs(
+        [rp.parse_pair(f"dc_cal={stem}.yaml:134183728835869882")],
+        tmp_path / "now",
+        procs=7,
+        dry_run=True,
+        expect_hash={"dc_cal": "beaaa710e6b3"},
+    )
+    assert stale[0] != 0 and "expected beaaa710e6b3" in " ".join(stale[1].get("refused") or [])
+    # the refusal says the pin is the file's policy-v3 hash, and the manifest names today's policy
+    assert "is this file's policy-v3 hash" in " ".join(stale[1]["refused"])
+    assert stale[1]["config_hash_version"] == rp.CONFIG_HASH_VERSION
+    foreign = rp.run_pairs(
+        [rp.parse_pair(f"dc_cal={stem}.yaml:134183728835869882")],
+        tmp_path / "foreign",
+        procs=7,
+        dry_run=True,
+        expect_hash={"dc_cal": "0123456789ab"},
+    )
+    assert foreign[0] == 2 and "policy-v" not in " ".join(foreign[1]["refused"])
+    monkeypatch.setattr(rp, "config_hash", config_hash_v3)
     stem = REPO_ROOT / "scenarios" / "mndot_i94_wb_stpaul_weave_dc_cal"
     pairs = [
         rp.parse_pair(f"dc_cal={stem}.yaml:134183728835869882"),

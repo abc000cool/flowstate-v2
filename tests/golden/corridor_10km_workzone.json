@@ -8,13 +8,19 @@
   },
   "producer": "microsim.run_micro + validation.metrics.compute_metrics",
   "regenerate": "uv run --no-sync python tests/test_microsim/test_microsim_golden.py --regenerate corridor_10km_workzone",
-  "generated_at": "2026-10-04T20:47:16+00:00",
+  "generated_at": "2026-10-08T02:40:58+00:00",
   "tolerance": {
     "relative": 0.0001,
     "exact": [
       "n_collisions",
       "n_heavy",
       "n_hov",
+      "n_measured_changed_in",
+      "n_measured_changed_out",
+      "n_measured_exited",
+      "n_measured_forced",
+      "n_measured_missed_exit",
+      "n_measured_relax_granted",
       "n_meter_releases",
       "n_scripted_forced",
       "n_scripted_merged",
@@ -28,7 +34,7 @@
     ],
     "note": "1e-4, not the default 1e-6: SUMO's Linux (CI) and macOS builds differ at 2e-6 relative in sigma_v_temporal for this closure case (CI run 35137040295, 2026-09-16); the exact-compared counts are unaffected"
   },
-  "config_hash": "51a5320eaf83",
+  "config_hash": "946cce4e3f0d",
   "seed": 42,
   "sumo_seed": 42,
   "tier": "micro",
@@ -94,7 +100,9 @@
       "min_gap_lat": null,
       "lat_alignment": null,
       "lc_overtake_right": null,
-      "hov_fraction": 0.0
+      "hov_fraction": 0.0,
+      "speed_factor": 1.0,
+      "speed_dev": 0.0
     },
     "av": {
       "penetration": 0.0,

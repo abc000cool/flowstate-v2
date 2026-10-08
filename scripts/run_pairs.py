@@ -17,6 +17,9 @@ running every seed before it in the spawned list.
 * **Hash guard.** Every scenario is loaded and hashed before anything runs;
   ``--expect-hash LABEL=HASH`` refuses the whole set (exit 2, nothing run) when a
   label's scenario does not hash as expected, so a drifted scenario costs no VM time.
+  The pin is compared with today's hash (``CONFIG_HASH_VERSION``), never accepted under an
+  older policy: a pin that is the file's policy-3 or policy-2 hash is refused with that
+  said, since the file may run other physics now (docs/CONTRACTS.md §2).
 * **Pool.** One spawn process per run (libsumo is one simulation per process), at
   most ``--procs`` at a time: one wave when ``--procs`` is at least the number of
   pairs. A pair that fails is reported and the others carry on. ``--procs 1`` runs
@@ -49,9 +52,11 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from flowstate_core.config import config_hash
+import yaml
+
+from flowstate_core.config import CONFIG_HASH_VERSION, config_hash, config_hash_v2, config_hash_v3
 from microsim.runner import _replicate_worker
-from microsim.scenarios import load_scenario
+from microsim.scenarios import load_scenario, resolve_scenario
 
 SCHEMA_VERSION = 1
 MANIFEST = "PAIRS.json"
@@ -142,6 +147,27 @@ def _record(run_dir: str) -> dict[str, Any]:
     }
 
 
+def _older_policy(scenario: Path, want: str) -> str:
+    """Why a pin is refused although the file may be unchanged: an older policy's hash of it.
+
+    A pin is compared with today's hash, never accepted under an older policy: where a policy
+    changed a default since (policy 4, Amendment 4: W1b and W2 at a weave that does not set
+    them), the same file now runs other physics than the run the pin names (docs/CONTRACTS.md §2).
+    """
+    try:
+        doc = yaml.safe_load(resolve_scenario(scenario).read_text())
+        for version, older in ((3, config_hash_v3), (2, config_hash_v2)):
+            if want == older(doc):
+                return (
+                    f"; {want} is this file's policy-v{version} hash: a pin from before policy "
+                    f"v{CONFIG_HASH_VERSION}, refused because the file may run other physics now "
+                    "(docs/CONTRACTS.md section 2); re-pin only knowingly"
+                )
+    except (OSError, ValueError):
+        pass
+    return ""
+
+
 def run_pairs(
     pairs: Sequence[Pair],
     out: Path,
@@ -179,7 +205,10 @@ def run_pairs(
         chash = config_hash(cfg)
         want = expect_hash.get(p.label)
         if want is not None and want != chash:
-            mismatch.append(f"{p.label} ({p.scenario}): hash {chash}, expected {want}")
+            mismatch.append(
+                f"{p.label} ({p.scenario}): hash {chash} (policy v{CONFIG_HASH_VERSION}), "
+                f"expected {want}{_older_policy(p.scenario, want)}"
+            )
         records.append(
             {
                 "label": p.label,
@@ -195,6 +224,8 @@ def run_pairs(
     manifest: dict[str, Any] = {
         "schema": SCHEMA_VERSION,
         "created_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        # additive (2026-10-07): the policy every config_hash here is under (docs/CONTRACTS.md §2)
+        "config_hash_version": CONFIG_HASH_VERSION,
         "procs": procs,
         "dry_run": dry_run,
         "pairs": records,

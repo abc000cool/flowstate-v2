@@ -5,7 +5,7 @@
   "scenario": "workzone_config() in tests/test_macrosim/test_macrosim_golden.py",
   "producer": "macrosim.run_macro (v1_legacy FD) + api.results.macro_metrics",
   "regenerate": "uv run --no-sync python tests/test_macrosim/test_macrosim_golden.py --regenerate macro_corridor_workzone",
-  "generated_at": "2026-10-04T20:46:33+00:00",
+  "generated_at": "2026-10-08T02:41:10+00:00",
   "tolerance": {
     "relative": 1e-09,
     "exact": [
@@ -15,7 +15,7 @@
       "wave_count"
     ]
   },
-  "config_hash": "3a6fda885a38",
+  "config_hash": "43fe8986cfba",
   "seed": 11,
   "tier": "screening",
   "seeded": true,
@@ -82,7 +82,9 @@
       "min_gap_lat": null,
       "lat_alignment": null,
       "lc_overtake_right": null,
-      "hov_fraction": 0.0
+      "hov_fraction": 0.0,
+      "speed_factor": 1.0,
+      "speed_dev": 0.0
     },
     "av": {
       "penetration": 0.0,

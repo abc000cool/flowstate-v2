@@ -21,6 +21,7 @@ from pydantic import (
     Field,
     SerializationInfo,
     SerializerFunctionWrapHandler,
+    ValidationInfo,
     field_validator,
     model_serializer,
     model_validator,
@@ -48,6 +49,19 @@ def _in_hash_payload(info: SerializationInfo) -> bool:
     """Whether a serializer runs inside :func:`config_hash_payload`'s dump."""
     context = info.context
     return isinstance(context, Mapping) and bool(context.get(HASH_PAYLOAD_CONTEXT_KEY))
+
+
+#: ``model_validate`` context key set by :func:`config_hash_v3` (2026-10-07):
+#: the document is read as validation read it before Amendment 4, which
+#: allowed W2's switches without W1b (``WeaveSpec._check_params``). Nothing
+#: else of validation changes, and no run is ever built under it.
+PRE_AMENDMENT4_CONTEXT_KEY: Final[str] = "flowstate_pre_amendment4_reading"
+
+
+def _pre_amendment4_reading(info: ValidationInfo) -> bool:
+    """Whether a validator runs inside :func:`config_hash_v3`'s reading."""
+    context = info.context
+    return isinstance(context, Mapping) and bool(context.get(PRE_AMENDMENT4_CONTEXT_KEY))
 
 
 #: Ceiling on ``ScenarioConfig.replicates``. Generous next to the ≥ 20 seeds a
@@ -259,6 +273,94 @@ SCRIPTED_MERGE_DEFAULTS: dict[str, float] = {
 """Defaults of :attr:`RampSpec.merge_params` for the ``scripted`` merge."""
 SCRIPTED_MERGE_KEYS = frozenset(SCRIPTED_MERGE_DEFAULTS)
 
+#: The switches of amendment W2, the weave collision guards (2026-10-07,
+#: docs/I94_CAL_COLLISIONS.md §13); ``1`` on, ``0`` off, any other value
+#: refused. On by default since Amendment 4 (:data:`WEAVE_AMENDMENT4_DEFAULTS`).
+WEAVE_W2_SWITCHES: Final[frozenset[str]] = frozenset(
+    {"weave_handback", "weave_close_leader", "weave_resolve_opposing"}
+)
+#: The keys of amendment W1b, the entering give-up with its dwell (2026-10-07,
+#: docs/WEAVE_LOSS_DIAGNOSIS.md §6.2 and §10). On by default since Amendment 4.
+WEAVE_W1B_KEYS: Final[frozenset[str]] = frozenset({"entrant_giveup_m", "entrant_giveup_dwell_s"})
+
+WEAVE_AMENDMENT4_DEFAULTS: Final[Mapping[str, float]] = {
+    "entrant_giveup_m": 5.0,
+    "entrant_giveup_dwell_s": 60.0,
+    "weave_handback": 1.0,
+    "weave_close_leader": 1.0,
+    "weave_resolve_opposing": 1.0,
+}
+"""The ``weave_params`` defaults of Amendment 4 (2026-10-07; decision A2 of
+docs/DECISIONS_2026-10-07.md, the amendment's text in docs/FRISCO_PROTOCOL.md):
+weave rules W1b and W2 are part of the model, on at every weaving section
+(``RampSpec.merge = "weave"``), never tuned per corridor (protocol §7.4), never
+W2 without W1b (:meth:`WeaveSpec._check_params` refuses it). Their values are
+the pre-registered ones, not fitted values. They were added opt-in, with no
+default (unset = off), earlier the same day; the default change bumped the
+config-hash policy to version 4 (:data:`CONFIG_HASH_VERSION`,
+:func:`config_hash_v3`). Part of :data:`WEAVE_DEFAULTS`, in this order (the
+order the committed scenarios write them in, so a section that sets all five
+records its parameters in ``meta.json`` exactly as before). Measured merge
+zones (``merge = "measured"``) do not take them: their constants are fixed
+(``microsim.runner._measured_constants``, docs/MERGE_MODEL.md §2).
+
+``entrant_giveup_m`` (amendment W1, docs/WEAVE_LOSS_DIAGNOSIS.md §6.2): the
+entering mirror of ``exit_giveup_m``. An entrant still owing its change from
+the auxiliary lane into section lane 1 that has come to a halt (below SUMO's
+halting speed, 0.1 m/s) with no more than this much of the section ahead of
+its front, and no accepted or guard-passing forced change that step, takes the
+paired exit: it is rerouted (``vehicle.changeTarget``) to the off-ramp's last
+edge, handed back and counted in ``n_missed`` and ``n_entrant_took_exit``
+(``microsim.runner._weave_step``), instead of being held at the end of the
+exit-only lane, where it stops every exit-bound vehicle behind it. 5 m is one
+vehicle length, as ``exit_giveup_m``. ``0`` turns the entering give-up off.
+
+``entrant_giveup_dwell_s`` (amendment W1b, docs/WEAVE_LOSS_DIAGNOSIS.md §10):
+the entering give-up waits for a dwell. An entrant takes the paired exit only
+once it has stood halted (below 0.1 m/s) within ``entrant_giveup_m`` of the
+auxiliary lane's end without a break for at least this long — the clock starts
+on its first halted step there and resets on any step it is at or above the
+halting speed or farther back — and W1's own condition holds that step. Meant
+for the permanent lock at a weaving gore (docs/I94_COLLAPSE_DIAGNOSIS.md), not
+the ordinary stands that clear by themselves (at most 50.5 s on the T.H.52
+section test's reference). ``0`` gives up at once (W1 alone); a positive value
+is refused while ``entrant_giveup_m`` is set to 0. The releases are W1b's
+count: ``meta.json["weave_sections"][i]["n_entrant_took_exit"]``, reported per
+weave as a share of the entrance's departures by ``validation.battery.
+weave_release_summary`` (a share above 1 % is flagged in the report's
+limitations, not a gate failure).
+
+``weave_handback``: before each one-step weave speed target (the changer's
+easing, the chosen follower's cooperation, the ramp anticipation) the target is
+withheld for the step when the vehicle's own model must brake harder than a
+commanded vehicle can (``microsim.runner._handback_needed``, the AV path's
+``AVSpec.emergency_handback`` test): under SUMO 1.27.1's default speed mode a
+TraCI speed target caps braking at ``decel`` (WP-95). Counted in
+``n_handback_skips``.
+
+``weave_close_leader``: the weave's own-acceleration estimate
+(``microsim.runner._weave_command``) reads a leader closer than the vehicle's
+``minGap`` as a leader at that bumper gap, not as a free road (the AV path's
+``AVSpec.observe_close_leader``, WP-96). Counted in
+``n_close_leader_withheld``.
+
+``weave_resolve_opposing``: the section's change requests of a step are
+resolved with ``microsim.merge_model.resolve_opposing`` before they execute
+(two entries into one lane from both sides in one step: the loser waits a
+step; WP-92, as the measured merge model always does). Counted in
+``n_opposing_deferred`` and ``n_opposing_vetoed``.
+
+**Opting out.** Any of the five may be set to ``0`` only to reproduce a result
+published before Amendment 4 (:data:`WEAVE_AMENDMENT4_OFF` sets all five: the
+weave of every committed result through release 2.6.0 that did not set them);
+W2's three switches on with W1b off are refused."""
+
+WEAVE_AMENDMENT4_OFF: Final[Mapping[str, float]] = {k: 0.0 for k in WEAVE_AMENDMENT4_DEFAULTS}
+"""``weave_params`` that turn every Amendment-4 rule off: the weave as it ran
+before 2026-10-07 for a section that did not set the five keys. Only for
+reproducing a result published before the amendment
+(:data:`WEAVE_AMENDMENT4_DEFAULTS`)."""
+
 WEAVE_DEFAULTS: dict[str, float] = {
     # the scripted merge's keys but its forced-change guard: the weave's
     # forced changes are always under its own (microsim.runner._weave_force_gap_ok)
@@ -273,6 +375,9 @@ WEAVE_DEFAULTS: dict[str, float] = {
     # the exit movement; see the key's paragraph in the docstring below. A
     # switch, not a fitted value.
     "exit_prepare": 0.0,
+    # Amendment 4 (2026-10-07): W1b and W2 on at every weaving section
+    # (config-hash policy version 4); see WEAVE_AMENDMENT4_DEFAULTS
+    **WEAVE_AMENDMENT4_DEFAULTS,
 }
 """Defaults of :attr:`WeaveSpec.weave_params`: the ``scripted`` merge's keys
 but ``force_guard`` (applied to the entering movement; the weave's forced
@@ -357,75 +462,27 @@ still left of it) or joins the queue; on the 29-run fixture grid of WP-52..60
 the entrances fall 5,944 → 5,847, the give-ups read 44 → 45, and the T.H.52
 capacity fixture's no-lock pin fails at seed 5 (3 exits missed against at most
 1); no collision. A switch, not a fitted value.
+``entrant_giveup_m`` 5, ``entrant_giveup_dwell_s`` 60, ``weave_handback``,
+``weave_close_leader`` and ``weave_resolve_opposing`` 1 (Amendment 4,
+2026-10-07): weave rules W1b and W2, on at every weaving section; documented
+on :data:`WEAVE_AMENDMENT4_DEFAULTS`. Added with no default (unset = off) earlier
+that day; turned on by default with config-hash policy version 4.
 The weave's other switches, all off or unset by default, were deleted on
 2026-10-06 (:data:`REMOVED_WEAVE_KEYS`; docs/WEAVE_MODEL_PLAN.md has their
 derivations and measurements; reproduce results made with them with release
-2.5.0). Keys with no default are in :data:`WEAVE_OPTIONAL_KEYS`."""
+2.5.0). Every key has a default since Amendment 4 (:data:`WEAVE_OPTIONAL_KEYS`
+is empty)."""
 
 #: ``weave_params`` keys with no default: unset is off. Kept out of
 #: :data:`WEAVE_DEFAULTS` so that a run that does not set one has exactly the
 #: physics, ``meta.json`` and pinned default snapshot
 #: (``tests/golden/config_defaults.json``) it had before the key existed.
-#:
-#: ``entrant_giveup_m`` (2026-10-07, amendment W1 of
-#: docs/WEAVE_LOSS_DIAGNOSIS.md §6.2, opt-in): the entering mirror of
-#: ``exit_giveup_m``. An entrant still owing its change from the auxiliary
-#: lane into section lane 1 that has come to a halt (below SUMO's halting
-#: speed, 0.1 m/s) with no more than this much of the section ahead of its
-#: front, and no accepted or guard-passing forced change that step, takes the
-#: paired exit: it is rerouted (``vehicle.changeTarget``) to the off-ramp's
-#: last edge, handed back and counted in ``n_missed`` and
-#: ``n_entrant_took_exit`` (``microsim.runner._weave_step``), instead of being
-#: held at the end of the exit-only lane, where it stops every exit-bound
-#: vehicle behind it. The pre-registered opt-in value is 5 m (one vehicle
-#: length, as ``exit_giveup_m``). Unset or ``0`` is off. Not a fitted value;
-#: not set by any committed scenario (adoption is a separate decision).
-#:
-#: ``entrant_giveup_dwell_s`` (2026-10-07, amendment W1b of
-#: docs/WEAVE_LOSS_DIAGNOSIS.md §10, opt-in): the entering give-up waits for a
-#: dwell. With it set, an entrant takes the paired exit only once it has stood
-#: halted (below 0.1 m/s) within ``entrant_giveup_m`` of the auxiliary lane's
-#: end without a break for at least this long — the clock starts on its first
-#: halted step there and resets on any step it is at or above the halting speed
-#: or farther back — and W1's own condition holds that step (no accepted or
-#: guard-passing forced change). Meant for the permanent lock at a weaving gore
-#: (docs/I94_COLLAPSE_DIAGNOSIS.md), not the ordinary stands that clear by
-#: themselves (at most 50.5 s on the T.H.52 section test's reference). The
-#: pre-registered opt-in value is 60 s. Needs ``entrant_giveup_m`` > 0 (refused
-#: otherwise); unset or ``0`` leaves W1's immediate give-up. Not a fitted
-#: value; not set by any committed scenario.
-#:
-#: The three switches of amendment W2, the weave collision guards
-#: (2026-10-07, docs/I94_CAL_COLLISIONS.md §13, opt-in; :data:`WEAVE_W2_SWITCHES`;
-#: ``1`` on, ``0`` or unset off, any other value refused):
-#:
-#: ``weave_handback``: before each one-step weave speed target (the changer's
-#: easing, the chosen follower's cooperation, the ramp anticipation) the target
-#: is withheld for the step when the vehicle's own model must brake harder than
-#: a commanded vehicle can (``microsim.runner._handback_needed``, the AV path's
-#: ``AVSpec.emergency_handback`` test): under SUMO 1.27.1's default speed mode a
-#: TraCI speed target caps braking at ``decel`` (WP-95). Counted in
-#: ``n_handback_skips``.
-#:
-#: ``weave_close_leader``: the weave's own-acceleration estimate
-#: (``microsim.runner._weave_command``) reads a leader closer than the
-#: vehicle's ``minGap`` as a leader at that bumper gap, not as a free road (the
-#: AV path's ``AVSpec.observe_close_leader``, WP-96). Counted in
-#: ``n_close_leader_withheld``.
-#:
-#: ``weave_resolve_opposing``: the section's change requests of a step are
-#: resolved with ``microsim.merge_model.resolve_opposing`` before they execute
-#: (two entries into one lane from both sides in one step: the loser waits a
-#: step; WP-92, as the measured merge model always does). Counted in
-#: ``n_opposing_deferred`` and ``n_opposing_vetoed``.
-#:
-#: Not fitted values; not set by any committed scenario.
-WEAVE_W2_SWITCHES: Final[frozenset[str]] = frozenset(
-    {"weave_handback", "weave_close_leader", "weave_resolve_opposing"}
-)
-WEAVE_OPTIONAL_KEYS: Final[frozenset[str]] = (
-    frozenset({"entrant_giveup_m", "entrant_giveup_dwell_s"}) | WEAVE_W2_SWITCHES
-)
+#: Empty since Amendment 4 (2026-10-07): its five keys, W1b's
+#: ``entrant_giveup_m`` and ``entrant_giveup_dwell_s`` and W2's three switches,
+#: were added here opt-in earlier that day and now have defaults
+#: (:data:`WEAVE_AMENDMENT4_DEFAULTS`, config-hash policy version 4). Kept for
+#: the next opt-in key.
+WEAVE_OPTIONAL_KEYS: Final[frozenset[str]] = frozenset()
 WEAVE_KEYS = frozenset(WEAVE_DEFAULTS) | WEAVE_OPTIONAL_KEYS
 
 #: The merge switches deleted on 2026-10-06 (docs/MERGE_MODEL.md, amendment
@@ -500,8 +557,13 @@ class WeaveSpec(BaseModel):
     ``meta.json["weave_sections"]`` beside the measured length."""
     weave_params: dict[str, float] = Field(default_factory=dict)
     """Overrides of :data:`WEAVE_DEFAULTS`, plus the keys of
-    :data:`WEAVE_OPTIONAL_KEYS` (no default; unset is off); unknown keys are
-    rejected, and a key of :data:`REMOVED_WEAVE_KEYS` is refused by name."""
+    :data:`WEAVE_OPTIONAL_KEYS` (no default; unset is off; none since
+    Amendment 4); unknown keys are rejected, and a key of
+    :data:`REMOVED_WEAVE_KEYS` is refused by name. Stored and hashed as written
+    (a key at its default value is still a key the scenario sets), so a section
+    that sets nothing takes every default, Amendment 4's W1b and W2 included
+    (:data:`WEAVE_AMENDMENT4_DEFAULTS`); W2's switches on with W1b off are
+    refused (:meth:`_check_params`)."""
     ramp_to_ramp_share: float | None = Field(default=None, ge=0.0, le=1.0)
     """Share of this entrance's vehicles that leave at the paired exit
     (``v_RR / v_ON``, the ramp-to-ramp movement; 2026-10-07,
@@ -577,19 +639,30 @@ class WeaveSpec(BaseModel):
         return data
 
     @model_validator(mode="after")
-    def _check_params(self) -> Self:
+    def _check_params(self, info: ValidationInfo) -> Self:
+        """Refuse removed, unknown or out-of-range keys, and W2 without W1b.
+
+        Values are read with the defaults applied (:data:`WEAVE_DEFAULTS`).
+        Amendment 4 (2026-10-07): any of W2's switches on
+        (:data:`WEAVE_W2_SWITCHES`) needs W1b on (``entrant_giveup_m`` and
+        ``entrant_giveup_dwell_s`` both above 0). A document read under
+        :data:`PRE_AMENDMENT4_CONTEXT_KEY` (:func:`config_hash_v3`) skips that
+        one rule, as validation did before the amendment.
+        """
         removed = set(self.weave_params) & REMOVED_WEAVE_KEYS
         if removed:
             raise ValueError(_removed_message("weave_params keys", removed))
         unknown = set(self.weave_params) - WEAVE_KEYS
         if unknown:
             raise ValueError(f"unknown weave_params keys: {sorted(unknown)}")
-        if self.weave_params.get("entrant_giveup_m", 0.0) < 0.0:
-            raise ValueError("weave_params entrant_giveup_m must be >= 0 (0 or unset = off)")
-        dwell = self.weave_params.get("entrant_giveup_dwell_s", 0.0)
+        prm = {**WEAVE_DEFAULTS, **self.weave_params}
+        giveup_m = prm["entrant_giveup_m"]
+        if giveup_m < 0.0:
+            raise ValueError("weave_params entrant_giveup_m must be >= 0 (0 = off)")
+        dwell = prm["entrant_giveup_dwell_s"]
         if dwell < 0.0:
-            raise ValueError("weave_params entrant_giveup_dwell_s must be >= 0 (0 or unset = off)")
-        if dwell > 0.0 and self.weave_params.get("entrant_giveup_m", 0.0) <= 0.0:
+            raise ValueError("weave_params entrant_giveup_dwell_s must be >= 0 (0 = at once)")
+        if self.weave_params.get("entrant_giveup_dwell_s", 0.0) > 0.0 and giveup_m <= 0.0:
             raise ValueError(
                 "weave_params entrant_giveup_dwell_s needs entrant_giveup_m > 0 "
                 "(the dwell delays the entering give-up, amendment W1b)"
@@ -597,9 +670,19 @@ class WeaveSpec(BaseModel):
         for key in sorted(WEAVE_W2_SWITCHES & set(self.weave_params)):
             if self.weave_params[key] not in (0.0, 1.0):
                 raise ValueError(
-                    f"weave_params {key} is a switch: 1 on, 0 or unset off "
-                    "(amendment W2, docs/I94_CAL_COLLISIONS.md §13)"
+                    f"weave_params {key} is a switch: 1 on (the default since "
+                    "Amendment 4), 0 off (amendment W2, docs/I94_CAL_COLLISIONS.md §13)"
                 )
+        w2_on = sorted(k for k in WEAVE_W2_SWITCHES if prm[k] == 1.0)
+        w1b_on = giveup_m > 0.0 and dwell > 0.0
+        if w2_on and not w1b_on and not _pre_amendment4_reading(info):
+            raise ValueError(
+                f"weave_params {w2_on} (amendment W2) on with amendment W1b off "
+                f"(entrant_giveup_m {giveup_m:g}, entrant_giveup_dwell_s {dwell:g}): "
+                "Amendment 4 (docs/FRISCO_PROTOCOL.md, 2026-10-07) never runs W2 without "
+                "W1b. To reproduce a result published before it, set "
+                f"{w2_on} to 0 as well (unset is 1 since the amendment)"
+            )
         return self
 
 
@@ -1559,7 +1642,7 @@ class ScenarioConfig(BaseModel):
         )
 
 
-CONFIG_HASH_VERSION: Final[int] = 3
+CONFIG_HASH_VERSION: Final[int] = 4
 """Version of the hashing policy (docs/CONTRACTS.md §2). Bump it whenever a
 field DEFAULT changes (a default change is a physics change and must move
 every hash) — `tests/test_flowstate_core/test_config_hash.py` pins the
@@ -1569,7 +1652,19 @@ History: 1 — sha256 of the full dump (before 2026-09-06); 2 — defaults
 excluded (2026-09-06); 3 — the same payload rule, bumped on 2026-10-04 for
 the default changes of WP-98 (``AVSpec.emergency_handback``,
 ``release_off_corridor``, ``observe_close_leader`` and the scripted merge's
-``force_guard`` turned on)."""
+``force_guard`` turned on); 4 — the same payload rule, bumped on 2026-10-07
+for Amendment 4 (decision A2 of docs/DECISIONS_2026-10-07.md): W1b and W2 on
+at every weaving section (:data:`WEAVE_AMENDMENT4_DEFAULTS` joined
+:data:`WEAVE_DEFAULTS`). As for WP-98's ``force_guard``, the precedent
+this follows, the defaults changed inside a dict-valued block that is hashed as
+written: a weave section that sets none of the five keys has the same payload
+under v3 and v4 but different physics, so only the version can tell the two
+runs apart — every hash moves once, the ring's and every other scenario's
+without a weaving section included (their physics is unchanged). A section
+that sets all five keeps both its payload and its physics; its hash moves by
+the version alone. :func:`config_hash_v3` gives a document's version-3 hash
+for records written from 2026-10-04 to 2026-10-07; :func:`config_hash_v2`
+the version-2 hash."""
 
 
 def config_hash_payload(cfg: ScenarioConfig) -> dict[str, Any]:
@@ -1656,3 +1751,41 @@ def config_hash_v2(document: Mapping[str, Any]) -> str:
     else:
         payload["config"].pop("av", None)
     return _digest({"hash_version": 2, "config": payload["config"]})
+
+
+def config_hash_v3(document: Mapping[str, Any] | ScenarioConfig) -> str:
+    """The policy-v3 hash (2026-10-04 to 2026-10-07) of a scenario document.
+
+    For provenance checks against a record written under policy version 3 — a
+    battery's ``config_hash``, a scenario header, a pipeline stage's expected
+    hash, a fit artifact's ``base_config_hash`` — which quotes a version-3 hash
+    (docs/CONTRACTS.md §2). Policy 4 kept v3's payload rule and changed no
+    model field's default; the defaults it changed (Amendment 4's five
+    ``weave_params`` keys) live in a dict that both policies hash as written.
+    The payload of a document is therefore the same under both, and this is
+    :func:`config_hash`'s payload under ``hash_version`` 3. The document is
+    validated as before Amendment 4 (:data:`PRE_AMENDMENT4_CONTEXT_KEY`: W2's
+    switches without W1b are read, not refused). Its v3 meaning is the v3
+    physics: a weave section that sets none of the five keys ran with W1b and
+    W2 off under v3 and runs with them on under v4, under hashes that differ
+    by the version. Never write this hash into a new record.
+
+    Args:
+        document: The scenario as a mapping (``ScenarioConfig`` input), e.g.
+            a parsed scenario YAML, or a validated ``ScenarioConfig`` (its
+            payload is used as is), so a provenance check written as
+            ``config_hash(cfg) == recorded`` reads ``config_hash_v3(cfg) ==
+            recorded`` for a version-3 record.
+
+    Returns:
+        The 12-hex-char version-3 hash.
+    """
+    cfg = (
+        document
+        if isinstance(document, ScenarioConfig)
+        else ScenarioConfig.model_validate(
+            dict(document), context={PRE_AMENDMENT4_CONTEXT_KEY: True}
+        )
+    )
+    payload = config_hash_payload(cfg)
+    return _digest({"hash_version": 3, "config": payload["config"]})

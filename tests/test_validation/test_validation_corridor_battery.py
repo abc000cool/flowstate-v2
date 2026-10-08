@@ -18,6 +18,7 @@ import dataclasses
 import importlib.util
 import json
 import math
+import re
 import sys
 from pathlib import Path
 from types import ModuleType
@@ -365,6 +366,25 @@ def test_criteria_only_surfaces_weave_exits_from_the_stored_metas(
         in (weave_lines[1])
     )
     assert "2 run(s)" in weave_lines[1]
+    # Amendment 4: the stored metas predate it (no params, no W1b counter), so
+    # each section's W1b releases are reported as not counted, never as zero
+    releases = artifact["weave_releases"]
+    assert [s["ramp"] for s in releases["sections"]] == ["A-ON", "B-ON"]
+    assert all(s["n_runs_w1b_off"] == 2 and s["n_runs_w1b"] == 0 for s in releases["sections"])
+    assert [r["weave_releases"][1]["w1b_on"] for r in artifact["per_seed"]] == [False, False]
+    rows = [r for r in artifact["criteria"] if r["name"].startswith("w1b_release_share")]
+    assert [r["name"] for r in rows] == ["w1b_release_share (A-ON)", "w1b_release_share (B-ON)"]
+    assert all(r["value"] is None and r["detail"].startswith("reported, not gating") for r in rows)
+    assert [r["name"] for r in artifact["criteria"]].index("no_locks") == len(
+        artifact["criteria"]
+    ) - 3
+    release_lines = [ln for ln in console.splitlines() if ln.strip().startswith("weave releases")]
+    assert len(release_lines) == 2
+    assert (
+        "A-ON: W1b releases not counted (off in every run); W1b OFF in 2 run(s)"
+        in (release_lines[0])
+    )
+    assert re.search(r"w1b_release_share \(A-ON\)\s+REPORTED", console)
     assert math.isfinite(artifact["metrics_ci"]["throughput_veh_h"]["mean"])
     # Stored scores without a link-hour table (written before WP-63) still
     # re-score: the tables are null, the GEH rows are unchanged.

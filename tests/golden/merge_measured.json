@@ -6,7 +6,7 @@
   "overrides": {},
   "producer": "microsim.run_micro + validation.metrics.compute_metrics",
   "regenerate": "uv run --no-sync python tests/test_microsim/test_microsim_golden.py --regenerate merge_measured",
-  "generated_at": "2026-10-06T07:32:03+00:00",
+  "generated_at": "2026-10-08T02:40:59+00:00",
   "tolerance": {
     "relative": 1e-06,
     "exact": [
@@ -31,7 +31,7 @@
       "wave_count"
     ]
   },
-  "config_hash": "0894d998807c",
+  "config_hash": "5266ec78821a",
   "seed": 3,
   "sumo_seed": 3,
   "tier": "micro",

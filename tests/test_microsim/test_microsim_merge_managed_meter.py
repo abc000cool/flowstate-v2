@@ -16,6 +16,8 @@ import sumolib
 from flowstate_core.config import (
     REMOVED_WEAVE_KEYS,
     SCRIPTED_MERGE_DEFAULTS,
+    WEAVE_AMENDMENT4_DEFAULTS,
+    WEAVE_AMENDMENT4_OFF,
     WEAVE_DEFAULTS,
     RampSpec,
     ScenarioConfig,
@@ -887,6 +889,15 @@ class TestWeaveSchema:
             "exit_giveup_m": 5.0,
             # WP-62: the exiters' early move (docs/WEAVE_MODEL_PLAN.md, dated section)
             "exit_prepare": 0.0,
+            # Amendment 4 (2026-10-07): W1b and W2 on at every weaving section
+            "entrant_giveup_m": 5.0,
+            "entrant_giveup_dwell_s": 60.0,
+            "weave_handback": 1.0,
+            "weave_close_leader": 1.0,
+            "weave_resolve_opposing": 1.0,
+        }
+        assert dict(WEAVE_AMENDMENT4_DEFAULTS) == {
+            k: WEAVE_DEFAULTS[k] for k in list(WEAVE_DEFAULTS)[-5:]
         }
         assert not set(WEAVE_DEFAULTS) & REMOVED_WEAVE_KEYS
         # both fields enter the hash when set, and only then
@@ -1573,7 +1584,8 @@ class TestWeaveRun:
             (5, 1),
         ],
     )
-    def test_th52_weave_at_capacity_does_not_lock(self, tmp_path, seed, min_releases):
+    @pytest.mark.parametrize("amendment4", ["off", "on"])
+    def test_th52_weave_at_capacity_does_not_lock(self, tmp_path, seed, min_releases, amendment4):
         """The seeds at which the fifth derivation's "ease only when needed"
         condition locked the section before the pair release (2026-09-24,
         block 3): from minute 16 lane 1 at the section start read 0.0 m/s to
@@ -1616,8 +1628,23 @@ class TestWeaveRun:
         given up is a vehicle halted at the gore's end whose lane-0 follower
         could not brake for it at ``b`` — the forced change the guard now
         refuses is the one that, at the corridor's demand and seed 5, ended
-        in a collision (t = 977.5 s, session trace)."""
-        paths = run_micro(_th52_config(seed), seed, tmp_path / f"th52_{seed}")
+        in a collision (t = 977.5 s, session trace).
+
+        The measurements above are the weave before Amendment 4: arm ``off``
+        reproduces them with the five Amendment-4 keys at 0
+        (``WEAVE_AMENDMENT4_OFF``). Arm ``on`` is the default since 2026-10-07
+        (W1b and W2 on), measured on macOS: seed 4 never below 4.4 m/s, 0 of
+        508 unfinished, entrance 393, 8 releases, 1 exit given up; seed 5
+        never below 4.2 m/s, 1 of 510 unfinished, entrance 405, 6 releases, 4
+        exits given up (101 opposing deferrals, 98 of them vetoes); no W1b
+        release, no handback skip and no collision at either. The given-up
+        exits lean up under W2, as on the corridor (docs/DECISIONS_2026-10-07.md
+        §A2, risks), so the ``n_missed`` pin reads at most 4 under it; every
+        other pin is unchanged."""
+        cfg = _th52_config(seed)
+        if amendment4 == "off":
+            cfg = _with_weave_params(cfg, dict(WEAVE_AMENDMENT4_OFF))
+        paths = run_micro(cfg, seed, tmp_path / f"th52_{seed}")
         meta = json.loads(paths.meta.read_text())
         (ws,) = meta["weave_sections"]
         windows, state = _th52_lane1_windows(paths, meta)
@@ -1625,8 +1652,12 @@ class TestWeaveRun:
         assert meta["n_collisions"] == 0, meta["collisions"]
         assert len(windows) == 18 and (windows > 2.0).all(), state
         # at most one exit given up at the gore's end (speed-aware guard,
-        # 2026-09-24 block 3); a lock leaves the driven vehicles unfinished
-        assert ws["n_missed"] <= 1 and ws["n_unfinished"] <= 0.1 * ws["n_entered"], state
+        # 2026-09-24 block 3; at most 4 under Amendment 4's W2); a lock leaves
+        # the driven vehicles unfinished
+        max_missed = 1 if amendment4 == "off" else 4
+        assert ws["n_missed"] <= max_missed, state
+        assert ws["n_unfinished"] <= 0.1 * ws["n_entered"], state
+        assert ("n_entrant_took_exit" in ws) == (amendment4 == "on"), state
         assert on_meta["n_departed"] >= 0.8 * on_meta["n_planned"], state
         assert ws["n_pair_releases"] >= min_releases, state
 
@@ -2149,8 +2180,24 @@ class _WeaveMod:
         self.lane = _WeaveLane()
 
 
+def _with_weave_params(cfg: ScenarioConfig, params: dict[str, float]) -> ScenarioConfig:
+    """``cfg`` with ``params`` set as every weave block's ``weave_params``."""
+    raw = cfg.model_dump(mode="json")
+    for ramp in raw["network"]["ramps"]:
+        if ramp.get("weave"):
+            ramp["weave"]["weave_params"] = dict(params)
+    return ScenarioConfig.model_validate(raw)
+
+
 def _weave_state(**params) -> dict:
-    """``weave_states`` entry as ``run_micro`` builds it (two pieces, exit x)."""
+    """``weave_states`` entry as ``run_micro`` builds it (two pieces, exit x).
+
+    The parameters are ``WEAVE_DEFAULTS`` with Amendment 4's five rules off
+    (``WEAVE_AMENDMENT4_OFF``), then ``params``: the base rules are unit-tested
+    as they are, and W1/W1b/W2 by the tests that set their keys (the fake
+    ``_WeaveMod`` answers no ``getFollowSpeed``, which ``weave_handback``
+    reads; on by default since 2026-10-07, they run on the fixtures below).
+    """
     edges = ("a", "b")
     lens = {"a": 100.0, "b": 100.0}
     return {
@@ -2166,7 +2213,7 @@ def _weave_state(**params) -> dict:
         "beyond_m": {"a": 100.0, "b": 0.0},
         "length_m_measured": 200.0,
         "length_m": None,
-        "params": {**WEAVE_DEFAULTS, **params},
+        "params": {**WEAVE_DEFAULTS, **WEAVE_AMENDMENT4_OFF, **params},
         "exiting_ids": frozenset({"e"}),
         # never asked to vacate: the paired exit's vehicles and those bound
         # for an off-ramp leaving from a window edge (review, 2026-09-24)
@@ -3241,12 +3288,24 @@ class TestWeaveExitPriority:
                 assert ws["veh"]["e"]["target"] == "f" and held and held[0][1] == "f", t
 
 
+#: W2's three switches off (Amendment 4: W2 never runs without W1b, so W1 or a
+#: W1b dwell other than the default runs with them off, as before 2026-10-07).
+W2_OFF: dict[str, float] = {
+    "weave_handback": 0.0,
+    "weave_close_leader": 0.0,
+    "weave_resolve_opposing": 0.0,
+}
+#: Amendment W1 alone (no dwell, W2 off): its published fixture runs.
+W1_ONLY: dict[str, float] = {**WEAVE_AMENDMENT4_OFF, "entrant_giveup_m": 5.0}
+
+
 class TestWeaveEntrantGiveup:
     """Amendment W1 (docs/WEAVE_LOSS_DIAGNOSIS.md §6.2; ``entrant_giveup_m``,
-    no default, unset = off): an entrant halted at the end of the auxiliary
-    lane still owing its change, with no change to request that step, takes
-    the paired exit — the entering mirror of the exit give-up
-    (:class:`TestWeaveExitPriority`)."""
+    5 m by default since Amendment 4, 0 = off): an entrant halted at the end
+    of the auxiliary lane still owing its change, with no change to request
+    that step, takes the paired exit — the entering mirror of the exit give-up
+    (:class:`TestWeaveExitPriority`). The unit tests run on
+    :func:`_weave_state`, whose base has the five Amendment-4 keys at 0."""
 
     @staticmethod
     def _stranded(**params):
@@ -3292,10 +3351,11 @@ class TestWeaveEntrantGiveup:
         assert keys.index("n_entrant_took_exit") == keys.index("n_missed_exit") + 1
         assert meta["params"]["entrant_giveup_m"] == 5.0
 
-    def test_unset_or_zero_changes_nothing(self):
-        """Unset (the default) or 0: the stranded entrant is deferred every step,
-        never rerouted, and ``meta.json`` has no ``n_entrant_took_exit`` —
-        exactly what the runner did before the key existed."""
+    def test_off_changes_nothing(self):
+        """Off (0; ``{}`` is the helper's base, every Amendment-4 key at 0): the
+        stranded entrant is deferred every step, never rerouted, and
+        ``meta.json`` has no ``n_entrant_took_exit`` — exactly what the runner
+        did before the key existed."""
         from microsim.runner import _weave_meta, _weave_step
 
         for params in ({}, {"entrant_giveup_m": 0.0}):
@@ -3338,16 +3398,19 @@ class TestWeaveEntrantGiveup:
         assert veh.lc_modes["n"] == LC_MODE_SCRIPTED_FORCE and ws["n_entrant_took_exit"] == 0
 
     def test_schema(self):
-        """A key with no default: accepted in ``weave_params``, absent from
-        ``WEAVE_DEFAULTS`` (and so from the pinned default snapshot), negative
-        refused; a weave config that does not set it hashes as before."""
+        """5 m by default since Amendment 4 (``WEAVE_DEFAULTS``, and so the
+        pinned default snapshot); stored as written; negative refused; 0 (off)
+        only with W2 off too (W2 never without W1b); setting it explicitly
+        moves the hash (the block is hashed as written)."""
         from flowstate_core.config import WEAVE_KEYS, WEAVE_OPTIONAL_KEYS, WeaveSpec
 
-        assert "entrant_giveup_m" in WEAVE_OPTIONAL_KEYS <= WEAVE_KEYS
-        assert "entrant_giveup_m" not in WEAVE_DEFAULTS
+        assert "entrant_giveup_m" in WEAVE_KEYS and "entrant_giveup_m" not in WEAVE_OPTIONAL_KEYS
+        assert WEAVE_DEFAULTS["entrant_giveup_m"] == 5.0
         spec = WeaveSpec(exit_ramp="x", weave_params={"entrant_giveup_m": 5.0})
         assert spec.weave_params == {"entrant_giveup_m": 5.0}
-        WeaveSpec(exit_ramp="x", weave_params={"entrant_giveup_m": 0.0})
+        WeaveSpec(exit_ramp="x", weave_params={"entrant_giveup_m": 0.0, **W2_OFF})
+        with pytest.raises(ValueError, match="never runs W2 without W1b"):
+            WeaveSpec(exit_ramp="x", weave_params={"entrant_giveup_m": 0.0})
         with pytest.raises(ValueError, match="entrant_giveup_m must be >= 0"):
             WeaveSpec(exit_ramp="x", weave_params={"entrant_giveup_m": -1.0})
         raw = _th52_corridor_config(3).model_dump(mode="json")
@@ -3373,13 +3436,16 @@ class TestWeaveEntrantGiveup:
         """SUMO, the T.H.52 section with the calibrated drivers (seed 4: an
         entrant stood at the auxiliary lane's end from 101.5 s for 50 s with
         nine exit-bound vehicles stopped behind it, docs/WEAVE_LOSS_DIAGNOSIS.md
-        §3.8; seed 15: the longest such stand, 62.5 s). With
-        ``entrant_giveup_m`` 5 the stranded entrants take the paired exit: each
+        §3.8; seed 15: the longest such stand, 62.5 s). With W1 alone
+        (``entrant_giveup_m`` 5, no dwell, W2 off: :data:`W1_ONLY`, the
+        published arm) the stranded entrants take the paired exit: each
         is an entrant (not a ramp-to-exit vehicle), recorded as given up in
         ``vehicles.parquet`` with ``destination_final`` the exit, the counter
-        matches them and is part of ``n_missed``, and no collision. Unset, no
-        entrant is rerouted and ``meta.json`` has no counter; ``0`` writes
-        byte-identical outputs to unset (only the config hash differs)."""
+        matches them and is part of ``n_missed``, and no collision. With every
+        Amendment-4 key at 0 (the weave before 2026-10-07), no entrant is
+        rerouted and ``meta.json`` has no counter; ``entrant_giveup_m`` 0 with
+        W2 off and the dwell at its default writes byte-identical outputs (a
+        dwell does nothing without the give-up)."""
         import hashlib
 
         def run(seed: int, params: dict | None, tag: str):
@@ -3390,7 +3456,7 @@ class TestWeaveEntrantGiveup:
 
         took = 0
         for seed in (4, 15):
-            _, meta, veh = run(seed, {"entrant_giveup_m": 5.0}, f"w1_{seed}")
+            _, meta, veh = run(seed, dict(W1_ONLY), f"w1_{seed}")
             (z,) = meta["weave_sections"]
             rerouted = veh[veh.gave_up & veh.route.str.startswith("on0")]
             assert z["n_entrant_took_exit"] == len(rerouted), seed
@@ -3401,10 +3467,10 @@ class TestWeaveEntrantGiveup:
             assert meta["n_collisions"] == 0
             took += z["n_entrant_took_exit"]
         assert took >= 1, "no stranded entrant took the exit at seeds 4 and 15"
-        p_unset, meta, veh = run(4, None, "unset")
+        p_unset, meta, veh = run(4, dict(WEAVE_AMENDMENT4_OFF), "off")
         assert "n_entrant_took_exit" not in meta["weave_sections"][0]
         assert not (veh.gave_up & veh.route.str.startswith("on0")).any()
-        p_zero, meta_zero, _ = run(4, {"entrant_giveup_m": 0.0}, "zero")
+        p_zero, meta_zero, _ = run(4, {"entrant_giveup_m": 0.0, **W2_OFF}, "zero")
         assert "n_entrant_took_exit" not in meta_zero["weave_sections"][0]
         for name in ("trajectories.parquet", "vehicles.parquet", "edges.parquet"):
             a, b = (
@@ -3490,9 +3556,10 @@ class TestWeaveEntrantGiveupDwell:
         assert not [c for c in veh.calls if c[0] == "target"]
         assert ws["veh"]["n"]["halt_since"] == 0.0 and ws["n_entrant_took_exit"] == 0
 
-    def test_unset_or_zero_dwell_is_w1(self):
-        """Unset or 0: W1 gives up on the first halted step, and an entrant
-        kept under control carries no clock."""
+    def test_zero_dwell_is_w1(self):
+        """0 (``{}`` is the helper's base, every Amendment-4 key at 0): W1
+        gives up on the first halted step, and an entrant kept under control
+        carries no clock."""
         from microsim.runner import _weave_step
 
         for params in ({}, {"entrant_giveup_dwell_s": 0.0}):
@@ -3506,25 +3573,30 @@ class TestWeaveEntrantGiveupDwell:
             assert "halt_since" not in ws["veh"]["n"], params
 
     def test_schema(self):
-        """A second key with no default: accepted with ``entrant_giveup_m``,
-        absent from ``WEAVE_DEFAULTS``; negative refused; a positive dwell
-        without the give-up distance refused; it changes the config hash."""
+        """60 s by default since Amendment 4 (``WEAVE_DEFAULTS``); stored as
+        written; negative refused; a positive dwell with the give-up distance
+        set to 0 refused; 0 (W1 at once) only with W2 off (W2 never without
+        W1b); setting it changes the config hash."""
         from flowstate_core.config import WEAVE_KEYS, WEAVE_OPTIONAL_KEYS, WeaveSpec
 
-        assert {"entrant_giveup_m", "entrant_giveup_dwell_s"} <= WEAVE_OPTIONAL_KEYS
-        assert WEAVE_OPTIONAL_KEYS <= WEAVE_KEYS
-        assert "entrant_giveup_dwell_s" not in WEAVE_DEFAULTS
+        assert {"entrant_giveup_m", "entrant_giveup_dwell_s"} <= WEAVE_KEYS
+        assert not {"entrant_giveup_m", "entrant_giveup_dwell_s"} & WEAVE_OPTIONAL_KEYS
+        assert WEAVE_DEFAULTS["entrant_giveup_dwell_s"] == 60.0
         both = {"entrant_giveup_m": 5.0, "entrant_giveup_dwell_s": 60.0}
         assert WeaveSpec(exit_ramp="x", weave_params=both).weave_params == both
-        WeaveSpec(exit_ramp="x", weave_params={"entrant_giveup_dwell_s": 0.0})
+        # the dwell alone: the give-up distance takes its default
+        WeaveSpec(exit_ramp="x", weave_params={"entrant_giveup_dwell_s": 60.0})
+        WeaveSpec(exit_ramp="x", weave_params={"entrant_giveup_dwell_s": 0.0, **W2_OFF})
+        with pytest.raises(ValueError, match="never runs W2 without W1b"):
+            WeaveSpec(exit_ramp="x", weave_params={"entrant_giveup_dwell_s": 0.0})
         with pytest.raises(ValueError, match="entrant_giveup_dwell_s must be >= 0"):
             WeaveSpec(
                 exit_ramp="x",
                 weave_params={"entrant_giveup_m": 5.0, "entrant_giveup_dwell_s": -1.0},
             )
         for params in (
-            {"entrant_giveup_dwell_s": 60.0},
             {"entrant_giveup_m": 0.0, "entrant_giveup_dwell_s": 60.0},
+            {"entrant_giveup_m": 0.0, "entrant_giveup_dwell_s": 60.0, **W2_OFF},
         ):
             with pytest.raises(ValueError, match="needs entrant_giveup_m > 0"):
                 WeaveSpec(exit_ramp="x", weave_params=params)
@@ -3538,14 +3610,16 @@ class TestWeaveEntrantGiveupDwell:
         """SUMO, the T.H.52 section with the calibrated drivers, seed 4 (an
         entrant stood at the auxiliary lane's end from about 101.5 s for about
         50 s, docs/WEAVE_LOSS_DIAGNOSIS.md §3.8). A short dwell (10 s, a
-        mechanism check, not W1b's 60 s) releases entrants only after each
-        stood halted within 5 m of the end for 10 s, read off the
-        trajectories; a dwell of 0 writes byte-identical outputs to W1 alone."""
+        mechanism check, not W1b's 60 s; W2 off, as when it was published)
+        releases entrants only after each stood halted within 5 m of the end
+        for 10 s, read off the trajectories; with W2 off, the dwell at its
+        default (unset) writes byte-identical outputs to the dwell set to 60 s
+        and the give-up distance set to 5 m (W1b alone, p9's arm)."""
         import hashlib
 
         th52_dc = TestWeaveEntrantGiveup._th52_dc
         paths = run_micro(
-            th52_dc(4, {"entrant_giveup_m": 5.0, "entrant_giveup_dwell_s": 10.0}),
+            th52_dc(4, {"entrant_giveup_m": 5.0, "entrant_giveup_dwell_s": 10.0, **W2_OFF}),
             4,
             tmp_path / "dwell10",
         )
@@ -3567,8 +3641,8 @@ class TestWeaveEntrantGiveupDwell:
             assert t_rel - first_t >= 10.0 - 1e-6, (vid, t_rel, first_t)
         digests = []
         for tag, params in (
-            ("w1", {"entrant_giveup_m": 5.0}),
-            ("w1_dwell0", {"entrant_giveup_m": 5.0, "entrant_giveup_dwell_s": 0.0}),
+            ("w1b_default", dict(W2_OFF)),
+            ("w1b_set", {"entrant_giveup_m": 5.0, "entrant_giveup_dwell_s": 60.0, **W2_OFF}),
         ):
             pth = run_micro(th52_dc(4, params), 4, tmp_path / tag)
             digests.append(
@@ -3599,10 +3673,11 @@ class _GuardVehicle(_WeaveVehicle):
 
 class TestWeaveCollisionGuards:
     """Amendment W2 (docs/I94_CAL_COLLISIONS.md §13; ``weave_handback``,
-    ``weave_close_leader``, ``weave_resolve_opposing``: switches with no
-    default, unset = off): the weave's command path gets the AV path's two
-    fixes (WP-95, WP-96) and the measured model's opposing-entry resolution
-    (WP-92)."""
+    ``weave_close_leader``, ``weave_resolve_opposing``: switches, 1 by default
+    since Amendment 4, 0 = off): the weave's command path gets the AV path's
+    two fixes (WP-95, WP-96) and the measured model's opposing-entry
+    resolution (WP-92). The unit tests run on :func:`_weave_state`, whose base
+    has the switches at 0."""
 
     W2: ClassVar[dict[str, float]] = {
         "weave_handback": 1.0,
@@ -3832,8 +3907,9 @@ class TestWeaveCollisionGuards:
         assert ws["n_opposing_deferred"] == 1
 
     def test_schema(self):
-        """Three switches with no default: 0 or 1 accepted, anything else
-        refused; absent from ``WEAVE_DEFAULTS``; setting one changes the hash."""
+        """Three switches, 1 by default since Amendment 4 (``WEAVE_DEFAULTS``):
+        0 or 1 accepted, anything else refused; stored as written; setting one
+        explicitly changes the hash (the block is hashed as written)."""
         from flowstate_core.config import (
             WEAVE_KEYS,
             WEAVE_OPTIONAL_KEYS,
@@ -3842,8 +3918,8 @@ class TestWeaveCollisionGuards:
         )
 
         assert set(self.W2) == WEAVE_W2_SWITCHES
-        assert WEAVE_W2_SWITCHES <= WEAVE_OPTIONAL_KEYS <= WEAVE_KEYS
-        assert not WEAVE_W2_SWITCHES & set(WEAVE_DEFAULTS)
+        assert WEAVE_W2_SWITCHES <= WEAVE_KEYS and not WEAVE_W2_SWITCHES & WEAVE_OPTIONAL_KEYS
+        assert {k: WEAVE_DEFAULTS[k] for k in WEAVE_W2_SWITCHES} == self.W2
         assert WeaveSpec(exit_ramp="x", weave_params=self.W2).weave_params == self.W2
         WeaveSpec(exit_ramp="x", weave_params=dict.fromkeys(self.W2, 0.0))
         for bad in (0.5, 2.0, -1.0):
@@ -3857,26 +3933,14 @@ class TestWeaveCollisionGuards:
 
     def test_on_the_th52_fixture_off_is_byte_identical_and_on_runs(self, tmp_path):
         """SUMO, the T.H.52 section with the calibrated drivers, seed 4: the
-        three switches at 0 write byte-identical outputs to unset (no counter
-        in ``meta.json``); all three on, the run completes with every counter
-        recorded."""
-        import hashlib
-
+        three switches at 0 (W1b on; p9's and p10's arm A) run and write no
+        W2 counter in ``meta.json``, and W1b's counter; set to 1 explicitly, the
+        run completes with every counter recorded."""
         th52_dc = TestWeaveEntrantGiveup._th52_dc
-        digests = []
-        for tag, params in (("unset", None), ("zero", dict.fromkeys(self.W2, 0.0))):
-            paths = run_micro(th52_dc(4, params), 4, tmp_path / tag)
-            (z,) = json.loads(paths.meta.read_text())["weave_sections"]
-            assert not {"n_handback_skips", "n_close_leader_withheld", "n_opposing_deferred"} & set(
-                z
-            )
-            digests.append(
-                {
-                    n: hashlib.sha256((paths.run_dir / n).read_bytes()).hexdigest()
-                    for n in ("trajectories.parquet", "vehicles.parquet", "edges.parquet")
-                }
-            )
-        assert digests[0] == digests[1]
+        paths = run_micro(th52_dc(4, dict.fromkeys(self.W2, 0.0)), 4, tmp_path / "zero")
+        (z,) = json.loads(paths.meta.read_text())["weave_sections"]
+        assert not {"n_handback_skips", "n_close_leader_withheld", "n_opposing_deferred"} & set(z)
+        assert "n_entrant_took_exit" in z and z["params"]["entrant_giveup_dwell_s"] == 60.0
         paths = run_micro(th52_dc(4, dict(self.W2)), 4, tmp_path / "w2")
         meta = json.loads(paths.meta.read_text())
         (z,) = meta["weave_sections"]
@@ -3889,6 +3953,71 @@ class TestWeaveCollisionGuards:
             assert isinstance(z[key], int) and z[key] >= 0, key
         assert z["n_opposing_vetoed"] <= z["n_opposing_deferred"]
         assert z["params"]["weave_handback"] == 1.0
+
+
+class TestAmendment4Defaults:
+    """Amendment 4 (2026-10-07; decision A2 of docs/DECISIONS_2026-10-07.md):
+    weave rules W1b and W2 on by default at every weaving section."""
+
+    def test_unset_is_byte_identical_to_all_five_set(self, tmp_path):
+        """SUMO, the T.H.52 section with the calibrated drivers, seed 4: a weave
+        block that sets none of the five keys runs W1b and W2 (its parameters,
+        W1b's counter and W2's counters are in ``meta.json``) and writes
+        byte-identical outputs — every parquet file and the section's
+        ``meta.json`` entry, parameters in the same order — to the block that
+        sets all five at their adopted values, as the committed
+        ``_dc_cal_w1b_w2`` scenario does; only the config hash differs (the
+        block is hashed as written)."""
+        import hashlib
+
+        th52_dc = TestWeaveEntrantGiveup._th52_dc
+        runs = {}
+        for tag, params in (("unset", None), ("set", dict(WEAVE_AMENDMENT4_DEFAULTS))):
+            cfg = th52_dc(4, params)
+            paths = run_micro(cfg, 4, tmp_path / tag)
+            runs[tag] = (cfg, paths, json.loads(paths.meta.read_text()))
+        (cfg_u, p_u, m_u), (cfg_s, p_s, m_s) = runs["unset"], runs["set"]
+        assert config_hash(cfg_u) != config_hash(cfg_s)
+        names = sorted(f.name for f in p_u.run_dir.glob("*.parquet"))
+        assert {"trajectories.parquet", "vehicles.parquet", "edges.parquet"} <= set(names)
+        assert names == sorted(f.name for f in p_s.run_dir.glob("*.parquet"))
+        for name in names:
+            a, b = (hashlib.sha256((p.run_dir / name).read_bytes()).hexdigest() for p in (p_u, p_s))
+            assert a == b, name
+        assert json.dumps(m_u["weave_sections"]) == json.dumps(m_s["weave_sections"])
+        (z,) = m_u["weave_sections"]
+        assert list(z["params"])[-5:] == list(WEAVE_AMENDMENT4_DEFAULTS)
+        assert {k: z["params"][k] for k in WEAVE_AMENDMENT4_DEFAULTS} == dict(
+            WEAVE_AMENDMENT4_DEFAULTS
+        )
+        for key in (
+            "n_entrant_took_exit",
+            "n_handback_skips",
+            "n_close_leader_withheld",
+            "n_opposing_deferred",
+            "n_opposing_vetoed",
+        ):
+            assert isinstance(z[key], int) and z[key] >= 0, key
+        volatile = {"config", "config_hash", "wall_time_s", "realtime_factor"}
+        assert {k: v for k, v in m_u.items() if k not in volatile} == {
+            k: v for k, v in m_s.items() if k not in volatile
+        }
+
+    def test_w2_without_w1b_is_refused_on_a_scenario(self):
+        """A scenario turning W1b off at a weave while W2 stays on (by default)
+        is refused with the amendment named; the opt-out with all five at 0
+        (the weave before 2026-10-07) and W1b alone are accepted."""
+        cfg = _th52_config(3)
+        with pytest.raises(ValueError, match=r"Amendment 4 .*never runs W2 without W1b"):
+            _with_weave_params(cfg, {"entrant_giveup_m": 0.0})
+        _with_weave_params(cfg, dict(WEAVE_AMENDMENT4_OFF))
+        _with_weave_params(cfg, dict(W2_OFF))
+        # the measured model's weave block still takes no weave_params
+        raw = cfg.model_dump(mode="json")
+        raw["network"]["ramps"][0]["merge"] = "measured"
+        raw["network"]["ramps"][0]["weave"]["weave_params"] = dict(WEAVE_AMENDMENT4_OFF)
+        with pytest.raises(ValueError, match="weave_params apply to merge='weave' only"):
+            ScenarioConfig.model_validate(raw)
 
 
 class TestRampToRampShareRun:

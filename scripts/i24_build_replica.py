@@ -32,6 +32,20 @@ layers into a runnable, data-driven scenario:
   ramp demand changes; it writes a new family (a ``--suffix`` ending in
   ``rc``). The default ``keep`` writes what the builder wrote before, byte for
   byte, and never reads the artifact.
+* **C7b consistency corrections (opt-in; docs/I24_CONSISTENCY_C7B.md, proposed,
+  not adopted)** — ``--demand-coverage recommended`` divides the corrected
+  arm's mainline and on-ramp inflows by the coverage the validator's link-flow
+  row divides the observed counts by (``artifacts/i24_coverage.json``
+  ``pooled.recommended_filled`` per 15-min window) instead of the equilibrium
+  estimate, so the planned demand over the row's target is one constant in
+  every window. ``--insertion-shift-s free_flow`` moves the mainline inflow's
+  steps (after the first) earlier by the free-flow time from the network entry
+  to the count section at the fleet's mean ``v0``, so a vehicle counted at data
+  x = 200 m in a window is inserted that long before it (the inflow is
+  otherwise stamped at the count's clock time while vehicles enter 2.45 km
+  upstream). Each writes a new family (its letter in the ``--suffix``:
+  ``rc`` + ``c`` + ``s``, e.g. ``flow_rccs``); the defaults write what the
+  builder wrote before, byte for byte.
 * **Boundary** — observed mean mainline speed in the last 945 m of the
   instrument (data ``x`` ∈ [5492, 6437) m, i.e. just downstream of the
   measured span) per 30 s window, applied to the exit edge (FHWA measured
@@ -155,6 +169,17 @@ RAMPS = (
 #: count, vehicles that return to them after an off-ramp count.
 COUNT_CONSISTENCY_ARTIFACT = "artifacts/i24_count_consistency.json"
 THROUGH_TRAFFIC_SERIES = {"on": "prior_mainline_per_window", "off": "later_mainline_per_window"}
+
+#: The coverage artifact whose recommended estimator ``--coverage-estimator`` /
+#: ``--demand-coverage recommended`` read (``scripts/i24_coverage.py``); the
+#: validator's link-flow target divides the observed counts by the same values.
+COVERAGE_ARTIFACT = "artifacts/i24_coverage.json"
+
+#: C7b's insertion shift is quoted to 0.1 s (docs/I24_CONSISTENCY_C7B.md): SUMO
+#: inserts on 0.5-s steps, so nothing finer reaches a run.
+INSERTION_SHIFT_DECIMALS = 1
+#: ``--insertion-shift-s free_flow``: the shift is computed, not given.
+INSERTION_SHIFT_FREE_FLOW = "free_flow"
 
 MAINLINE_COUNT_X_M = 200.0
 BOUNDARY_X_RANGE_M = (5492.0, TESTBED_LENGTH_M)
@@ -553,6 +578,95 @@ def ramp_through_header(block: Mapping[str, Any], inputs_rel: str) -> str:
     return "\n".join(lines) + "\n"
 
 
+def family_code(*, exclude: bool, demand_coverage: bool, shift: bool) -> str:
+    """The suffix token a family built with these demand corrections must end in.
+
+    ``rc`` for amendment B2's ramp counts (``--ramp-through-traffic exclude``),
+    then ``c`` for C7b's coverage-consistent demand (``--demand-coverage
+    recommended``) and ``s`` for its insertion shift (``--insertion-shift-s``),
+    in that order (docs/I24_CONSISTENCY_C7B.md: ``_rcc``, ``_rcs``, ``_rccs``);
+    empty when none is on. Each changes the demand a published family was built
+    with, so it never writes over one.
+    """
+    return ("rc" if exclude else "") + ("c" if demand_coverage else "") + ("s" if shift else "")
+
+
+def free_flow_shift_s(distance_m: float, v0_ms: float) -> float:
+    """C7b's computed insertion shift: ``distance / v0`` to :data:`INSERTION_SHIFT_DECIMALS`.
+
+    The free-flow travel time from the network entry (sim x = 0, the first
+    corridor edge's start, where ``microsim.vehicles`` inserts with
+    ``departPos="base"``) to the mainline count section at the fleet's mean
+    desired speed. It is a lower bound on the fleet's mean time (heterogeneous
+    ``v0``, an edge limit below ``v0``, insertion below ``v0`` and congestion all
+    lengthen it; docs/I24_GEH_DIAGNOSIS.md §6).
+
+    Raises:
+        ValueError: A distance or speed that is not positive and finite.
+    """
+    if not (math.isfinite(distance_m) and distance_m > 0.0):
+        raise ValueError(f"entry-to-count-section distance {distance_m!r} m is not positive")
+    if not (math.isfinite(v0_ms) and v0_ms > 0.0):
+        raise ValueError(f"mean v0 {v0_ms!r} m/s is not positive")
+    return round(distance_m / v0_ms, INSERTION_SHIFT_DECIMALS)
+
+
+def shifted_steps(
+    steps: Sequence[tuple[float, float]], shift_s: float
+) -> list[tuple[float, float]]:
+    """``(t, rate)`` steps with every start after the first moved ``shift_s`` earlier.
+
+    The first step starts at 0 and also covers the warm-up, so it stays; the
+    others start at their count window's sim time less the shift (to 1e-6 s),
+    and every rate is unchanged. The shift must lie in (0, one 5-min window), so
+    the steps keep their order and the first keeps a positive span.
+
+    Raises:
+        ValueError: A shift outside (0, :data:`WINDOW_S`).
+    """
+    if not (math.isfinite(shift_s) and 0.0 < shift_s < WINDOW_S):
+        raise ValueError(f"insertion shift {shift_s!r} s is not in (0, {WINDOW_S:g}) s")
+    return [steps[0]] + [(round(t - shift_s, 6), q) for t, q in steps[1:]]
+
+
+def insertion_shift_header(block: Mapping[str, Any], inputs_rel: str) -> str:
+    """Scenario header lines recording C7b's insertion shift (``--insertion-shift-s``)."""
+    if block["mode"] == INSERTION_SHIFT_FREE_FLOW:
+        how = [
+            "# computed, not fitted: the free-flow time from the network entry (sim x = 0) to the",
+            f"# count section (data x = {block['count_x_m']:g} m, sim x = {block['distance_m']:.1f} m) at the "
+            f"fleet's mean v0 = {block['v0_ms']:.4f} m/s",
+            f"# ({block['fleet_artifact']}, sha256 {block['fleet_artifact_sha256'][:12]}…), "
+            f"{block['exact_s']:.3f} s rounded to 0.1 s.",
+        ]
+    else:
+        how = ["# given explicitly (--insertion-shift-s), not computed here."]
+    lines = [
+        "#",
+        "# C7b INSERTION SHIFT (docs/I24_CONSISTENCY_C7B.md; PROPOSED, not adopted): the mainline",
+        f"# inflow steps after the first start {block['shift_s']:g} s before their count windows' clock times,",
+        *how,
+        "# On-ramp inflows, exit fractions and the boundary are unchanged. Per-step times:",
+        f"# {inputs_rel} 'insertion_shift'.",
+    ]
+    return "\n".join(lines) + "\n"
+
+
+def demand_coverage_paragraph(rows: Sequence[Mapping[str, Any]], inputs_rel: str) -> str:
+    """The corrected arm's coverage paragraph under ``--demand-coverage recommended``."""
+    used = [float(r["coverage_used"]) for r in rows]
+    return f"""#
+# COVERAGE-CORRECTED ARM, C7b COVERAGE-CONSISTENT DEMAND (docs/I24_CONSISTENCY_C7B.md; PROPOSED,
+# not adopted): identical to the family's tracked arm except that the mainline and on-ramp
+# inflows are divided by the RECOMMENDED tracking coverage per 15-min window
+# ({COVERAGE_ARTIFACT} pooled.recommended_filled = max(section_gap_mixture, capacity_bound_fd);
+# {min(used):.2f}-{max(used):.2f} here), the coverage scripts/i24_validate.py divides the observed
+# counts by for the link-flow row's target, so the planned demand over that target is one
+# constant in every window. Exit fractions and the boundary schedule are ratios/speeds and need
+# no correction. Per-window values: {inputs_rel} 'demand_coverage'.
+"""
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__.split("\n", 1)[0])
     ap.add_argument("--allow-missing-fleet", action="store_true")
@@ -647,17 +761,74 @@ def main() -> None:
         "repository root unless absolute); its data hash, window grid and ramps must be this "
         "builder's",
     )
+    ap.add_argument(
+        "--demand-coverage",
+        choices=("equilibrium", "recommended"),
+        default="equilibrium",
+        help="C7b (docs/I24_CONSISTENCY_C7B.md; proposed, not adopted): the coverage the corrected "
+        "arm's mainline and on-ramp inflows are divided by: 'equilibrium' (default, the builder as "
+        f"before) or 'recommended' = {COVERAGE_ARTIFACT} pooled.recommended_filled per 15-min "
+        "window, the coverage scripts/i24_validate.py's link-flow target divides the observed "
+        "counts by (the arithmetic of --coverage-estimator recommended, plus the family guard "
+        "and the provenance); a new family: 'c' in the --suffix token",
+    )
+    ap.add_argument(
+        "--insertion-shift-s",
+        default=None,
+        metavar=f"SECONDS|{INSERTION_SHIFT_FREE_FLOW}",
+        help="C7b (docs/I24_CONSISTENCY_C7B.md; proposed, not adopted): start the mainline inflow's "
+        "steps after the first this many seconds before their count windows' clock times (in "
+        f"(0, {WINDOW_S:g}) s); '{INSERTION_SHIFT_FREE_FLOW}' computes it: the distance from the "
+        f"network entry (sim x = 0) to the count section (data x = {MAINLINE_COUNT_X_M:g} m) over "
+        f"the fleet's mean v0 ({FLEET_ARTIFACT}), to 0.1 s. Default: no shift (the builder as "
+        "before); a new family: 's' in the --suffix token",
+    )
     args = ap.parse_args()
     suffix = f"_{args.suffix}" if args.suffix else ""
-    through_art: dict[str, Any] | None = None
-    through_path: Path | None = None
-    through_bytes = b""
-    if args.ramp_through_traffic == "exclude":
+    shift_request: float | str | None = None
+    if args.insertion_shift_s is not None:
+        if args.insertion_shift_s == INSERTION_SHIFT_FREE_FLOW:
+            shift_request = INSERTION_SHIFT_FREE_FLOW
+        else:
+            try:
+                shift_request = float(args.insertion_shift_s)
+            except ValueError:
+                raise SystemExit(
+                    f"--insertion-shift-s {args.insertion_shift_s!r}: a number of seconds or "
+                    f"{INSERTION_SHIFT_FREE_FLOW!r}"
+                ) from None
+            if not (math.isfinite(shift_request) and 0.0 < shift_request < WINDOW_S):
+                raise SystemExit(
+                    f"--insertion-shift-s {args.insertion_shift_s}: must lie in (0, {WINDOW_S:g}) s "
+                    "(no shift is the default: leave the option out)"
+                )
+    demand_cov = args.demand_coverage == "recommended"
+    if demand_cov and args.coverage_estimator != "equilibrium":
+        raise SystemExit(
+            "--demand-coverage recommended divides by the recommended estimator itself; leave "
+            "--coverage-estimator at its default"
+        )
+    code = family_code(
+        exclude=args.ramp_through_traffic == "exclude",
+        demand_coverage=demand_cov,
+        shift=shift_request is not None,
+    )
+    if code == "rc":  # amendment B2 alone: its guard and message, as before
         if not (args.suffix == "rc" or args.suffix.endswith("_rc")):
             raise SystemExit(
                 "--ramp-through-traffic exclude changes the ramp demand, so it writes a new family: "
                 f"give a --suffix ending in 'rc' (e.g. flow_rc), not {args.suffix!r}"
             )
+    elif code and not (args.suffix == code or args.suffix.endswith(f"_{code}")):
+        raise SystemExit(
+            "--ramp-through-traffic exclude / --demand-coverage recommended / --insertion-shift-s "
+            "change the demand, so they write a new family: with these options give a --suffix "
+            f"ending in '{code}' (e.g. flow_{code}), not {args.suffix!r}"
+        )
+    through_art: dict[str, Any] | None = None
+    through_path: Path | None = None
+    through_bytes = b""
+    if args.ramp_through_traffic == "exclude":
         through_path = Path(args.count_consistency)
         if not through_path.is_absolute():
             through_path = REPO_ROOT / through_path
@@ -786,20 +957,71 @@ def main() -> None:
     ]
     inflow_steps[0] = (0.0, inflow_steps[0][1])
 
+    # --- C7b insertion shift (opt-in): mainline steps start before their count windows ---
+    shift_block: dict[str, Any] | None = None
+    if shift_request is not None:
+        count_window_times = [t for t, _ in inflow_steps]
+        if shift_request == INSERTION_SHIFT_FREE_FLOW:
+            if not fleet_path.is_file():
+                raise SystemExit(
+                    f"--insertion-shift-s {INSERTION_SHIFT_FREE_FLOW} needs the fleet's mean v0: "
+                    f"{fleet_path} is missing"
+                )
+            v0 = float(json.loads(fleet_path.read_text())["mean"]["v0"])
+            distance = float(sim_x_of_data_x(MAINLINE_COUNT_X_M))
+            try:
+                shift_s = free_flow_shift_s(distance, v0)
+                inflow_steps = shifted_steps(inflow_steps, shift_s)
+            except ValueError as e:
+                raise SystemExit(f"--insertion-shift-s {INSERTION_SHIFT_FREE_FLOW}: {e}") from None
+            shift_block = {
+                "mode": INSERTION_SHIFT_FREE_FLOW,
+                "shift_s": shift_s,
+                "exact_s": distance / v0,
+                "rule": "the free-flow travel time from the network entry (sim x = 0, the first "
+                "corridor edge's start, departPos base) to the mainline count section at the "
+                "fleet's mean v0, rounded to 0.1 s: a lower bound on the fleet's mean time "
+                "(heterogeneous v0, edge limits below v0, insertion below v0 and congestion "
+                "lengthen it)",
+                "count_x_m": MAINLINE_COUNT_X_M,
+                "distance_m": distance,
+                "v0_ms": v0,
+                "fleet_artifact": FLEET_ARTIFACT,
+                "fleet_artifact_sha256": hashlib.sha256(fleet_path.read_bytes()).hexdigest(),
+            }
+        else:
+            assert isinstance(shift_request, float)
+            shift_s = shift_request
+            inflow_steps = shifted_steps(inflow_steps, shift_s)
+            shift_block = {"mode": "explicit", "shift_s": shift_s}
+        shift_block.update(
+            {
+                "proposal": "C7b, docs/I24_CONSISTENCY_C7B.md (proposed, not adopted)",
+                "applies_to": "the mainline inflow of both arms (steps after the first; the "
+                "first starts at 0 and covers the warm-up); on-ramp inflows, exit fractions and "
+                "the boundary are unchanged",
+                "count_window_times_sim": count_window_times,
+                "inflow_step_times_sim": [t for t, _ in inflow_steps],
+            }
+        )
+
     # --- coverage-corrected demand (second arm) ---------------------------
     span_hi_data = geo.data_x_of_chain_pos(chain_off[CORRIDOR_EDGES[-1]])
+    estimator = "recommended" if demand_cov else args.coverage_estimator
     cov_rows = None
+    cov_bytes = b""
+    if demand_cov and not fleet_path.is_file():
+        raise SystemExit(
+            f"--demand-coverage recommended writes the corrected arm, which needs {fleet_path}"
+        )
     if fleet_path.is_file():
         idm_mean = json.loads(fleet_path.read_text())["mean"]
         cov_rows = coverage_factors(t_lo, t_hi, span_hi_data, idm_mean)
         coverage_source: dict = {"estimator": "equilibrium", "artifact": None}
-        if args.coverage_estimator != "equilibrium":
-            cov_art = json.loads((REPO_ROOT / "artifacts" / "i24_coverage.json").read_text())
-            key = (
-                "recommended_filled"
-                if args.coverage_estimator == "recommended"
-                else args.coverage_estimator
-            )
+        if estimator != "equilibrium":
+            cov_bytes = (REPO_ROOT / COVERAGE_ARTIFACT).read_bytes()
+            cov_art = json.loads(cov_bytes)
+            key = "recommended_filled" if estimator == "recommended" else estimator
             by_t = {float(w["t_lo_s"]): w["pooled"].get(key) for w in cov_art["windows"]}
             for r in cov_rows:
                 v = by_t.get(float(r["t_lo_s"]))
@@ -833,15 +1055,54 @@ def main() -> None:
         ["date", "-u", "+%Y-%m-%dT%H:%M:%SZ"], capture_output=True, text=True, check=True
     ).stdout.strip()
     dh = data_hash()
+    demand_cov_block: dict[str, Any] | None = None
+    if demand_cov:
+        assert cov_rows is not None
+        cov_art = json.loads(cov_bytes)
+        if cov_art.get("data_hash") != dh:
+            raise SystemExit(
+                f"--demand-coverage recommended: {COVERAGE_ARTIFACT} was made from data hash "
+                f"{str(cov_art.get('data_hash'))[:12]}…, not the recording's {dh[:12]}…"
+            )
+        demand_cov_block = {
+            "mode": "recommended",
+            "proposal": "C7b, docs/I24_CONSISTENCY_C7B.md (proposed, not adopted)",
+            "rule": "the corrected arm's mainline and on-ramp inflows are the tracked counts "
+            f"divided by {COVERAGE_ARTIFACT} pooled.recommended_filled per 15-min window (each "
+            "5-min window takes the 15-min window it starts in), the values "
+            "scripts/i24_validate.py divides the observed counts by for the link-flow row's "
+            "target (hourly_flows_veh_h_recommended); the planned demand over that target is "
+            "then one constant in every window",
+            "artifact": COVERAGE_ARTIFACT,
+            "artifact_sha256": hashlib.sha256(cov_bytes).hexdigest(),
+            "artifact_data_hash": cov_art.get("data_hash"),
+            "artifact_created_at": cov_art.get("created_at"),
+            "per_window": [
+                {
+                    "t_lo_s": r["t_lo_s"],
+                    "window": r.get("window"),
+                    "c_equilibrium": r["coverage_equilibrium"],
+                    "c_used": r["coverage_used"],
+                    "c_used_over_c_equilibrium": r["coverage_used"] / r["coverage_equilibrium"],
+                }
+                for r in cov_rows
+            ],
+        }
+    demand_source = (
+        "I-24 MOTION INCEPTION v1.x westbound, 30 Nov 2022: mainline (lanes 1-4) fragment "
+        f"crossings at data x = {MAINLINE_COUNT_X_M:g} m (MM 62.7 - {MAINLINE_COUNT_X_M / 1609.344:.3f} mi) "
+        f"per 5-min window, {clock(t_lo)}-{clock(t_hi)} CST, shifted by the {WARMUP_S:g} s "
+        "warmup (sim t = data t - 1800 + 600). LOWER BOUND at the instrument's tracking "
+        "coverage; not inflated."
+    )
+    if shift_block is not None:
+        demand_source += (
+            f" C7b insertion shift: every step after the first starts {shift_block['shift_s']:g} s "
+            "earlier (docs/I24_CONSISTENCY_C7B.md)."
+        )
     demand = DemandProfile(
         created_at=created_at,
-        source=(
-            "I-24 MOTION INCEPTION v1.x westbound, 30 Nov 2022: mainline (lanes 1-4) fragment "
-            f"crossings at data x = {MAINLINE_COUNT_X_M:g} m (MM 62.7 - {MAINLINE_COUNT_X_M / 1609.344:.3f} mi) "
-            f"per 5-min window, {clock(t_lo)}-{clock(t_hi)} CST, shifted by the {WARMUP_S:g} s "
-            "warmup (sim t = data t - 1800 + 600). LOWER BOUND at the instrument's tracking "
-            "coverage; not inflated."
-        ),
+        source=demand_source,
         data_hash=dh,
         steps=[(t, round(q, 6)) for t, q in inflow_steps],
         geh_vs_counts=None,
@@ -953,6 +1214,8 @@ def main() -> None:
             "ramps": [through[r["name"]] for r in RAMPS],
         }
         header += ramp_through_header(through_block, f"artifacts/i24_replica_inputs{suffix}.json")
+    if shift_block is not None:
+        header += insertion_shift_header(shift_block, f"artifacts/i24_replica_inputs{suffix}.json")
     out_yaml = REPO_ROOT / "scenarios" / f"i24_replica{suffix}.yaml"
     cfg.to_yaml(out_yaml)
     out_yaml.write_text(header + out_yaml.read_text())
@@ -969,12 +1232,10 @@ def main() -> None:
                 ]
         cfg2 = ScenarioConfig.model_validate(sc2)
         corrected_hash = config_hash(cfg2)
-        header2 = (
-            header.replace(
-                "# i24_replica — I-24 westbound",
-                "# i24_replica_corrected — I-24 westbound",
-            )
-            + f"""#
+        coverage_paragraph = (
+            demand_coverage_paragraph(cov_rows, f"artifacts/i24_replica_inputs{suffix}.json")
+            if demand_cov
+            else f"""#
 # COVERAGE-CORRECTED ARM: identical to i24_replica except that the mainline and
 # on-ramp inflows are divided by the instrument's apparent tracking coverage per
 # 15-min window (tracked Edie density / density the calibrated IDM population
@@ -984,6 +1245,13 @@ def main() -> None:
 # instrument correction derived from the data itself, not a fit to any
 # validation target; both arms are reported side by side.
 """
+        )
+        header2 = (
+            header.replace(
+                "# i24_replica — I-24 westbound",
+                "# i24_replica_corrected — I-24 westbound",
+            )
+            + coverage_paragraph
         )
         out2 = REPO_ROOT / "scenarios" / f"i24_replica{suffix}_corrected.yaml"
         cfg2.to_yaml(out2)
@@ -1075,6 +1343,16 @@ def main() -> None:
         inputs["entry_lane_vehicles"] = entry_lane_counts
     if through_block is not None:  # --ramp-through-traffic exclude only
         inputs["ramp_through_traffic"] = through_block
+    if demand_cov_block is not None:  # --demand-coverage recommended only
+        assert inputs["coverage"] is not None
+        inputs["coverage"]["method"] = (
+            f"{COVERAGE_ARTIFACT} pooled.recommended_filled per 15-min window (C7b "
+            "--demand-coverage recommended); coverage_equilibrium keeps the builder's IDM-"
+            "equilibrium value"
+        )
+        inputs["demand_coverage"] = demand_cov_block
+    if shift_block is not None:  # --insertion-shift-s only
+        inputs["insertion_shift"] = shift_block
     (REPO_ROOT / "artifacts" / f"i24_replica_inputs{suffix}.json").write_text(
         json.dumps(inputs, indent=2)
     )
@@ -1097,6 +1375,15 @@ def main() -> None:
                 f"  B2 {t['name']}: counted {t['counted']}, flagged {t['flagged']} "
                 f"({t['flagged_series']}), corrected {t['corrected']} over the study period"
             )
+    if shift_block is not None:
+        print(
+            f"  C7b insertion shift {shift_block['shift_s']:g} s ({shift_block['mode']}): mainline "
+            f"steps from {shift_block['inflow_step_times_sim'][1]:g} s"
+        )
+    if demand_cov_block is not None:
+        print(
+            "  C7b demand coverage: recommended (artifacts/i24_coverage.json pooled.recommended_filled)"
+        )
     print(
         f"boundary v [{inputs['boundary']['v_min_ms']:.1f}, {inputs['boundary']['v_max_ms']:.1f}] m/s over {len(sched)} steps"
     )

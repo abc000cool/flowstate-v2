@@ -135,6 +135,9 @@ never as zero.
 - Runs with collisions: {{ integrity.collision_runs }}
 {% endif %}
 - Locks: {{ integrity.lock_line }}
+{% for line in integrity.weave_release_lines %}
+- {{ line }}
+{% endfor %}
 {% for line in integrity.forced_lines %}
 - {{ line }}
 {% endfor %}

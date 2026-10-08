@@ -84,7 +84,13 @@ from calibrate_driver_grid import (
     xlsfg_variant,
 )
 
-from flowstate_core.config import ScenarioConfig, config_hash
+from flowstate_core.config import (
+    CONFIG_HASH_VERSION,
+    ScenarioConfig,
+    config_hash,
+    config_hash_v2,
+    config_hash_v3,
+)
 from validation.driver_calibration import CURRENT, K_GRID, KEEP_RIGHT_GRID
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -389,7 +395,7 @@ class Written:
     Attributes:
         text: The file's full text (header + edited source).
         document: The parsed scenario.
-        config_hash: Its config hash (policy v3).
+        config_hash: Its config hash under today's policy (``CONFIG_HASH_VERSION``).
         population: The population path it runs.
         counts: The xlsfg edit counts (I-94) or empty.
     """
@@ -443,7 +449,7 @@ def build(target: Target, choice: Choice, *, source: str, name: str | None, date
         measured=measured,
         source=source,
         counts=counts,
-        config_hash_v3=h,
+        own_config_hash=h,
         date=date,
         source_has_header=src_text.startswith("#"),
     )
@@ -465,11 +471,15 @@ def header_lines(
     measured: dict[str, Any],
     source: str,
     counts: dict[str, int],
-    config_hash_v3: str,
+    own_config_hash: str,
     date: str,
     source_has_header: bool,
 ) -> list[str]:
-    """The provenance comment block (every line starts with ``#``)."""
+    """The provenance comment block (every line starts with ``#``).
+
+    ``own_config_hash`` is the file's hash under today's policy; the block states it with
+    that policy's label (docs/CONTRACTS.md §2), never a fixed one.
+    """
     src = _rel(source)
     out = [
         f"# {name}: {src} with the Amendment-1 driver calibration applied",
@@ -498,10 +508,40 @@ def header_lines(
             f"#   on {counts['weave_sections']} weaving section(s), network lane_end_giveup_m 7.5, "
             f"merge_params {{force_guard: 1.0}} on the {counts['scripted_merges']} scripted merges.",
         ]
-    out.append(f"# config hash {config_hash_v3} (policy v3).")
+    out.append(f"# config hash {own_config_hash} (policy v{CONFIG_HASH_VERSION}).")
     if source_has_header:
         out.append("# The source's own header follows; it describes the source, not this file.")
     return out
+
+
+#: The header line :func:`header_lines` writes: the file's hash and the policy it was written under.
+_OWN_HASH_LINE = re.compile(r"^# config hash ([0-9a-f]{12}) \(policy v(\d+)\)\.$", re.M)
+
+
+def stated_hash_problem(text: str, document: dict[str, Any]) -> str | None:
+    """Why the header's ``# config hash H (policy vN).`` line does not name ``document``, or None.
+
+    The hash is checked under the policy the line names (docs/CONTRACTS.md §2): a file written
+    under policy 3 states its version-3 hash, true for its date, and is never rewritten to
+    relabel it. Today's policy, 3 and 2 are the ones this code reproduces.
+    """
+    m = _OWN_HASH_LINE.search(text)
+    if m is None:
+        return "the header states no config hash with its policy"
+    stated, version = m.group(1), int(m.group(2))
+    if version == CONFIG_HASH_VERSION:
+        want = config_hash(ScenarioConfig.model_validate(document))
+    elif version == 3:
+        want = config_hash_v3(document)
+    elif version == 2:
+        want = config_hash_v2(document)
+    else:
+        return f"the header's config hash {stated} is under policy v{version}, which this code does not reproduce"
+    if stated != want:
+        return (
+            f"the header states config hash {stated} (policy v{version}); that policy gives {want}"
+        )
+    return None
 
 
 # --- command line ------------------------------------------------------------------------------
@@ -577,13 +617,19 @@ def main(argv: list[str] | None = None) -> int:
         if have != res.document:
             print(
                 f"check: {_rel(out)} is not the scenario for {pair} "
-                f"(config hash {res.config_hash}); rewrite it with --force",
+                f"(config hash {res.config_hash}, policy v{CONFIG_HASH_VERSION}); rewrite it with --force",
                 file=sys.stderr,
             )
             return 1
         if choice.artifact_sha256 and choice.artifact_sha256 not in out.read_text():
             print(f"check: note: the header does not quote {choice.artifact}'s current sha256")
-        print(f"check: {_rel(out)} is the scenario for {pair} (config hash {res.config_hash})")
+        stated = stated_hash_problem(out.read_text(), have)
+        if stated:
+            print(f"check: note: {stated}")
+        print(
+            f"check: {_rel(out)} is the scenario for {pair} "
+            f"(config hash {res.config_hash}, policy v{CONFIG_HASH_VERSION})"
+        )
         return 0
     if out.exists() and not args.force:
         print(
@@ -596,7 +642,8 @@ def main(argv: list[str] | None = None) -> int:
     part.replace(out)
     print(
         f"-> {_rel(out)}: {res.document['name']}, {pair}, population {res.population}, "
-        f"config hash {res.config_hash}" + (f"; xlsfg {res.counts}" if res.counts else "")
+        f"config hash {res.config_hash} (policy v{CONFIG_HASH_VERSION})"
+        + (f"; xlsfg {res.counts}" if res.counts else "")
     )
     if (choice.k, choice.keep_right) == CURRENT:
         print(

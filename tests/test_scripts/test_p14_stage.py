@@ -29,7 +29,7 @@ from tests.test_scripts.test_p8c_stage import BASH, GCP, _stubs, _tgz
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SEED = "6914975401685141156"  # spawn_seeds(42, 20)[0], the step-3 batteries' first seed
-RUN = f"runs/i24_validation/p14_b1b2/e19e5ab64186/{SEED}"
+RUN = f"runs/i24_validation/p14_b1b2/582ba839b84c/{SEED}"  # the B1 copy's policy-v4 hash (v3 e19e5ab64186)
 H1 = "uv run --no-sync python artifacts/i24_discharge_2026-10-07/harness/corridor_b1.py"
 H2 = "uv run --no-sync python artifacts/i24_discharge_2026-10-07/harness_b2/corridor_b2.py"
 H3 = "uv run --no-sync python artifacts/i24_discharge_2026-10-07/harness_b1b2/corridor_b1b2.py"
@@ -113,7 +113,7 @@ def _reduce(label: str) -> str:
 PART_I = [
     f"{H1} make-copy --source scenarios/i24_replica_flow_rc_speedcal_dc_refit.yaml "
     "--out scenarios/i24_replica_flow_rc_speedcal_dc_refit_b1.yaml --factor 1.2185 "
-    "--source-hash 909b89f298c5 --stage p14_i24_b1b2",
+    "--source-hash 7082bcea5442 --stage p14_i24_b1b2",
     *_battery("p14_b2_ref", "scenarios/i24_replica_flow_rc_speedcal_dc_refit.yaml"),
     *_battery("p14_b1b2", "scenarios/i24_replica_flow_rc_speedcal_dc_refit_b1.yaml"),
     _reduce("p14_b2_ref"),
@@ -133,7 +133,7 @@ def _part_ii(arm: str) -> list[str]:
     if b1:
         calls.append(
             f"{H1} make-copy --source scenarios/i24_replica_flow_rc_corrected_dc.yaml --out {base} "
-            "--factor 1.2185 --source-hash 219f7db55a74 --stage p14_i24_b1b2"
+            "--factor 1.2185 --source-hash 1a7797ea614d --stage p14_i24_b1b2"
         )
     calls += [
         f"uv run --no-sync python scripts/i24_fit_demand_scale.py --base corrected --base-yaml {base} "
@@ -187,7 +187,7 @@ def test_p14_does_not_resequence_an_undetermined_reading(tmp_path: Path) -> None
 
 
 def test_a_refused_b1_copy_runs_nothing(tmp_path: Path) -> None:
-    stub, repo, r = _run_stage(tmp_path, STUB_UV_FAIL_ON="--source-hash 909b89f298c5")
+    stub, repo, r = _run_stage(tmp_path, STUB_UV_FAIL_ON="--source-hash 7082bcea5442")
     assert r.returncode == 0, r.stderr
     log = (repo / "logs" / "pipeline.log").read_text()
     assert "stage p14_i24_b1b2: FAILED" in log
@@ -230,11 +230,11 @@ def test_the_ingest_installs_every_p14_output_and_the_run_files(tmp_path: Path) 
     scenarios = {
         "i24_replica_flow_rc_speedcal_dc_refit_b1.yaml": (
             "# i24_replica_flow_rc_speedcal_dc_refit_b1: scenarios/i24_replica_flow_rc_speedcal_dc_refit.yaml "
-            "(config hash 909b89f298c5) with amendment B1\nname: i24_replica_flow_rc_speedcal_dc_refit_b1\n"
+            "(config hash 7082bcea5442) with amendment B1\nname: i24_replica_flow_rc_speedcal_dc_refit_b1\n"
         ),
         "i24_replica_flow_rc_corrected_dc_b1.yaml": (
             "# i24_replica_flow_rc_corrected_dc_b1: scenarios/i24_replica_flow_rc_corrected_dc.yaml "
-            "(config hash 219f7db55a74) with amendment B1\nname: i24_replica_flow_rc_corrected_dc_b1\n"
+            "(config hash 1a7797ea614d) with amendment B1\nname: i24_replica_flow_rc_corrected_dc_b1\n"
         ),
         # the fitter's header names the scenario, then a dash (no "name:" form, so no header check)
         "i24_replica_flow_rc_speedcal_dc_refit2_b1.yaml": (

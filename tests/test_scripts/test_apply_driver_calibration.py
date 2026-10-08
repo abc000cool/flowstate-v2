@@ -26,6 +26,7 @@ import copy
 import difflib
 import importlib.util
 import json
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -35,7 +36,7 @@ from typing import Any
 import pytest
 import yaml
 
-from flowstate_core.config import ScenarioConfig, config_hash
+from flowstate_core.config import CONFIG_HASH_VERSION, ScenarioConfig, config_hash, config_hash_v3
 from validation.driver_calibration import K_GRID, GridScore, grid_pairs, select_pair
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -261,7 +262,8 @@ def test_the_i94_edit_is_stage_p1_mndot_ref_byte_for_byte(tmp_path: Path) -> Non
     p1 = json.loads(
         (REPO_ROOT / "artifacts" / "validation_mndot_i94_wb_stpaul_weave_xlsfg_p1.json").read_text()
     )
-    h = config_hash(ScenarioConfig.model_validate(yaml.safe_load(ours)))
+    # the p1 battery (2026-10-05) recorded its hash under config-hash policy 3
+    h = config_hash_v3(ScenarioConfig.model_validate(yaml.safe_load(ours)))
     assert h == p1["config_hash"] == "b550b46fe751"
 
 
@@ -272,7 +274,9 @@ def _body(text: str) -> str:
     """The file without the header this script prepends (its lines up to the source's)."""
     lines = text.splitlines(keepends=True)
     i = next(
-        i for i, ln in enumerate(lines) if ln.startswith("# config hash ") and "policy v3" in ln
+        i
+        for i, ln in enumerate(lines)
+        if re.fullmatch(r"# config hash [0-9a-f]{12} \(policy v\d+\)\.\n", ln)
     )
     rest = lines[i + 1 :]
     if rest and rest[0].startswith("# The source's own header follows"):
@@ -301,7 +305,9 @@ def test_explicit_values_give_the_grids_recipe_under_the_new_name(
     if k == 0.0:
         assert pop == BASE_POP
     assert res.config_hash == config_hash(ScenarioConfig.model_validate(want))
-    assert f"# config hash {res.config_hash} (policy v3)." in res.text
+    # labelled with today's policy (docs/CONTRACTS.md section 2), never a fixed one
+    assert f"# config hash {res.config_hash} (policy v{CONFIG_HASH_VERSION})." in res.text
+    assert ap.stated_hash_problem(res.text, res.document) is None
     assert "NOT the grid's choice" in res.text
     assert f"Source: {target.source} (sha256 {ap.sha256_of(target.source)})" in res.text
     body = _body(res.text)
@@ -455,3 +461,31 @@ def test_another_source_for_the_demand_refit(tmp_path: Path) -> None:
     want = g.pair_config(raw, "artifacts/idm_i24_capacity_amax_k0.75.json", 0.5)
     want["name"] = "i24_replica_flow_corrected_dc"
     assert doc == want
+
+
+# --- config-hash policy 4 (docs/CONTRACTS.md section 2) ---------------------------------------
+
+
+@pytest.mark.parametrize(
+    "rel",
+    ["scenarios/mndot_i94_wb_stpaul_weave_dc.yaml", "scenarios/i24_replica_flow_speedcal_dc.yaml"],
+)
+def test_a_committed_header_is_read_under_the_policy_it_names(rel: str) -> None:
+    """The committed _dc files were written under policy 3 and say so; they are not rewritten."""
+    text = (REPO_ROOT / rel).read_text()
+    doc = yaml.safe_load(text)
+    assert f"# config hash {config_hash_v3(doc)} (policy v3)." in text
+    assert ap.stated_hash_problem(text, doc) is None
+
+
+def test_a_mislabelled_or_foreign_header_hash_is_named() -> None:
+    text = (REPO_ROOT / "scenarios" / "mndot_i94_wb_stpaul_weave_dc.yaml").read_text()
+    doc = yaml.safe_load(text)
+    v3 = config_hash_v3(doc)
+    relabelled = text.replace(f"{v3} (policy v3).", f"{v3} (policy v{CONFIG_HASH_VERSION}).")
+    problem = ap.stated_hash_problem(relabelled, doc)
+    assert problem is not None and f"policy v{CONFIG_HASH_VERSION}" in problem
+    assert "does not reproduce" in str(
+        ap.stated_hash_problem(text.replace("(policy v3).", "(policy v1)."), doc)
+    )
+    assert "no config hash" in str(ap.stated_hash_problem("name: x\n", doc))

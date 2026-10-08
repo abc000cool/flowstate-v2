@@ -84,6 +84,23 @@ front), not a traffic outcome; every metric of a locked run includes the
 vehicles trapped behind it. It is a FlowState internal standard, not an FHWA
 or DOT criterion, and its row says so.
 
+**Weave releases: reported, not gating** (2026-10-07, Amendment 4 of
+docs/FRISCO_PROTOCOL.md; decision A2 of docs/DECISIONS_2026-10-07.md). Weave
+rules W1b and W2 are part of the model at every weaving section, and W1b
+ends the gore lock that ``no_locks`` would otherwise catch by sending a
+vehicle that stood a full minute at the auxiliary lane's end into the exit —
+an intervention with no measured field counterpart. So when
+``evaluate(..., weave_releases=...)`` is given the run set's
+``validation.battery.weave_release_summary`` (the report and the corridor
+battery give it), the results carry, after ``no_locks``, one
+``w1b_release_share (<section>)`` row per weaving section: W1b's releases as a
+share of the entrance's departures, pooled over the runs, with W2's counters
+in its ``detail``. A *reported* row, never a gate: its ``detail`` starts with
+:data:`REPORTED` and :attr:`CriteriaResult.status` reads ``REPORTED``; a share
+above :data:`W1B_RELEASE_SHARE_FLAG` (1 %, p10's pre-registered bound) is
+flagged in the row and in the report's limitations, not failed. Without the
+argument, or for a run set without weaving sections, no such row is written.
+
 The wave-speed row's number depends on the detector that produced it, so
 every profile names its detector (``wave_detector``, a
 :class:`validation.waves.WaveDetector`) and the evaluated row records that
@@ -102,9 +119,9 @@ different recipe is reported as not evaluated rather than scored.
 from __future__ import annotations
 
 import math
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
-from typing import Final, Literal
+from typing import Any, Final, Literal
 
 from flowstate_core.constants import WAVE_SPEED_BAND_KMH
 from validation.locks import LOCK_MIN_DURATION_S, RunLocks
@@ -134,10 +151,34 @@ NO_LOCKS_STANDARD: Final[str] = (
 )
 #: Seconds per minute (the ``no_locks`` threshold is stated in minutes).
 _S_PER_MIN: Final[float] = 60.0
+#: ``detail`` prefix of a reported row: a disclosure, never a pass or a fail
+#: (``CriteriaResult.status`` reads "REPORTED").
+REPORTED: Final[str] = "reported, not gating"
+#: Name stem of the per-weave W1b release row (``w1b_release_share (<section>)``).
+W1B_RELEASE_SHARE: Final[str] = "w1b_release_share"
+#: Share of a weave entrance's departures above which W1b's releases are
+#: flagged (2026-10-07, Amendment 4 of docs/FRISCO_PROTOCOL.md): the bound p10
+#: pre-registered as its clause CW5b (docs/DECISIONS_2026-10-07.md §A2), which
+#: the amendment turned from a gate into a disclosure. Flagged in the row and
+#: the report's limitations; never a failure.
+W1B_RELEASE_SHARE_FLAG: Final[float] = 0.01
+#: Provenance of the ``w1b_release_share`` rows, written into their ``detail``.
+W1B_RELEASES_STANDARD: Final[str] = (
+    "Amendment 4 (docs/FRISCO_PROTOCOL.md, 2026-10-07): weave rules W1b and W2 are "
+    "part of the model; a FlowState disclosure, not an FHWA or DOT criterion"
+)
+#: W2's ``meta.json["weave_sections"][i]`` counters, in the order a row names them.
+_W2_COUNTER_TEXT: Final[tuple[tuple[str, str], ...]] = (
+    ("n_handback_skips", "handback skips"),
+    ("n_close_leader_withheld", "close-leader withholds"),
+    ("n_opposing_deferred", "opposing deferrals"),
+    ("n_opposing_vetoed", "of them vetoes"),
+)
 
 #: The outcome of one row: PASS / FAIL when evaluated; NOT RECORDED when an
-#: input some run should have recorded is missing; NOT EVALUATED otherwise.
-CriterionStatus = Literal["PASS", "FAIL", "NOT EVALUATED", "NOT RECORDED"]
+#: input some run should have recorded is missing; NOT EVALUATED otherwise;
+#: REPORTED for a disclosure row that is never a pass or a fail.
+CriterionStatus = Literal["PASS", "FAIL", "NOT EVALUATED", "NOT RECORDED", "REPORTED"]
 
 _FLOWSTATE_ROWS = (
     "The segment-speed RMSPE <= 15% bound is FlowState's own convention "
@@ -376,7 +417,11 @@ class CriteriaResult:
             is present but not usable).
         detail: Optional explanatory note; for ``wave_speed`` it names the
             detector recipe behind the value. A row whose input some run did
-            not record starts it with :data:`NOT_RECORDED`.
+            not record starts it with :data:`NOT_RECORDED`; a reported row
+            (never gating: the ``w1b_release_share`` rows) with
+            :data:`REPORTED`, and its ``passed`` only says it cannot fail
+            (True when its value was computed, False otherwise, as for any
+            row not evaluated).
     """
 
     name: str
@@ -388,9 +433,13 @@ class CriteriaResult:
 
     @property
     def status(self) -> CriterionStatus:
-        """``PASS`` / ``FAIL`` when evaluated, else ``NOT RECORDED`` (the
-        ``detail`` starts with :data:`NOT_RECORDED`) or ``NOT EVALUATED``.
-        Neither of the last two is a pass."""
+        """``REPORTED`` for a disclosure row (the ``detail`` starts with
+        :data:`REPORTED`), else ``PASS`` / ``FAIL`` when evaluated, else ``NOT
+        RECORDED`` (the ``detail`` starts with :data:`NOT_RECORDED`) or ``NOT
+        EVALUATED``. Neither of the last two is a pass; ``REPORTED`` is
+        neither a pass nor a fail."""
+        if self.detail.startswith(REPORTED):
+            return "REPORTED"
         if self.evaluated:
             return "PASS" if self.passed else "FAIL"
         return "NOT RECORDED" if self.detail.startswith(NOT_RECORDED) else "NOT EVALUATED"
@@ -610,6 +659,88 @@ def _lock_row(
     )
 
 
+def _w2_text(counters: Mapping[str, Any]) -> str:
+    """W2's pooled counters in words (``not recorded`` for a counter no run wrote)."""
+    parts: list[str] = []
+    for key, text in _W2_COUNTER_TEXT:
+        value = counters.get(key)
+        parts.append(f"{text} {'not recorded' if value is None else int(value)}")
+    return ", ".join(parts)
+
+
+def _weave_release_rows(summary: Mapping[str, Any]) -> list[CriteriaResult]:
+    """One reported ``w1b_release_share`` row per weaving section.
+
+    Args:
+        summary: ``validation.battery.weave_release_summary`` over the run set.
+
+    Returns:
+        The rows, in the summary's section order; empty without sections.
+    """
+    flag = float(summary.get("flag_share", W1B_RELEASE_SHARE_FLAG))
+    threshold = (
+        f"reported beside no_locks, not gating: W1b releases as a share of the "
+        f"entrance's departures, pooled over the runs; above {flag:.0%} flagged in "
+        "Limitations"
+    )
+    rows: list[CriteriaResult] = []
+    for section in summary.get("sections") or []:
+        name = f"{W1B_RELEASE_SHARE} ({section['ramp']})"
+        n_runs = int(section["n_runs"])
+        n_w1b = int(section["n_runs_w1b"])
+        n_off = int(section["n_runs_w1b_off"])
+        notes: list[str] = []
+        if n_off:
+            notes.append(
+                f"W1b off in {n_off} of {n_runs} run(s) (an opt-out, allowed only to "
+                "reproduce a result published before Amendment 4; not counted)"
+            )
+        n_w2_off = int(section["n_runs_w2_off"])
+        if n_w2_off:
+            notes.append(f"W2 off (any switch) in {n_w2_off} of {n_runs} run(s)")
+        notes.append("W2 over the runs it was on in: " + _w2_text(section["w2"]))
+        notes.append(W1B_RELEASES_STANDARD)
+        share = float(section["share"])
+        if n_w1b == 0 or not math.isfinite(share):
+            why = (
+                "no run with W1b on records its releases"
+                if n_w1b == 0
+                else "no entrance departure recorded"
+            )
+            rows.append(
+                CriteriaResult(
+                    name=name,
+                    value=None if n_w1b == 0 else math.nan,
+                    threshold=threshold,
+                    passed=False,
+                    evaluated=False,
+                    detail=f"{REPORTED}: {why}; " + "; ".join(notes),
+                )
+            )
+            continue
+        state = (
+            f"ABOVE the {flag:.0%} design bound (flagged in Limitations)"
+            if section["flagged"]
+            else f"within the {flag:.0%} design bound"
+        )
+        rows.append(
+            CriteriaResult(
+                name=name,
+                value=share,
+                threshold=threshold,
+                passed=True,
+                evaluated=True,
+                detail=(
+                    f"{REPORTED}: {int(section['w1b_releases'])} of "
+                    f"{int(section['entrance_departed'])} entrance departures released into "
+                    f"the paired exit by W1b over {n_w1b} run(s) ({100.0 * share:.2f} %), "
+                    f"{state}; " + "; ".join(notes)
+                ),
+            )
+        )
+    return rows
+
+
 def _not_evaluated(
     name: str, threshold: str, *, observations_supplied: bool = False
 ) -> CriteriaResult:
@@ -667,6 +798,7 @@ def evaluate(
     collision_counts: Sequence[int | None] | None = None,
     lock_flags: Sequence[bool | None] | None = None,
     lock_records: Sequence[RunLocks | None] | None = None,
+    weave_releases: Mapping[str, Any] | None = None,
 ) -> list[CriteriaResult]:
     """Evaluate acceptance criteria against measured values.
 
@@ -721,6 +853,12 @@ def evaluate(
             recorded (the run-end reader alone, whose "no lock" is not
             established) and how many standstills at a seeded disturbance it
             left out.
+        weave_releases: ``validation.battery.weave_release_summary`` over the
+            run set (2026-10-07, Amendment 4). Adds, after ``no_locks``, one
+            reported ``w1b_release_share (<section>)`` row per weaving section
+            (status ``REPORTED``: never a pass or a fail; the share above
+            :data:`W1B_RELEASE_SHARE_FLAG` is flagged in its ``detail``).
+            ``None`` (the default), or a summary without sections, adds none.
 
     Raises:
         ValueError: Both ``lock_flags`` and ``lock_records`` are given.
@@ -912,4 +1050,7 @@ def evaluate(
         )
     else:
         rows.append(_lock_row(lock_flags))
+    # Amendment 4 (2026-10-07): W1b's releases per weave, reported beside no_locks
+    if weave_releases is not None:
+        rows.extend(_weave_release_rows(weave_releases))
     return rows

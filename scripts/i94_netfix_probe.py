@@ -40,6 +40,14 @@ explains (§6.3 of the note, written before any run):
 * **Reproduction** — the as-built runs at the grid's two seeds are compared
   with the committed grid readings (``artifacts/p3_driver_grid_2026-10-07``):
   identical readings say the code path is unchanged since the grid.
+* **Hash policies** — run trees are keyed by config hash. A recorded run (the
+  grid's, or this probe's own from an earlier run) is looked up under the policy
+  it was recorded under: today's, else policy 3 or 2 (:func:`recorded_cell`;
+  docs/CONTRACTS.md §2; the grid and the committed probe ran under policy 3),
+  one policy per (network, pair), and each result row states the hash and the
+  policy (``config_hash_version``) its runs were read under. New runs are keyed
+  and recorded by today's hash only: under policy 4 the slice's two weaves run
+  W1b and W2, which policy 3's runs of the same file did not.
 
 A probe: four seeds, one corridor slice, no calibration, no validation claim.
 Corridor runs are refused on a machine below 24 GB (the laptop rule;
@@ -77,7 +85,13 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import calibrate_driver_grid as g
 
-from flowstate_core.config import ScenarioConfig, config_hash
+from flowstate_core.config import (
+    CONFIG_HASH_VERSION,
+    ScenarioConfig,
+    config_hash,
+    config_hash_v2,
+    config_hash_v3,
+)
 from flowstate_core.rng import spawn_seeds
 from validation.lane_use import lanes_at, shares
 
@@ -102,6 +116,25 @@ GRID_MIN_CORRECTED_RMSE_PP = 4.97
 FIX_OPTION = "--ramps.unset"
 #: The paths whose uncommitted changes make the artifact's ``code_dirty`` true.
 CODE_PATHS = (*g.CODE_PATHS, "scripts/i94_netfix_probe.py")
+#: The config-hash policies a recorded run is looked up under, newest first: today's and the two
+#: older ones ``flowstate_core.config`` reproduces (docs/CONTRACTS.md section 2). The probe and the
+#: driver grid it reproduces ran on 2026-10-07 under policy 3, so their run trees are keyed by
+#: version-3 hashes; a new run is keyed, and recorded, by today's hash only.
+POLICIES: tuple[int, ...] = (CONFIG_HASH_VERSION, 3, 2)
+
+
+def policy_hashes(raw: dict[str, Any]) -> dict[int, str]:
+    """A run configuration's config hash under each of :data:`POLICIES`, today's first.
+
+    A policy that cannot read the configuration is left out.
+    """
+    out = {CONFIG_HASH_VERSION: config_hash(ScenarioConfig.model_validate(raw))}
+    for version, older in ((3, config_hash_v3), (2, config_hash_v2)):
+        try:
+            out.setdefault(version, older(copy.deepcopy(raw)))
+        except ValueError:  # a configuration that policy could not read
+            continue
+    return out
 
 
 @dataclasses.dataclass(frozen=True)
@@ -114,6 +147,9 @@ class ProbePlan:
     hashes: dict[str, dict[str, str]]
     pairs: tuple[tuple[float, float], ...]
     seeds: list[int]
+    #: by network and pair, the hash under each policy a recorded run is looked up under
+    #: (:func:`policy_hashes`); ``hashes`` holds today's, under which new runs are written.
+    policy_hashes: dict[str, dict[str, dict[int, str]]] = dataclasses.field(default_factory=dict)
 
     @property
     def names(self) -> list[str]:
@@ -149,6 +185,7 @@ def build_probe(
     references: dict[str, dict[str, Any]] = {}
     configs: dict[str, dict[str, dict[str, Any]]] = {}
     hashes: dict[str, dict[str, str]] = {}
+    by_policy: dict[str, dict[str, dict[int, str]]] = {}
     seeds: list[int] | None = None
     for net, path in networks.items():
         spec = dataclasses.replace(base, base_scenario=path)
@@ -158,16 +195,18 @@ def build_probe(
             raise ValueError(f"{path} runs other seeds than the other network")
         seeds = net_seeds
         specs[net], references[net] = spec, ref
-        configs[net], hashes[net] = {}, {}
+        configs[net], hashes[net], by_policy[net] = {}, {}, {}
         for k, kr in pairs:
+            name = g.pair_name(k, kr)
             raw = g.pair_config(ref, g.population_for(spec, k), kr)
-            configs[net][g.pair_name(k, kr)] = raw
-            hashes[net][g.pair_name(k, kr)] = config_hash(ScenarioConfig.model_validate(raw))
+            configs[net][name] = raw
+            by_policy[net][name] = policy_hashes(raw)
+            hashes[net][name] = by_policy[net][name][CONFIG_HASH_VERSION]
     stripped = {_json_key(_strip_network_fix(r)) for r in references.values()}
     if len(stripped) != 1:
         raise ValueError("the networks must differ only in their name and netconvert_extra")
     assert seeds is not None
-    return ProbePlan(specs, references, configs, hashes, tuple(pairs), seeds)
+    return ProbePlan(specs, references, configs, hashes, tuple(pairs), seeds, by_policy)
 
 
 def _json_key(raw: dict[str, Any]) -> str:
@@ -203,6 +242,28 @@ def _context(plan: ProbePlan, observed_lanes: Path) -> dict[str, Any]:
 
 def _run_dir(root: Path, net: str, name: str, h: str, seed: int) -> Path:
     return root / net / name / h / str(seed)
+
+
+def _hashes_of(plan: ProbePlan, net: str, name: str) -> dict[int, str]:
+    by_policy = plan.policy_hashes.get(net, {}).get(name)
+    return dict(by_policy) if by_policy else {CONFIG_HASH_VERSION: plan.hashes[net][name]}
+
+
+def recorded_cell(cell: Path, hashes: dict[int, str], seeds: list[int]) -> tuple[int, str]:
+    """``(policy, hash)`` under which ``cell`` (``<root>/<network>/<pair>``, or the grid's
+    ``<grid>/<pair>``) holds a pair's recorded runs.
+
+    Today's hash when any seed's readings are under it, else the newest older policy
+    (:data:`POLICIES`) under which any are; today's when none holds any. One policy per cell,
+    never a mix: runs recorded under two policies may differ in physics wherever a default
+    changed between them (docs/CONTRACTS.md section 2: Amendment 4's policy 4 turned W1b and W2
+    on at every weave that does not set them, as the slice's two weaves do not).
+    """
+    for version in POLICIES:
+        h = hashes.get(version)
+        if h is not None and any((cell / h / str(s) / g.READINGS).is_file() for s in seeds):
+            return version, h
+    return CONFIG_HASH_VERSION, hashes[CONFIG_HASH_VERSION]
 
 
 def lanes_for(plan: ProbePlan, root: Path) -> dict[str, list[dict[str, Any]]]:
@@ -243,6 +304,19 @@ def run_probe(
         for s in plan.seeds
         if not (_run_dir(root, net, name, plan.hashes[net][name], s) / g.READINGS).is_file()
     ]
+    older = [
+        f"{net}/{name} (policy v{v})"
+        for net in plan.specs
+        for name in plan.names
+        if (v := recorded_cell(root / net / name, _hashes_of(plan, net, name), plan.seeds)[0])
+        != CONFIG_HASH_VERSION
+    ]
+    if older:
+        # another policy's runs may be other physics (recorded_cell); today's plan runs anew
+        print(
+            f"runs recorded under an older config-hash policy are kept, not counted: {', '.join(older)}",
+            flush=True,
+        )
     total, avail = g.memory_gb()
     n_procs = g.procs_for(procs, len(pending), mem_per_run_gb, avail)
     print(
@@ -344,11 +418,13 @@ def _reproduction(plan: ProbePlan, root: Path, grid_root: Path) -> dict[str, dic
     """The as-built readings at the grid's seeds against the committed grid readings."""
     out: dict[str, dict[str, str]] = {}
     for name in plan.names:
-        h = plan.hashes["as_built"][name]
+        hashes = _hashes_of(plan, "as_built", name)
+        grid_h = recorded_cell(grid_root / name, hashes, plan.seeds)[1]
+        ours_h = recorded_cell(root / "as_built" / name, hashes, plan.seeds)[1]
         row: dict[str, str] = {}
         for s in plan.seeds:
-            committed = grid_root / name / h / str(s) / g.READINGS
-            ours = _run_dir(root, "as_built", name, h, s) / g.READINGS
+            committed = grid_root / name / grid_h / str(s) / g.READINGS
+            ours = _run_dir(root, "as_built", name, ours_h, s) / g.READINGS
             if not committed.is_file():
                 continue
             if not ours.is_file():
@@ -446,11 +522,14 @@ def analyze_probe(
     }
     common = set.intersection(*compared.values()) if compared else set()
     rows: dict[str, dict[str, Any]] = {}
+    read_older: list[str] = []
     for net in plan.specs:
         segs = g.segments_of(lanes[net])
         rows[net] = {}
         for name in plan.names:
-            h = plan.hashes[net][name]
+            version, h = recorded_cell(root / net / name, _hashes_of(plan, net, name), plan.seeds)
+            if version != CONFIG_HASH_VERSION:
+                read_older.append(f"{net}/{name} under policy v{version} ({h})")
             reads = [
                 json.loads(p.read_text())
                 for s in plan.seeds
@@ -461,6 +540,8 @@ def analyze_probe(
             dep = [r["run"]["departed_share"] for r in reads if r["run"].get("departed_share")]
             row: dict[str, Any] = {
                 "config_hash": h,
+                # additive (2026-10-07, policy 4): the policy the runs read were recorded under
+                "config_hash_version": version,
                 "complete": complete,
                 "n_seeds_read": len(reads),
                 "runs": [r["run"] for r in reads],
@@ -511,6 +592,13 @@ def analyze_probe(
             "corrected ones, and '_s791_reversed' does not reverse "
             f"{', '.join(pre_corrected)} a second time."
         )
+    if read_older:
+        notes.append(
+            "Runs read as recorded under an older config-hash policy (docs/CONTRACTS.md section 2): "
+            f"{'; '.join(read_older)}. They are what that policy ran; where a default changed since "
+            "(policy 4, Amendment 4: W1b and W2 at a weave that does not set them), today's "
+            f"configuration is other physics under its policy-v{CONFIG_HASH_VERSION} hash."
+        )
     if any(r.get("n_collisions") for net in rows.values() for r in net.values()):
         notes.append("Collisions were recorded (column n_collisions): see the runs.")
     out = {
@@ -523,6 +611,7 @@ def analyze_probe(
                 "scenario": plan.specs[net].base_scenario,
                 "transform": plan.specs[net].transform,
                 "reference_config_hash": config_hash(ScenarioConfig.model_validate(ref)),
+                "reference_config_hash_version": CONFIG_HASH_VERSION,  # additive (policy 4)
                 "ramps_unset": _ramps_unset(ref),
                 "stations_compared": sorted(compared[net]),
                 "stations_not_compared": observed[net]["lane_use"]["stations_not_compared"],
@@ -587,6 +676,7 @@ def print_plan(plan: ProbePlan) -> None:
         f"{len(plan.specs)} networks x {len(plan.pairs)} pairs x {len(plan.seeds)} seeds = "
         f"{plan.n_runs} runs (seeds {plan.seeds})"
     )
+    print(f"config hashes under policy v{CONFIG_HASH_VERSION} (new runs are keyed by them)")
     for net, spec in plan.specs.items():
         print(
             f"{net}: {spec.base_scenario} (xlsfg), --ramps.unset {_ramps_unset(plan.references[net])}"

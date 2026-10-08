@@ -1507,6 +1507,9 @@ dc_cal_netfix=scenarios/${MNDOT}_weave_dc_cal_netfix.yaml:6953598295321596746"
 p8c_steps() {  # the seven runs, then the reader on whatever ran (it names every run missing or not reproduced)
   local rc=0
   # shellcheck disable=SC2086
+  #     Config-hash policy 4 (2026-10-07): the two pins are policy-3 hashes; run_pairs.py compares them with today's
+  #     hash and refuses on a policy-4 tree, as it must (both scenarios' weaves set only exit_prepare, so policy 4 runs
+  #     W1b and W2 there, not p8's physics). Launch p8c from a policy-3 commit (31c04c4). Policy 4: be20338bd1a6 / 3e1ab7eda0c4.
   $RUN scripts/run_pairs.py --out runs/p8c --procs $(( PROCS < 7 ? PROCS : 7 )) \
       --expect-hash dc_cal=beaaa710e6b3 --expect-hash dc_cal_netfix=182e3ec2f500 $P8C_PAIRS \
     || { say "p8c: run_pairs failed (a hash mismatch runs nothing; see runs/p8c/PAIRS.json)"; rc=1; }
@@ -1685,11 +1688,12 @@ fi
 #         --self-delete --via-bucket --data-set i24 --cap-min 300 --pipeline-args '--stages "p12_i24_b1"'
 P12_FACTOR=1.2185
 P12_H=artifacts/i24_discharge_2026-10-07/harness
-# <arm>:<scenario stem>:<its config hash>:<the committed step-3 battery's label, for the reproduction row>
+# <arm>:<scenario stem>:<its config hash, policy 4 (2026-10-07; v3 ae5861a4d906 / ada3f406504b / 8976a1773674: no weave
+#   sections, the version alone moved)>:<the committed step-3 battery's label, for the reproduction row>
 P12_ARMS=(
-  canonical:i24_replica_flow_speedcal:ae5861a4d906:flow_speedcal_ref
-  dc_refit:i24_replica_flow_speedcal_dc_refit:ada3f406504b:dc_refit
-  dc:i24_replica_flow_speedcal_dc:8976a1773674:dc
+  canonical:i24_replica_flow_speedcal:5a8e079c4bfa:flow_speedcal_ref
+  dc_refit:i24_replica_flow_speedcal_dc_refit:6d3b6abd9aaf:dc_refit
+  dc:i24_replica_flow_speedcal_dc:651680edc811:dc
 )
 p12_battery() {  # p12_battery <label> <scenario>: one 20-seed battery through step 3's path, its braking counts, prune
   local label="$1" scn="$2" ok="logs/$1.battery.ok"
@@ -1854,10 +1858,10 @@ fi
 P14_H=artifacts/i24_discharge_2026-10-07/harness_b1b2/corridor_b1b2.py
 P14_OUT=artifacts/boundary_b1b2_corridor.json
 P14_B2=scenarios/i24_replica_flow_rc_speedcal_dc_refit.yaml
-P14_B2_HASH=909b89f298c5
+P14_B2_HASH=7082bcea5442     # config-hash policy 4 (2026-10-07; v3 909b89f298c5)
 P14_B1B2=scenarios/i24_replica_flow_rc_speedcal_dc_refit_b1.yaml
 P14_BASE=scenarios/i24_replica_flow_rc_corrected_dc.yaml
-P14_BASE_HASH=219f7db55a74
+P14_BASE_HASH=1a7797ea614d   # config-hash policy 4 (2026-10-07; v3 219f7db55a74)
 P14_BASE_B1=scenarios/i24_replica_flow_rc_corrected_dc_b1.yaml
 P14_POP=artifacts/idm_i24_capacity_amax_k1.0.json   # the population stage p4_i24_refit's fit used
 p14_reduce() {  # p14_reduce <label>: each ramp's modelled flow from every replicate's vehicles.parquet (never trajectories)
@@ -2043,6 +2047,428 @@ p17_steps() {
 if echo " $STAGES " | grep -q " p17_i94_b5 "; then
   stage p17_i94_b5 p17_steps || say "p17_i94_b5 failed; continuing"
 fi
+# p16 (opt-in; docs/PRE_FRISCO_PROGRAM.md D10; not in the default list). The I-94 ramp rules (b) and (c) as
+#     pre-registered rounds: drafts 1 and 2 of docs/I94_CALIBRATION_DAYS.md §3, adopted as amendment text on
+#     2026-10-07 before the run. Reference: Phase A's base scenarios/${MNDOT}_weave_dc_cal_w1b_w2.yaml (stage p10's
+#     arm B: _dc_cal with W1b + W2 set explicitly on both weaves; its committed battery
+#     artifacts/validation_${MNDOT}_weave_xlsfg_dc_cal_w1b_w2.json records config_hash 5080d84d4725, policy v3, and
+#     its gate artifacts/baseline_gate_${MNDOT}_weave_xlsfg_dc_cal_w1b_w2.json). Arms, written from the base by
+#     scripts/i94_calibration_days.py --only d10, each differing from it in its name and the series its rule changes:
+#     _rbc (rules (b) and (c); scenarios/${MNDOT}_weave_dc_cal_w1b_w2_rbc.yaml, name ${MNDOT}_weave_xlsfg_dc_cal_w1b_w2_rbc)
+#     and _rb (rule (b); …_rb). Steps:
+#     0. scripts/i94_calibration_days.py --check --only d10 (one netconvert compile, no simulation): nothing runs unless
+#        the committed arms and records are what the recipe gives from the base.
+#     1. The one-seed reproduction of the reference: its first seed (spawn_seeds(42, 1), the first of
+#        spawn_seeds(42, 20)) through p8_one's battery line with --replicates 1 and the baseline gate, label
+#        ${MNDOT}_weave_xlsfg_dc_cal_w1b_w2_p16repro; then corridor_d10.py repro -> artifacts/i94_d10_repro.json
+#        (the replicate's record and the gate's per-replicate speed rows against the committed battery's first seed).
+#        Exit 0: the committed battery and gate are the reference. Exit 10: the reference's 20 seeds are re-run here
+#        (label …_p16ref: battery, gate, gated report), and that is the reference. Any other exit: nothing more runs.
+#     2. Each arm, _rbc first (the selection prefers it; if the cap cuts the stage, the arm that can decide alone is
+#        done): p8_one's sequence under the scenario's own name — the 20-seed four-hour battery against the
+#        calibration-day targets (profile fhwa_tat3_2004), the baseline gate on the phase-1 day sets, the gated report.
+#     3. corridor_d10.py evaluate -> artifacts/i94_d10_corridor.json: D1-D4 per arm against the reference on the same
+#        seeds (D1 zero collisions and no lock by §9.5; D2 realised demand >= reference - 0.01; D3 gate C1 on the
+#        calibration days not below the reference's; D4 gate C3 (15 min) on the calibration days <= reference + 0.02),
+#        and C4, C6 and the validation-day rows reported with and without both rules; then corridor_d10.py select:
+#        B5's I-94 arm by D10's rule, _rbc if it holds, else _rb, else the reference (exit 0 / 10 / 20), logged; an
+#        undetermined selection (exit 3) fails the stage.
+#     Outputs per label L: artifacts/validation_L.json, artifacts/baseline_gate_L.json, artifacts/validation_L_gated.json
+#     (not for the one-seed run), docs/reports/L/, run trees runs/L/baseline/<config hash>/<seed>/ (make_archive takes
+#     each replicate's metrics.json, meta.json, observed_scores.json and vehicles.parquet, so a gate re-runs locally).
+#     Resumable: a battery whose artifact and logs/p16_L.battery.ok exist is not repeated. Needs no data set (every
+#     input is tracked): launch with --data-set none.
+#     Cost on n2d-standard-16 at --procs 10 (about $0.78/h, $0.013/min): boot and setup about 12 min; the check under a
+#     minute; the one-seed run about 25 min with its scoring and gate (one four-hour run alone; p8c's wave of seven
+#     took about 30 min); each arm's battery 52-62 min (p10's arm B: 3,090 s; p8's: 3,527 / 3,708 s, scoring
+#     included) plus about 4 min of gate and gated report; the readout under a minute. About 140-160 min of stage
+#     time plus 12 of boot, 150-170 min billed: about $2.0-2.2 (the program's estimate: 158 + 12 min, $2.2). With the
+#     reference re-run (+ 56-66 min) 205-240 min, about $2.7-3.1. --cap-min 300 bounds it at about $3.9 and leaves
+#     the re-run inside it. Example (us-central1, the program's Central slot; from a pushed commit):
+#       scripts/gcp/launch_i24_pipeline.sh --vm flowstate-p16 --machine n2d-standard-16 \
+#         --zone us-central1-a,us-central1-b,us-central1-c,us-central1-f --bucket gs://<bucket>/p16 \
+#         --self-delete --via-bucket --data-set none --cap-min 300 --pipeline-args '--stages "p16_i94_d10" --procs 10'
+P16_REF="scenarios/${MNDOT}_weave_dc_cal_w1b_w2.yaml"
+P16_REF_NAME="${MNDOT}_weave_xlsfg_dc_cal_w1b_w2"
+P16_ARMS="${MNDOT}_weave_dc_cal_w1b_w2_rbc ${MNDOT}_weave_dc_cal_w1b_w2_rb"
+P16_H=artifacts/i94_d10_2026-10-07/harness/corridor_d10.py
+p16_one() {  # p16_one <scenario> <label> <replicates> [gated]: p8_one's battery, gate (and gated report) under <label>
+  local scn="$1" lab="$2" reps="$3" rc=0
+  local art="artifacts/validation_$2.json" rep="docs/reports/$2" out="runs/$2/baseline" ok="logs/p16_$2.battery.ok"
+  if [ -f "$ok" ] && [ -f "$art" ]; then
+    say "p16: $lab battery done earlier ($art), not repeated"
+  elif $RUN scripts/corridor_battery.py --scenario "$scn" --observations "$P1A/observations_calibration.json" \
+      --replicates "$reps" --procs "$PROCS" --out "$out" --artifact "$art" --report-dir "$rep" \
+      --criteria-profile fhwa_tat3_2004; then
+    touch "$ok"
+  else
+    say "p16: $lab battery failed; continuing"; rc=1
+  fi
+  [ -f "$art" ] || { say "p16: $lab has no battery artifact; gate and report skipped"; return 1; }
+  $RUN scripts/baseline_gate.py --battery-artifact "$art" \
+      --calibration-observations "$P1A/observations_calibration.json" \
+      --validation-observations "$P1A/observations_validation.json" \
+      --day-split "$P1A/day_split.json" --per-day "$P1A/per_day" \
+      --out-json "artifacts/baseline_gate_$lab.json" --out-md "$rep/baseline_gate.md" \
+    || { say "p16: $lab baseline gate failed; continuing"; rc=1; }
+  [ "${4:-}" = gated ] || return $rc
+  $RUN scripts/corridor_battery.py --scenario "$scn" --observations "$P1A/observations_calibration.json" \
+      --replicates "$reps" --out "$out" --artifact "artifacts/validation_${lab}_gated.json" --report-dir "$rep" \
+      --criteria-profile fhwa_tat3_2004 --criteria-only --baseline-gate \
+      --gate-calibration-observations "$P1A/observations_calibration.json" \
+      --gate-validation-observations "$P1A/observations_validation.json" --gate-day-split "$P1A/day_split.json" \
+    || { say "p16: $lab gated report failed; continuing"; rc=1; }
+  return $rc
+}
+p16_steps() {
+  local rc=0 r sel stem name
+  $RUN scripts/i94_calibration_days.py --check --only d10 \
+    || { say "p16: the committed D10 arms are not what their recipe gives from the base; nothing run"; return 1; }
+  p16_one "$P16_REF" "${P16_REF_NAME}_p16repro" 1 || say "p16: the one-seed reproduction run did not complete"
+  $RUN "$P16_H" repro --out artifacts/i94_d10_repro.json; r=$?
+  case "$r" in
+    0) say "p16: the reference reproduces at its first seed; its committed battery and gate are the reference" ;;
+    10) say "p16: the reference does not reproduce at its first seed; its 20 seeds are re-run here"
+        p16_one "$P16_REF" "${P16_REF_NAME}_p16ref" "$REPS" gated || rc=1 ;;
+    *) say "p16: the reproduction is undetermined (exit $r; artifacts/i94_d10_repro.json); nothing more runs"; return 1 ;;
+  esac
+  make_archive light   # the reference leaves the machine before the arms start
+  for stem in $P16_ARMS; do
+    name=$(sed -n 's/^name: //p' "scenarios/$stem.yaml" | head -1)
+    [ -n "$name" ] || { say "p16: scenarios/$stem.yaml has no name"; rc=1; continue; }
+    p16_one "scenarios/$stem.yaml" "$name" "$REPS" gated || rc=1
+    make_archive light
+  done
+  $RUN "$P16_H" evaluate --out artifacts/i94_d10_corridor.json || { say "p16: the readout recorded problems"; rc=1; }
+  $RUN "$P16_H" select --readout artifacts/i94_d10_corridor.json; sel=$?
+  case "$sel" in
+    0) say "p16: B5's I-94 arm is _rbc (scenarios/${MNDOT}_weave_dc_cal_w1b_w2_rbc.yaml)" ;;
+    10) say "p16: B5's I-94 arm is _rb (scenarios/${MNDOT}_weave_dc_cal_w1b_w2_rb.yaml)" ;;
+    20) say "p16: B5's I-94 arm is the reference ($P16_REF)" ;;
+    *) say "p16: B5's I-94 arm is undetermined (exit $sel): the owner decides"; rc=1 ;;
+  esac
+  return $rc
+}
+if echo " $STAGES " | grep -q " p16_i94_d10 "; then
+  stage p16_i94_d10 p16_steps || say "p16_i94_d10 failed; continuing"
+fi
+
+# p20 (opt-in; docs/PRE_FRISCO_PROGRAM.md C9, plan item 15; not in the default list; needs the launcher's default
+#     --data-set i24, which ships the processed 30 Nov 2022 day). Data only: no simulation, no ring. Two more I-24
+#     MOTION mornings and the protocol's day split (docs/FRISCO_PROTOCOL.md §2-3) with the C9 amendment (Amendment 9
+#     there as proposed; approved 2026-10-07 before any new file was read: a day already used to calibrate is pinned
+#     to calibration; CIRCLES test-fleet days are events). Every output goes to artifacts/i24_days_2026-10-07/ and is
+#     mirrored into logs/p20_i24_days/ after every step, so every archive (light or full) carries it; the ingest then
+#     copies logs/pipeline_vm/p20_i24_days/ back to artifacts/i24_days_2026-10-07/ by hand (the ingest script names
+#     no file of this stage). Steps:
+#       1. per new morning, the two in parallel (logs/p20_day_<date>.log):
+#          a. the zip from $P20_ZIPS to data/i24motion/, converted by scripts/i24_extract.py --source <zip>
+#             --t-origin <06:00 CST of the date: scripts/i24_data.py t0 DATE> --name i24_wb_<YYYYMMDD> (westbound,
+#             5 Hz; streamed, never extracted to disk); the zip is deleted once the conversion is checked
+#             (scripts/i24_data.py check DATE DIR: the origin is the date's, westbound, the first sample within
+#             05:00-06:29 CST and the samples through 08:31 CST, so a zip of another date is refused);
+#          b. its coverage artifact, scripts/i24_coverage.py on that day (I24_DAY_DIR / I24_T0_UNIX) ->
+#             coverage_<YYYYMMDD>.json (the committed fleet and FD artifacts; the recommended estimator per 15 min);
+#          c. its observed side, scripts/i24_validate.py --observed-only -> observed_<YYYYMMDD>.json (the battery's
+#             tables on that day: crossings at the six sections, recommended-coverage flows, segment speeds, waves);
+#       2. scripts/i24_virtual_detectors.py over the three mornings (30 Nov with the committed coverage artifact and
+#          observed side) -> detectors.csv, stations.csv, virtual_detectors.json; refuses unless every day's
+#          study-period crossings equal its observed side's counts_tracked and each coverage artifact is its day's;
+#       3. scripts/data_quality_report.py over 06:30-08:30 -> dq/data_quality.{json,md} (the mass balance with the
+#          four ramps declared unmeasured by stations.csv);
+#       4. scripts/station_selection.py with the CIRCLES days excluded -> selection.json (protocol §2.2);
+#       5. scripts/day_split.py --circles-events --pin-calibration 2022-11-30=... -> day_split.json (three
+#          candidates: one calibration place, filled by 30 Nov; both new mornings validation; underpowered on both
+#          sides, §3.3; the split as written recorded beside it, c9_amendment.as_written);
+#       6. the re-score, $0, the model unchanged (§3.5): scripts/i24_validate.py --criteria-only --label $P20_ARM
+#          --rescore-observed against each validation day and their mean -> rescore_<arm>_<YYYYMMDD>.json and
+#          rescore_<arm>_validation_mean.json, and the same for the split as written when its validation days differ
+#          (rescore_<arm>_as_written_validation_mean.json; change control reports both). Each carries the three GEH
+#          tables, the RMSPE block and the criteria rows as the battery forms them, and the gate checks C1, C3, C4 and
+#          C5 read on that side, reported only (PRE_FRISCO_PROGRAM C9 "Criteria").
+#     Stop rule (C9): a morning that fails the screen (step 1a's check, the split's candidate screen) or shows a
+#     coverage hole at a count section (virtual_detectors.json study_period_crossings_over_day_median; the
+#     data-quality verdicts) is replaced before the draw: the stage then stops at the split, nothing is re-scored,
+#     and the owner downloads another morning (docs/I24_DAYS_REQUEST.md).
+#     Cost on n2d-standard-16 in us-central1 (16 vCPU, 64 GB) [estimate]: per morning, in parallel, the 5.8 GB
+#     download about 1-2 min, the conversion about 5-6 min (309 s for 30 Nov westbound on the laptop, docs/I24_DATA.md
+#     §1, plus the zip's sha256), the coverage about 5-10 min (64 lane-windows of mixture fits) and the observed side
+#     about 3-5 min; the detectors about 2 min a morning (three block reads each); quality, selection, split and the
+#     re-scores under 2 min. About 30-40 min of stage time, about 45-52 min billed with boot, setup and the I-24 data
+#     upload through the bucket: about $0.6-0.7 at about $0.78/h; --cap-min 120 bounds it at about $1.6. Bucket
+#     storage of the two zips (11.6 GB) about $0.23 a month at standard storage, cents for the launch.
+#       scripts/gcp/launch_i24_pipeline.sh --vm flowstate-p20 --zone us-central1-a,us-central1-b,us-central1-c \
+#         --machine n2d-standard-16 --bucket gs://<bucket>/p20 --self-delete --via-bucket --data-set i24 \
+#         --cap-min 120 --pipeline-args '--stages "p20_i24_days"'
+P20_DAYS=("YYYY-MM-DD=<run id>__post10.zip" "YYYY-MM-DD=<run id>__post10.zip")   # fill before the launch commit
+P20_ARM=dc_refit_rc   # artifacts/i24_validation_dc_refit_rc.json: the B2 arm (Amendment 5), the calibrated-arm candidate
+P20_OUT=artifacts/i24_days_2026-10-07
+P20_ZIPS="${P20_ZIP_PREFIX:-gs://$(printf '%s' "${BUCKET#gs://}" | cut -d/ -f1)/i24motion}"
+P20_PIN="2022-11-30=every I-24 calibration used it (FD, driver population, demand scale, the B2 ramp correction)"
+P20_EVENT="event affecting the stretch: the CIRCLES MegaVanderTest test fleet on I-24 (Amendment 9)"
+p20_keep() {  # mirror the outputs into logs/ (archived in full by every make_archive)
+  mkdir -p logs/p20_i24_days && cp -R "$P20_OUT"/. logs/p20_i24_days/
+}
+p20_compact() { printf '%s' "${1//-/}"; }
+p20_observed() {  # p20_observed DATE: the morning's observed side (30 Nov: the committed one the batteries used)
+  if [ "$1" = 2022-11-30 ]; then printf '%s' artifacts/i24_validation_observed.json
+  else printf '%s' "$P20_OUT/observed_$(p20_compact "$1").json"; fi
+}
+p20_day() {  # p20_day DATE OBJECT: fetch, convert, check, coverage, observed side for one new morning
+  local day="$1" object="$2" c dir t0
+  c=$(p20_compact "$day"); dir="data/i24motion/processed/i24_wb_$c"
+  t0=$($RUN scripts/i24_data.py t0 "$day") || { echo "p20: $day has no CST origin"; return 1; }
+  if ! $RUN scripts/i24_data.py check "$day" "$dir" 2>/dev/null; then
+    mkdir -p data/i24motion
+    gcloud storage cp "$P20_ZIPS/$object" "data/i24motion/$object" --quiet || { echo "p20: $P20_ZIPS/$object not fetched"; return 1; }
+    $RUN scripts/i24_extract.py --source "data/i24motion/$object" --t-origin "$t0" --name "i24_wb_$c" || return 1
+    $RUN scripts/i24_data.py check "$day" "$dir" || { echo "p20: $object is not the westbound morning of $day"; return 1; }
+    rm -f "data/i24motion/$object"
+  fi
+  [ -f "$P20_OUT/coverage_$c.json" ] || I24_DAY_DIR="$dir" I24_T0_UNIX="$t0" \
+    $RUN scripts/i24_coverage.py --out "$P20_OUT/coverage_$c.json" || return 1
+  I24_DAY_DIR="$dir" I24_T0_UNIX="$t0" $RUN scripts/i24_validate.py --observed-only "$P20_OUT/observed_$c.json" \
+    --coverage-artifact "$P20_OUT/coverage_$c.json" || return 1
+}
+p20_rescore() {  # p20_rescore NAME DATE...: each day (once), then the mean when there are several
+  local name="$1" day obs=() rc=0; shift
+  [ $# -gt 0 ] || { say "p20: $name has no validation day; nothing re-scored"; return 0; }
+  for day in "$@"; do
+    obs+=("$day=$(p20_observed "$day")")
+    $RUN scripts/i24_validate.py --criteria-only --label "$P20_ARM" --ring-seeds 0 \
+      --rescore-observed "$day=$(p20_observed "$day")" \
+      --rescore-out "$P20_OUT/rescore_${P20_ARM}_$(p20_compact "$day").json" || rc=1
+  done
+  if [ $# -gt 1 ]; then
+    $RUN scripts/i24_validate.py --criteria-only --label "$P20_ARM" --ring-seeds 0 --rescore-observed "${obs[@]}" \
+      --rescore-label "$name" --rescore-out "$P20_OUT/rescore_${P20_ARM}_$name.json" || rc=1
+  fi
+  return $rc
+}
+p20_steps() {
+  local item day pids=() rc=0 days=(2022-11-30) args=() val=() written=()
+  for item in "${P20_DAYS[@]}"; do
+    case "$item" in *YYYY*|*"<"*) say "p20: fill P20_DAYS (DATE=OBJECT) before the launch; nothing run"; return 1 ;; esac
+  done
+  [ -n "${BUCKET:-}${P20_ZIP_PREFIX:-}" ] || { say "p20: no bucket to fetch the zips from; nothing run"; return 1; }
+  mkdir -p "$P20_OUT"
+  for item in "${P20_DAYS[@]}"; do
+    p20_day "${item%%=*}" "${item#*=}" > "logs/p20_day_${item%%=*}.log" 2>&1 &
+    pids+=($!); days+=("${item%%=*}")
+  done
+  for item in "${pids[@]}"; do wait "$item" || rc=1; done
+  p20_keep
+  [ "$rc" -eq 0 ] || { say "p20: a morning failed (logs/p20_day_*.log); stopped before the detectors"; return 1; }
+  args=(--day 2022-11-30=data/i24motion/processed/i24_wb_20221130 --coverage 2022-11-30=artifacts/i24_coverage.json
+        --observed 2022-11-30=artifacts/i24_validation_observed.json)
+  for day in "${days[@]:1}"; do
+    args+=(--day "$day=data/i24motion/processed/i24_wb_$(p20_compact "$day")"
+           --coverage "$day=$P20_OUT/coverage_$(p20_compact "$day").json" --observed "$day=$(p20_observed "$day")")
+  done
+  $RUN scripts/i24_virtual_detectors.py "${args[@]}" --out-dir "$P20_OUT" || { p20_keep; say "p20: detectors refused"; return 1; }
+  $RUN scripts/data_quality_report.py --detectors "$P20_OUT/detectors.csv" --stations "$P20_OUT/stations.csv" \
+    --start 06:30 --end 08:30 --title "I-24 MOTION westbound: virtual detectors at six sections (C9)" \
+    --out "$P20_OUT/dq" || { p20_keep; return 1; }
+  $RUN scripts/station_selection.py --quality "$P20_OUT/dq/data_quality.json" \
+    --exclude-day "2022-11-14=$P20_EVENT" --exclude-day "2022-11-15=$P20_EVENT" --exclude-day "2022-11-16=$P20_EVENT" \
+    --exclude-day "2022-11-17=$P20_EVENT" --exclude-day "2022-11-18=$P20_EVENT" \
+    --out "$P20_OUT/selection.json" || { p20_keep; return 1; }
+  $RUN scripts/day_split.py --detectors "$P20_OUT/detectors.csv" --stations "$P20_OUT/stations.csv" \
+    --start 06:30 --end 08:30 --quality "$P20_OUT/dq/data_quality.json" --selection "$P20_OUT/selection.json" \
+    --circles-events --pin-calibration "$P20_PIN" --out "$P20_OUT/day_split.json" \
+    || { p20_keep; say "p20: the split was refused (a morning failed the screen?); nothing re-scored"; return 1; }
+  p20_keep
+  read -r -a val <<< "$($RUN -c 'import json,sys; print(" ".join(json.load(open(sys.argv[1]))["validation_dates"]))' "$P20_OUT/day_split.json")"
+  read -r -a written <<< "$($RUN -c 'import json,sys; print(" ".join(json.load(open(sys.argv[1]))["c9_amendment"]["as_written"]["validation_dates"]))' "$P20_OUT/day_split.json")"
+  p20_rescore validation_mean "${val[@]}" || rc=1
+  if [ "${written[*]}" != "${val[*]}" ]; then p20_rescore as_written_validation_mean "${written[@]}" || rc=1; fi
+  p20_keep
+  return $rc
+}
+if echo " $STAGES " | grep -q " p20_i24_days "; then
+  stage p20_i24_days p20_steps || say "p20_i24_days failed; continuing"
+fi
+
+# p21 (opt-in; docs/PRE_FRISCO_PROGRAM.md "E11"; not in the default list; needs no data set: launch with --data-set none,
+#     the I-80 data is fetched here). Merge gaps and speeds on NGSIM I-80, a site never calibrated on. Criteria E1-E4
+#     and the rescue rule fixed 2026-10-07 before any run (E3 = Amendment M1 to docs/MERGE_MODEL.md §3, approved by the
+#     coordinator 2026-10-07, 21:40 CDT). Steps, all on the VM:
+#       1. scripts/i80_data.py fetch: the raw NGSIM I-80 trajectories (data.transportation.gov, Socrata 8ect-6jqj,
+#          location 'i-80', paged by :id in 200,000-row chunks, calibration.data_fetch.fetch_ngsim_i80) into data/ngsim/
+#          (gitignored; never shipped). Raw only: reconstructed NGSIM is out of scope by owner rule;
+#       2. scripts/i80_data.py prepare -> artifacts/i80_data.json: exact duplicates dropped, periods split on the
+#          recording origin (US-101's recipe, docs/M2_RESULTS.md §1), the replica block = the longest wall-clock-
+#          contiguous run of periods (FHWA-HRT-06-137 says 17:00-17:30 PDT);
+#       3. scripts/i80_merge_measures.py observed -> artifacts/i80_merge_observed.json: the on-ramp's entering changes
+#          in the block's analysis windows: accepted lead / lag time gaps, Troutbeck joint critical gaps with 200-
+#          resample bootstrap intervals, partner speeds, gap ratios at 0 / 2 / 5 / 10 s, acceleration-lane speed by
+#          50-m bin, each with n and a 200-resample bootstrap 95 % interval;
+#       4. scripts/i80_build_replica.py build -> scenarios/i80_replica.yaml (the kept configuration, merge: lane_change),
+#          data/osm/i80_ngsim.osm, artifacts/i80_replica_inputs.json: geometry, counted demand and the measured
+#          downstream boundary as the US-101 replica's, the fleet block of the kept I-24 arm
+#          (scenarios/i24_replica_flow_rc_speedcal_dc_refit.yaml, B2 adopted provisionally; population
+#          artifacts/idm_i24_capacity_amax_k1.0.json); nothing fitted on I-80. The builder refuses a layout other than
+#          the documented one (lanes 1-6 and the ramp lane 7 present, no exit lane): then nothing is run. The site has
+#          no weaving section, so Phase A's weave guards (W1b, W2) do not apply to the kept configuration here;
+#       5. corridor_e11.py make-arm -> scenarios/i80_replica_measured.yaml: the same document with the on-ramp on
+#          merge: measured (central set), refused if anything else differs; then an interim archive;
+#       6. per arm (kept, then measured): 20 seeds (spawn_seeds(42, 20)) through microsim.runner.run_replicates under
+#          runs/i80_merge/<arm>/, then scripts/i80_merge_measures.py simulated on their trajectories (the same
+#          extractors; WP-82's arrival-crossing fix) -> artifacts/i80_merge_sim_<arm>.json (per-seed and pooled
+#          values, collisions, departed shares), then the trajectories are deleted (never shipped). Resumable per arm
+#          (logs/p21_<arm>.extract.ok);
+#       7. corridor_e11.py readout -> artifacts/i80_merge_validation.json: E1-E4 per arm, the rescue rule, n with every
+#          interval; reported: the speed profile, the gap ratios, departed shares (no-lock and breakdown readings).
+#          Exit 3 (logged, the stage fails) when the inputs disagree; the readout is still written.
+#     Everything it keeps is artifacts/*.json or scenarios/*.yaml, so every archive carries it; the map rides in
+#     artifacts/i80_replica_inputs.json (after the ingest: scripts/i80_build_replica.py write-osm rebuilds
+#     data/osm/i80_ngsim.osm and checks its sha256). The ingest does not list these files: copy them by hand.
+#     Cost on n2d-standard-16 (16 vCPU, 64 GB; $PROCS = 14) [estimate]: fetch about 5-15 min (about 1 GB of CSV from
+#     Socrata), prepare and the observed measures about 5-10 min, the build under a minute, each arm 20 runs of about
+#     35 simulated minutes on a 1.4-km six-lane corridor in two waves plus the extraction, about 8-15 min, the readout
+#     seconds: about 30-55 min of stage time, about 45 + 12 min billed with boot and setup, about $0.7 at
+#     $0.78/h. --cap-min 120 bounds it at about $1.6. It can share a VM with p20 (C9 needs --data-set i24; sum the
+#     caps).
+#       scripts/gcp/launch_i24_pipeline.sh --vm flowstate-p21 --machine n2d-standard-16 \
+#         --zone us-central1-a,us-central1-b,us-central1-c --bucket gs://<bucket>/p21 \
+#         --self-delete --via-bucket --data-set none --cap-min 120 --pipeline-args '--stages "p21_i80_merge"'
+P21_H=artifacts/i80_merge_2026-10-07/harness/corridor_e11.py
+P21_KEPT=scenarios/i80_replica.yaml
+P21_MEAS=scenarios/i80_replica_measured.yaml
+P21_FLEET=scenarios/i24_replica_flow_rc_speedcal_dc_refit.yaml
+P21_DATA=artifacts/i80_data.json
+P21_OBS=artifacts/i80_merge_observed.json
+P21_INPUTS=artifacts/i80_replica_inputs.json
+p21_arm() {  # p21_arm <kept|measured> <scenario>: 20 seeds, the extractors on their trajectories, the trajectories deleted
+  local arm="$1" scn="$2" ok="logs/p21_$1.extract.ok" out="artifacts/i80_merge_sim_$1.json"
+  if [ -f "$ok" ] && [ -f "$out" ]; then say "p21: $arm extracted earlier, not repeated"; return 0; fi
+  $RUN "$P21_H" run --scenario "$scn" --label "$arm" --procs "$PROCS" || { say "p21: the $arm runs failed"; return 1; }
+  $RUN scripts/i80_merge_measures.py simulated --manifest "runs/i80_merge/$arm/MANIFEST.json" \
+      --observed "$P21_OBS" --inputs "$P21_INPUTS" --procs "$PROCS" --out "$out" \
+    || { say "p21: the $arm extraction failed (its trajectories stay on the VM for a resume)"; return 1; }
+  touch "$ok"
+  rm -f runs/i80_merge/"$arm"/*/*/trajectories.parquet   # the simulated trajectories never leave the VM
+  du -sh "runs/i80_merge/$arm" 2>/dev/null || true
+}
+p21_steps() {
+  local rc=0
+  $RUN scripts/i80_data.py fetch || { say "p21: the I-80 fetch failed; nothing run"; return 1; }
+  $RUN scripts/i80_data.py prepare --out "$P21_DATA" || { say "p21: prepare failed; nothing run"; return 1; }
+  $RUN scripts/i80_merge_measures.py observed --data-summary "$P21_DATA" --out "$P21_OBS" \
+    || { say "p21: the observed measures failed; nothing run"; return 1; }
+  $RUN scripts/i80_build_replica.py build --data-summary "$P21_DATA" --fleet-from "$P21_FLEET" \
+      --out "$P21_KEPT" --inputs-out "$P21_INPUTS" \
+    || { say "p21: the replica build was refused or failed (reason in logs/p21_i80_merge.log); nothing run"; return 1; }
+  $RUN "$P21_H" make-arm --source "$P21_KEPT" --out "$P21_MEAS" \
+    || { say "p21: the measured arm was refused; nothing run"; return 1; }
+  make_archive light   # the observed side, the inputs and the two documents leave the machine before the runs
+  p21_arm kept "$P21_KEPT" || rc=1
+  p21_arm measured "$P21_MEAS" || rc=1
+  if [ ! -f artifacts/i80_merge_sim_kept.json ] || [ ! -f artifacts/i80_merge_sim_measured.json ]; then
+    say "p21: an arm's measures are missing; no readout"; return 1
+  fi
+  $RUN "$P21_H" readout --observed "$P21_OBS" --kept artifacts/i80_merge_sim_kept.json \
+      --measured artifacts/i80_merge_sim_measured.json --out artifacts/i80_merge_validation.json \
+    || { say "p21: the readout failed or is blocked (its problems list says why)"; rc=1; }
+  return $rc
+}
+if echo " $STAGES " | grep -q " p21_i80_merge "; then
+  stage p21_i80_merge p21_steps || say "p21_i80_merge failed; continuing"
+fi
+
+# p23 (opt-in; docs/I24_CONSISTENCY_C7B.md; not in the default list; needs the launcher's default --data-set i24: the
+#     builder reads the recording and the batteries' observed side checks its hash). C7b, the scoring and input
+#     consistency corrections C7 found (docs/I24_GEH_DIAGNOSIS.md), pre-registered before any run; PROPOSED, none
+#     adopted. Runs before p15 (docs/PRE_FRISCO_PROGRAM.md, schedule change): its readout names the arm B5 refits.
+#     1. Three families from the recording, each the B2 family (scripts/i24_build_replica.py --suffix flow_rc --osm
+#        corrected --lc-strategic 5 --lc-strategic-ramp 1 --entry-lanes observed_flow --ramp-through-traffic exclude,
+#        stage p13's line) plus its corrections: rcs --insertion-shift-s free_flow (the mainline steps after the first
+#        75.7 s early: 2,452.5 m entry-to-count-section over the fleet's mean v0 32.40 m/s), rcc --demand-coverage
+#        recommended (mainline and on-ramp inflows over the coverage the link-flow target divides by), rccs both.
+#        Then the Amendment-1 driver calibration (scripts/apply_driver_calibration.py, as p13) and the arm
+#        (corridor_c7b.py arm): scaled_config at the pre-registered level (rcs 0.925; rcc and rccs 1.080413, the B2 arm's
+#        planned study-period vehicles carried), written only if the rebuilt inputs equal the committed _rc inputs
+#        beyond the correction and base and arm equal the documents derived from committed files
+#        (artifacts/i24_consistency_2026-10-07/c7b_expected.json: policy-v4 hashes 921fb1f42c67 / e17c205d725d /
+#        a35b0f3b8b10, v3 29fce53890bb / 639cc02b0830 / a43dfb109248). Any refusal: nothing is simulated.
+#     2. B2 re-run (scenarios/i24_replica_flow_rc_speedcal_dc_refit.yaml, label dc_refit_rc_p23): scripts/i24_validate.py,
+#        20 replicates on spawn_seeds(42, 20), the 20-seed ring rows, --analysis-procs 8, --lane-crossings; its ramp
+#        flows (harness_b2/corridor_b2.py reduce); then corridor_c7b.py check-ref: it must reproduce the committed p13
+#        battery artifacts/i24_validation_dc_refit_rc.json exactly (no_locks aside, recorded now and not by p13), else
+#        the stage stops here and the owner decides.
+#     3. The three arms' batteries the same way, the smaller change first (rcs, rcc, rccs; labels dc_refit_<code>),
+#        each archived as it finishes.
+#     4. corridor_c7b.py evaluate -> artifacts/i24_consistency_c7b.json: R1-R5 of each arm against the re-run, both
+#        forms of the link-flow row and of C1's station-hour share, the selection (exit 3 when a problem blocks it).
+#     Everything it writes is artifacts/*.json or scenarios/*.yaml; the run trees runs/i24_validation/dc_refit_*/ ride
+#     in every archive as each replicate's meta.json (make_archive's runs/i24_validation/dc*/*/*/meta.json line) and the
+#     full archive's first-seed replicate. Resumable per battery (logs/p23_<label>.battery.ok); the builds and arms are
+#     redone on a resume (minutes, deterministic). Never reads trajectories after its batteries (p4_prune keeps the
+#     first seed's).
+#     Cost on n2d-standard-16 ($PROCS = 14) [estimate]: three builds about 2-3 min each (p13's took about 2 min); four
+#     batteries of 1,313-1,697 s each (p13: 1,522 / 1,663 s; p14: 1,313-1,697 s) plus about 1-2 min each for the
+#     per-lane pass and the reduce: about 115-130 min of stage time, 127-142 min billed with boot, setup and the I-24
+#     data through the bucket: about $1.65-1.85 at about $0.78/h (disk and bucket cents extra). A failed check-ref stops
+#     after about 40 min (about $0.7). --cap-min 210 bounds it at about $2.7.
+#       scripts/gcp/launch_i24_pipeline.sh --vm flowstate-p23 --machine n2d-standard-16 \
+#         --zone us-east1-b,us-east1-c,us-east1-d --bucket gs://<bucket>/p23 \
+#         --self-delete --via-bucket --data-set i24 --cap-min 210 --pipeline-args '--stages "p23_c7b"'
+P23_H=artifacts/i24_consistency_2026-10-07/harness/corridor_c7b.py
+P23_B2H=artifacts/i24_discharge_2026-10-07/harness_b2/corridor_b2.py
+P23_B2=scenarios/i24_replica_flow_rc_speedcal_dc_refit.yaml
+P23_REF=dc_refit_rc_p23
+P23_FAMILIES="rcs rcc rccs"   # the arms' order: the smaller change first
+p23_family_args() {  # p23_family_args <code>: the builder flags of the C7b corrections (corridor_c7b.py FAMILIES)
+  case "$1" in
+    rcs) echo "--insertion-shift-s free_flow" ;;
+    rcc) echo "--demand-coverage recommended" ;;
+    rccs) echo "--demand-coverage recommended --insertion-shift-s free_flow" ;;
+    *) return 1 ;;
+  esac
+}
+p23_battery() {  # p23_battery <scenario> <label>: one 20-seed battery with per-lane crossings and its ramp flows, once
+  local ok="logs/p23_$2.battery.ok"
+  if [ -f "$ok" ] && [ -f "artifacts/i24_validation_$2.json" ] && [ -f "artifacts/i24_b2_ramp_flows_$2.json" ]; then
+    say "p23: battery $2 done earlier, not repeated"; return 0
+  fi
+  $RUN scripts/i24_validate.py --scenario "$1" --label "$2" --replicates "$REPS" --procs "$PROCS" \
+      --analysis-procs 8 --ring-seeds "$RING" --lane-crossings || { say "p23: battery $2 failed"; return 1; }
+  $RUN "$P23_B2H" reduce --battery "artifacts/i24_validation_$2.json" --out "artifacts/i24_b2_ramp_flows_$2.json" \
+    || { say "p23: ramp flows of $2 failed"; return 1; }
+  p4_prune "runs/i24_validation/$2"
+  touch "$ok"
+}
+p23_steps() {
+  local rc=0 f extra
+  for f in $P23_FAMILIES; do
+    extra=$(p23_family_args "$f") || { say "p23: unknown family $f; nothing run"; return 1; }
+    # shellcheck disable=SC2086
+    $RUN scripts/i24_build_replica.py --suffix "flow_$f" --osm corrected --lc-strategic 5 --lc-strategic-ramp 1 \
+        --entry-lanes observed_flow --ramp-through-traffic exclude --count-consistency artifacts/i24_count_consistency.json \
+        $extra || { say "p23: the $f build was refused or failed; nothing run"; return 1; }
+    $RUN scripts/apply_driver_calibration.py --corridor i24 --artifact artifacts/driver_calibration_i24.json \
+        --source "scenarios/i24_replica_flow_${f}_corrected.yaml" --out "scenarios/i24_replica_flow_${f}_corrected_dc.yaml" \
+      || { say "p23: driver calibration of the $f family failed; nothing run"; return 1; }
+    $RUN "$P23_H" arm --family "$f" --base "scenarios/i24_replica_flow_${f}_corrected_dc.yaml" \
+        --inputs "artifacts/i24_replica_inputs_flow_${f}.json" --out "scenarios/i24_replica_flow_${f}_speedcal_dc_refit.yaml" \
+      || { say "p23: the $f arm was refused (reason in logs/p23_c7b.log); nothing run"; return 1; }
+  done
+  p23_battery "$P23_B2" "$P23_REF" || return 1
+  $RUN "$P23_H" check-ref --battery "artifacts/i24_validation_$P23_REF.json" \
+    || { say "p23: the B2 re-run does not reproduce artifacts/i24_validation_dc_refit_rc.json; the arms are not run; the owner decides"; return 1; }
+  make_archive light   # the reference leaves the machine before the arms start
+  for f in $P23_FAMILIES; do
+    p23_battery "scenarios/i24_replica_flow_${f}_speedcal_dc_refit.yaml" "dc_refit_$f" || rc=1
+    make_archive light
+  done
+  $RUN "$P23_H" evaluate --out artifacts/i24_consistency_c7b.json \
+    || { say "p23: the readout is blocked or failed (artifacts/i24_consistency_c7b.json says why)"; rc=1; }
+  return $rc
+}
+if echo " $STAGES " | grep -q " p23_c7b "; then
+  stage p23_c7b p23_steps || say "p23_c7b failed; continuing"
+fi
+
 # 9. Done marker; the EXIT trap builds the final archives (light, then full with the first-seed replicates).
 echo "PIPELINE_DONE $(date -u +%FT%TZ)" > logs/PIPELINE_DONE
 say "PIPELINE_DONE"

@@ -1,0 +1,114 @@
+# Stage p16 for scripts/gcp/pipeline_i24.sh — inserted 2026-10-07 above the done marker, byte for byte from the block below (its preamble before that: NOT inserted; the pipeline file was another agent's).
+# Paste it just above the "# 9. Done marker" block, after p10's block (it uses MNDOT, P1A, RUN, REPS, PROCS, say,
+# stage and make_archive, all defined before p8's block). tests/test_scripts/test_p16_stage.py runs it pasted there.
+# Before a launch: commit and push the two scenarios, their demand records, scripts/i94_calibration_days.py,
+# artifacts/i94_d10_2026-10-07/ (this stage, harness/, scenario_diff.json) and the tests (the launcher refuses a dirty
+# tree or a HEAD not on origin/main); and add i94_d10_repro.json|i94_d10_corridor.json to the artifact list of
+# scripts/gcp/ingest_pipeline_results.sh (the batteries, gates and run trees are already taken: validation_mndot_*,
+# baseline_gate_*_dc_cal*, runs/mndot_*).
+
+# p16 (opt-in; docs/PRE_FRISCO_PROGRAM.md D10; not in the default list). The I-94 ramp rules (b) and (c) as
+#     pre-registered rounds: drafts 1 and 2 of docs/I94_CALIBRATION_DAYS.md §3, adopted as amendment text on
+#     2026-10-07 before the run. Reference: Phase A's base scenarios/${MNDOT}_weave_dc_cal_w1b_w2.yaml (stage p10's
+#     arm B: _dc_cal with W1b + W2 set explicitly on both weaves; its committed battery
+#     artifacts/validation_${MNDOT}_weave_xlsfg_dc_cal_w1b_w2.json records config_hash 5080d84d4725, policy v3, and
+#     its gate artifacts/baseline_gate_${MNDOT}_weave_xlsfg_dc_cal_w1b_w2.json). Arms, written from the base by
+#     scripts/i94_calibration_days.py --only d10, each differing from it in its name and the series its rule changes:
+#     _rbc (rules (b) and (c); scenarios/${MNDOT}_weave_dc_cal_w1b_w2_rbc.yaml, name ${MNDOT}_weave_xlsfg_dc_cal_w1b_w2_rbc)
+#     and _rb (rule (b); …_rb). Steps:
+#     0. scripts/i94_calibration_days.py --check --only d10 (one netconvert compile, no simulation): nothing runs unless
+#        the committed arms and records are what the recipe gives from the base.
+#     1. The one-seed reproduction of the reference: its first seed (spawn_seeds(42, 1), the first of
+#        spawn_seeds(42, 20)) through p8_one's battery line with --replicates 1 and the baseline gate, label
+#        ${MNDOT}_weave_xlsfg_dc_cal_w1b_w2_p16repro; then corridor_d10.py repro -> artifacts/i94_d10_repro.json
+#        (the replicate's record and the gate's per-replicate speed rows against the committed battery's first seed).
+#        Exit 0: the committed battery and gate are the reference. Exit 10: the reference's 20 seeds are re-run here
+#        (label …_p16ref: battery, gate, gated report), and that is the reference. Any other exit: nothing more runs.
+#     2. Each arm, _rbc first (the selection prefers it; if the cap cuts the stage, the arm that can decide alone is
+#        done): p8_one's sequence under the scenario's own name — the 20-seed four-hour battery against the
+#        calibration-day targets (profile fhwa_tat3_2004), the baseline gate on the phase-1 day sets, the gated report.
+#     3. corridor_d10.py evaluate -> artifacts/i94_d10_corridor.json: D1-D4 per arm against the reference on the same
+#        seeds (D1 zero collisions and no lock by §9.5; D2 realised demand >= reference - 0.01; D3 gate C1 on the
+#        calibration days not below the reference's; D4 gate C3 (15 min) on the calibration days <= reference + 0.02),
+#        and C4, C6 and the validation-day rows reported with and without both rules; then corridor_d10.py select:
+#        B5's I-94 arm by D10's rule, _rbc if it holds, else _rb, else the reference (exit 0 / 10 / 20), logged; an
+#        undetermined selection (exit 3) fails the stage.
+#     Outputs per label L: artifacts/validation_L.json, artifacts/baseline_gate_L.json, artifacts/validation_L_gated.json
+#     (not for the one-seed run), docs/reports/L/, run trees runs/L/baseline/<config hash>/<seed>/ (make_archive takes
+#     each replicate's metrics.json, meta.json, observed_scores.json and vehicles.parquet, so a gate re-runs locally).
+#     Resumable: a battery whose artifact and logs/p16_L.battery.ok exist is not repeated. Needs no data set (every
+#     input is tracked): launch with --data-set none.
+#     Cost on n2d-standard-16 at --procs 10 (about $0.78/h, $0.013/min): boot and setup about 12 min; the check under a
+#     minute; the one-seed run about 25 min with its scoring and gate (one four-hour run alone; p8c's wave of seven
+#     took about 30 min); each arm's battery 52-62 min (p10's arm B: 3,090 s; p8's: 3,527 / 3,708 s, scoring
+#     included) plus about 4 min of gate and gated report; the readout under a minute. About 140-160 min of stage
+#     time plus 12 of boot, 150-170 min billed: about $2.0-2.2 (the program's estimate: 158 + 12 min, $2.2). With the
+#     reference re-run (+ 56-66 min) 205-240 min, about $2.7-3.1. --cap-min 300 bounds it at about $3.9 and leaves
+#     the re-run inside it. Example (us-central1, the program's Central slot; from a pushed commit):
+#       scripts/gcp/launch_i24_pipeline.sh --vm flowstate-p16 --machine n2d-standard-16 \
+#         --zone us-central1-a,us-central1-b,us-central1-c,us-central1-f --bucket gs://<bucket>/p16 \
+#         --self-delete --via-bucket --data-set none --cap-min 300 --pipeline-args '--stages "p16_i94_d10" --procs 10'
+P16_REF="scenarios/${MNDOT}_weave_dc_cal_w1b_w2.yaml"
+P16_REF_NAME="${MNDOT}_weave_xlsfg_dc_cal_w1b_w2"
+P16_ARMS="${MNDOT}_weave_dc_cal_w1b_w2_rbc ${MNDOT}_weave_dc_cal_w1b_w2_rb"
+P16_H=artifacts/i94_d10_2026-10-07/harness/corridor_d10.py
+p16_one() {  # p16_one <scenario> <label> <replicates> [gated]: p8_one's battery, gate (and gated report) under <label>
+  local scn="$1" lab="$2" reps="$3" rc=0
+  local art="artifacts/validation_$2.json" rep="docs/reports/$2" out="runs/$2/baseline" ok="logs/p16_$2.battery.ok"
+  if [ -f "$ok" ] && [ -f "$art" ]; then
+    say "p16: $lab battery done earlier ($art), not repeated"
+  elif $RUN scripts/corridor_battery.py --scenario "$scn" --observations "$P1A/observations_calibration.json" \
+      --replicates "$reps" --procs "$PROCS" --out "$out" --artifact "$art" --report-dir "$rep" \
+      --criteria-profile fhwa_tat3_2004; then
+    touch "$ok"
+  else
+    say "p16: $lab battery failed; continuing"; rc=1
+  fi
+  [ -f "$art" ] || { say "p16: $lab has no battery artifact; gate and report skipped"; return 1; }
+  $RUN scripts/baseline_gate.py --battery-artifact "$art" \
+      --calibration-observations "$P1A/observations_calibration.json" \
+      --validation-observations "$P1A/observations_validation.json" \
+      --day-split "$P1A/day_split.json" --per-day "$P1A/per_day" \
+      --out-json "artifacts/baseline_gate_$lab.json" --out-md "$rep/baseline_gate.md" \
+    || { say "p16: $lab baseline gate failed; continuing"; rc=1; }
+  [ "${4:-}" = gated ] || return $rc
+  $RUN scripts/corridor_battery.py --scenario "$scn" --observations "$P1A/observations_calibration.json" \
+      --replicates "$reps" --out "$out" --artifact "artifacts/validation_${lab}_gated.json" --report-dir "$rep" \
+      --criteria-profile fhwa_tat3_2004 --criteria-only --baseline-gate \
+      --gate-calibration-observations "$P1A/observations_calibration.json" \
+      --gate-validation-observations "$P1A/observations_validation.json" --gate-day-split "$P1A/day_split.json" \
+    || { say "p16: $lab gated report failed; continuing"; rc=1; }
+  return $rc
+}
+p16_steps() {
+  local rc=0 r sel stem name
+  $RUN scripts/i94_calibration_days.py --check --only d10 \
+    || { say "p16: the committed D10 arms are not what their recipe gives from the base; nothing run"; return 1; }
+  p16_one "$P16_REF" "${P16_REF_NAME}_p16repro" 1 || say "p16: the one-seed reproduction run did not complete"
+  $RUN "$P16_H" repro --out artifacts/i94_d10_repro.json; r=$?
+  case "$r" in
+    0) say "p16: the reference reproduces at its first seed; its committed battery and gate are the reference" ;;
+    10) say "p16: the reference does not reproduce at its first seed; its 20 seeds are re-run here"
+        p16_one "$P16_REF" "${P16_REF_NAME}_p16ref" "$REPS" gated || rc=1 ;;
+    *) say "p16: the reproduction is undetermined (exit $r; artifacts/i94_d10_repro.json); nothing more runs"; return 1 ;;
+  esac
+  make_archive light   # the reference leaves the machine before the arms start
+  for stem in $P16_ARMS; do
+    name=$(sed -n 's/^name: //p' "scenarios/$stem.yaml" | head -1)
+    [ -n "$name" ] || { say "p16: scenarios/$stem.yaml has no name"; rc=1; continue; }
+    p16_one "scenarios/$stem.yaml" "$name" "$REPS" gated || rc=1
+    make_archive light
+  done
+  $RUN "$P16_H" evaluate --out artifacts/i94_d10_corridor.json || { say "p16: the readout recorded problems"; rc=1; }
+  $RUN "$P16_H" select --readout artifacts/i94_d10_corridor.json; sel=$?
+  case "$sel" in
+    0) say "p16: B5's I-94 arm is _rbc (scenarios/${MNDOT}_weave_dc_cal_w1b_w2_rbc.yaml)" ;;
+    10) say "p16: B5's I-94 arm is _rb (scenarios/${MNDOT}_weave_dc_cal_w1b_w2_rb.yaml)" ;;
+    20) say "p16: B5's I-94 arm is the reference ($P16_REF)" ;;
+    *) say "p16: B5's I-94 arm is undetermined (exit $sel): the owner decides"; rc=1 ;;
+  esac
+  return $rc
+}
+if echo " $STAGES " | grep -q " p16_i94_d10 "; then
+  stage p16_i94_d10 p16_steps || say "p16_i94_d10 failed; continuing"
+fi

@@ -78,7 +78,7 @@
     },
     "tier": "micro"
   },
-  "hash_version": 3,
+  "hash_version": 4,
   "merge_defaults": {
     "scripted": {
       "accept_gap_s": 0.6,
@@ -91,6 +91,8 @@
     "weave": {
       "accept_gap_s": 0.6,
       "change_duration_s": 2.0,
+      "entrant_giveup_dwell_s": 60.0,
+      "entrant_giveup_m": 5.0,
       "exit_accept_gap_s": 0.6,
       "exit_giveup_m": 5.0,
       "exit_prepare": 0.0,
@@ -99,7 +101,10 @@
       "lookahead_m": 120.0,
       "pair_release_s": 2.0,
       "vacate_ahead_m": 500.0,
-      "vacate_max_veh_h": 0.0
+      "vacate_max_veh_h": 0.0,
+      "weave_close_leader": 1.0,
+      "weave_handback": 1.0,
+      "weave_resolve_opposing": 1.0
     }
   }
 }

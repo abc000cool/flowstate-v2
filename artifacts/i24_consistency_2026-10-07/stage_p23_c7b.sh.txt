@@ -1,0 +1,102 @@
+# Stage p23 for scripts/gcp/pipeline_i24.sh — pasted there 2026-10-07 after stage p21's block, just above the
+# "# 9. Done marker" block; everything below this header is the pasted text, kept in sync
+# (tests/test_scripts/test_corridor_c7b_harness.py checks that the pipeline carries it verbatim). It calls p4_prune
+# (stage 23's block), say and make_archive (the script's head), and reads $RUN, $REPS, $RING and $PROCS.
+# Before a launch: commit and push scripts/i24_build_replica.py (--demand-coverage, --insertion-shift-s),
+# scripts/i24_validate.py (--lane-crossings), artifacts/i24_consistency_2026-10-07/harness/corridor_c7b.py,
+# artifacts/i24_consistency_2026-10-07/c7b_expected.json, docs/I24_CONSISTENCY_C7B.md, the pipeline and ingest
+# changes, their tests (tests/test_scripts/test_i24_build_replica_c7b.py, test_i24_validate_lanes.py,
+# test_corridor_c7b_harness.py) and this file (the launcher refuses a dirty tree or a HEAD not on origin/main).
+
+# p23 (opt-in; docs/I24_CONSISTENCY_C7B.md; not in the default list; needs the launcher's default --data-set i24: the
+#     builder reads the recording and the batteries' observed side checks its hash). C7b, the scoring and input
+#     consistency corrections C7 found (docs/I24_GEH_DIAGNOSIS.md), pre-registered before any run; PROPOSED, none
+#     adopted. Runs before p15 (docs/PRE_FRISCO_PROGRAM.md, schedule change): its readout names the arm B5 refits.
+#     1. Three families from the recording, each the B2 family (scripts/i24_build_replica.py --suffix flow_rc --osm
+#        corrected --lc-strategic 5 --lc-strategic-ramp 1 --entry-lanes observed_flow --ramp-through-traffic exclude,
+#        stage p13's line) plus its corrections: rcs --insertion-shift-s free_flow (the mainline steps after the first
+#        75.7 s early: 2,452.5 m entry-to-count-section over the fleet's mean v0 32.40 m/s), rcc --demand-coverage
+#        recommended (mainline and on-ramp inflows over the coverage the link-flow target divides by), rccs both.
+#        Then the Amendment-1 driver calibration (scripts/apply_driver_calibration.py, as p13) and the arm
+#        (corridor_c7b.py arm): scaled_config at the pre-registered level (rcs 0.925; rcc and rccs 1.080413, the B2 arm's
+#        planned study-period vehicles carried), written only if the rebuilt inputs equal the committed _rc inputs
+#        beyond the correction and base and arm equal the documents derived from committed files
+#        (artifacts/i24_consistency_2026-10-07/c7b_expected.json: policy-v4 hashes 921fb1f42c67 / e17c205d725d /
+#        a35b0f3b8b10, v3 29fce53890bb / 639cc02b0830 / a43dfb109248). Any refusal: nothing is simulated.
+#     2. B2 re-run (scenarios/i24_replica_flow_rc_speedcal_dc_refit.yaml, label dc_refit_rc_p23): scripts/i24_validate.py,
+#        20 replicates on spawn_seeds(42, 20), the 20-seed ring rows, --analysis-procs 8, --lane-crossings; its ramp
+#        flows (harness_b2/corridor_b2.py reduce); then corridor_c7b.py check-ref: it must reproduce the committed p13
+#        battery artifacts/i24_validation_dc_refit_rc.json exactly (no_locks aside, recorded now and not by p13), else
+#        the stage stops here and the owner decides.
+#     3. The three arms' batteries the same way, the smaller change first (rcs, rcc, rccs; labels dc_refit_<code>),
+#        each archived as it finishes.
+#     4. corridor_c7b.py evaluate -> artifacts/i24_consistency_c7b.json: R1-R5 of each arm against the re-run, both
+#        forms of the link-flow row and of C1's station-hour share, the selection (exit 3 when a problem blocks it).
+#     Everything it writes is artifacts/*.json or scenarios/*.yaml; the run trees runs/i24_validation/dc_refit_*/ ride
+#     in every archive as each replicate's meta.json (make_archive's runs/i24_validation/dc*/*/*/meta.json line) and the
+#     full archive's first-seed replicate. Resumable per battery (logs/p23_<label>.battery.ok); the builds and arms are
+#     redone on a resume (minutes, deterministic). Never reads trajectories after its batteries (p4_prune keeps the
+#     first seed's).
+#     Cost on n2d-standard-16 ($PROCS = 14) [estimate]: three builds about 2-3 min each (p13's took about 2 min); four
+#     batteries of 1,313-1,697 s each (p13: 1,522 / 1,663 s; p14: 1,313-1,697 s) plus about 1-2 min each for the
+#     per-lane pass and the reduce: about 115-130 min of stage time, 127-142 min billed with boot, setup and the I-24
+#     data through the bucket: about $1.65-1.85 at about $0.78/h (disk and bucket cents extra). A failed check-ref stops
+#     after about 40 min (about $0.7). --cap-min 210 bounds it at about $2.7.
+#       scripts/gcp/launch_i24_pipeline.sh --vm flowstate-p23 --machine n2d-standard-16 \
+#         --zone us-east1-b,us-east1-c,us-east1-d --bucket gs://<bucket>/p23 \
+#         --self-delete --via-bucket --data-set i24 --cap-min 210 --pipeline-args '--stages "p23_c7b"'
+P23_H=artifacts/i24_consistency_2026-10-07/harness/corridor_c7b.py
+P23_B2H=artifacts/i24_discharge_2026-10-07/harness_b2/corridor_b2.py
+P23_B2=scenarios/i24_replica_flow_rc_speedcal_dc_refit.yaml
+P23_REF=dc_refit_rc_p23
+P23_FAMILIES="rcs rcc rccs"   # the arms' order: the smaller change first
+p23_family_args() {  # p23_family_args <code>: the builder flags of the C7b corrections (corridor_c7b.py FAMILIES)
+  case "$1" in
+    rcs) echo "--insertion-shift-s free_flow" ;;
+    rcc) echo "--demand-coverage recommended" ;;
+    rccs) echo "--demand-coverage recommended --insertion-shift-s free_flow" ;;
+    *) return 1 ;;
+  esac
+}
+p23_battery() {  # p23_battery <scenario> <label>: one 20-seed battery with per-lane crossings and its ramp flows, once
+  local ok="logs/p23_$2.battery.ok"
+  if [ -f "$ok" ] && [ -f "artifacts/i24_validation_$2.json" ] && [ -f "artifacts/i24_b2_ramp_flows_$2.json" ]; then
+    say "p23: battery $2 done earlier, not repeated"; return 0
+  fi
+  $RUN scripts/i24_validate.py --scenario "$1" --label "$2" --replicates "$REPS" --procs "$PROCS" \
+      --analysis-procs 8 --ring-seeds "$RING" --lane-crossings || { say "p23: battery $2 failed"; return 1; }
+  $RUN "$P23_B2H" reduce --battery "artifacts/i24_validation_$2.json" --out "artifacts/i24_b2_ramp_flows_$2.json" \
+    || { say "p23: ramp flows of $2 failed"; return 1; }
+  p4_prune "runs/i24_validation/$2"
+  touch "$ok"
+}
+p23_steps() {
+  local rc=0 f extra
+  for f in $P23_FAMILIES; do
+    extra=$(p23_family_args "$f") || { say "p23: unknown family $f; nothing run"; return 1; }
+    # shellcheck disable=SC2086
+    $RUN scripts/i24_build_replica.py --suffix "flow_$f" --osm corrected --lc-strategic 5 --lc-strategic-ramp 1 \
+        --entry-lanes observed_flow --ramp-through-traffic exclude --count-consistency artifacts/i24_count_consistency.json \
+        $extra || { say "p23: the $f build was refused or failed; nothing run"; return 1; }
+    $RUN scripts/apply_driver_calibration.py --corridor i24 --artifact artifacts/driver_calibration_i24.json \
+        --source "scenarios/i24_replica_flow_${f}_corrected.yaml" --out "scenarios/i24_replica_flow_${f}_corrected_dc.yaml" \
+      || { say "p23: driver calibration of the $f family failed; nothing run"; return 1; }
+    $RUN "$P23_H" arm --family "$f" --base "scenarios/i24_replica_flow_${f}_corrected_dc.yaml" \
+        --inputs "artifacts/i24_replica_inputs_flow_${f}.json" --out "scenarios/i24_replica_flow_${f}_speedcal_dc_refit.yaml" \
+      || { say "p23: the $f arm was refused (reason in logs/p23_c7b.log); nothing run"; return 1; }
+  done
+  p23_battery "$P23_B2" "$P23_REF" || return 1
+  $RUN "$P23_H" check-ref --battery "artifacts/i24_validation_$P23_REF.json" \
+    || { say "p23: the B2 re-run does not reproduce artifacts/i24_validation_dc_refit_rc.json; the arms are not run; the owner decides"; return 1; }
+  make_archive light   # the reference leaves the machine before the arms start
+  for f in $P23_FAMILIES; do
+    p23_battery "scenarios/i24_replica_flow_${f}_speedcal_dc_refit.yaml" "dc_refit_$f" || rc=1
+    make_archive light
+  done
+  $RUN "$P23_H" evaluate --out artifacts/i24_consistency_c7b.json \
+    || { say "p23: the readout is blocked or failed (artifacts/i24_consistency_c7b.json says why)"; rc=1; }
+  return $rc
+}
+if echo " $STAGES " | grep -q " p23_c7b "; then
+  stage p23_c7b p23_steps || say "p23_c7b failed; continuing"
+fi

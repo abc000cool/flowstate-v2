@@ -25,6 +25,8 @@ from typing import Any
 import pandas as pd
 import pytest
 
+from flowstate_core.config import ScenarioConfig, config_hash, config_hash_v3
+
 REPO_ROOT = Path(__file__).resolve().parents[2]
 PATH = REPO_ROOT / "artifacts" / "i24_discharge_2026-10-07" / "harness_b1b2" / "corridor_b1b2.py"
 
@@ -47,8 +49,20 @@ m = _load()
 def test_the_b1_copies_and_the_refit_base_are_the_registered_configurations(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """The B1 + B2 arm is the committed B2 arm with the factor (e19e5ab64186, §8.4.5); the B1 copy of the
-    rc base at _dc_refit's carried 0.925 is that arm's configuration, and the rc base at 0.925 is B2's."""
+    """The B1 + B2 arm is the committed B2 arm with the factor (582ba839b84c under config-hash policy v4;
+    e19e5ab64186 under v3, the hash the committed p14 battery records, §8.4.5); the B1 copy of the rc base
+    at _dc_refit's carried 0.925 is that arm's configuration, and the rc base at 0.925 is B2's. Stage p14
+    ran under policy 3; the harness's ``*_HASH`` constants are the v4 values the stage now pins, and its
+    ``*_HASH_V3`` constants the committed records' values, so both are checked here."""
+    import yaml
+
+    for stem, v4, v3 in (
+        ("i24_replica_flow_rc_speedcal_dc_refit", m.B2_HASH, m.B2_HASH_V3),
+        ("i24_replica_flow_rc_speedcal_dc_refit_b1", m.B1B2_HASH, m.B1B2_HASH_V3),
+    ):
+        doc = yaml.safe_load((REPO_ROOT / "scenarios" / f"{stem}.yaml").read_text())
+        assert config_hash(ScenarioConfig.model_validate(doc)) == v4, stem
+        assert config_hash_v3(doc) == v3, stem
     arm = tmp_path / "scenarios" / "i24_replica_flow_rc_speedcal_dc_refit_b1.yaml"
     base = tmp_path / "scenarios" / "i24_replica_flow_rc_corrected_dc_b1.yaml"
     arm.parent.mkdir(parents=True)
@@ -68,10 +82,10 @@ def test_the_b1_copies_and_the_refit_base_are_the_registered_configurations(
             REPO_ROOT / "scenarios" / "i24_replica_flow_rc_corrected_dc.yaml",
             base,
             m.FACTOR,
-            "219f7db55a74",
+            "1a7797ea614d",
             "p14_i24_b1b2",
         )
-        == "ec500f75d4d8"
+        == "bb370800336e"
     )
     # B2 alone, on the committed files
     r = m.base_reproduces_from_arm(
@@ -530,3 +544,29 @@ def test_code_records_the_source_commit_and_the_snapshot(
     assert m._code() == {"code": "a" * 40, "vm_snapshot": None}  # the environment first
     monkeypatch.delenv(m.SOURCE_COMMIT_ENV)
     assert m._code() == {"code": "b" * 40, "vm_snapshot": None}
+
+
+def test_a_v3_record_of_the_same_file_counts_as_reproduced_under_policy_v4() -> None:
+    """The re-run quotes today's hash, the committed p13 battery its policy-3 hash
+    (docs/CONTRACTS.md §2, policy v4); ``reproduces()`` must not call that a
+    changed configuration. Another file, another hash or a missing scenario
+    stays unreproduced."""
+    import yaml
+
+    from flowstate_core.config import ScenarioConfig, config_hash
+
+    m = _load()
+    stem = "i24_replica_flow_rc_speedcal_dc_refit"
+    doc = yaml.safe_load((REPO_ROOT / "scenarios" / f"{stem}.yaml").read_text())
+    here = {"scenario": stem, "config_hash": config_hash(ScenarioConfig.model_validate(doc))}
+    committed = {"scenario": stem, "config_hash": config_hash_v3(doc)}
+    assert here["config_hash"] != committed["config_hash"]
+    assert m._same_file_across_policies(here, committed)
+    assert not m._same_file_across_policies(here, {"scenario": stem, "config_hash": "000000000000"})
+    assert not m._same_file_across_policies(
+        here, {"scenario": "i24_replica_flow_speedcal", "config_hash": committed["config_hash"]}
+    )
+    assert not m._same_file_across_policies(
+        {"scenario": "no_such_scenario", "config_hash": "x"},
+        {"scenario": "no_such_scenario", "config_hash": "y"},
+    )

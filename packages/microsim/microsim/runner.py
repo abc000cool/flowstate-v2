@@ -82,6 +82,7 @@ from flowstate_core.config import (
     BOUNDARY_LIMIT_FACTOR_DEFAULT,
     CONFIG_HASH_VERSION,
     SCRIPTED_MERGE_DEFAULTS,
+    WEAVE_AMENDMENT4_DEFAULTS,
     WEAVE_DEFAULTS,
     CorridorNetwork,
     FleetSpec,
@@ -2881,8 +2882,9 @@ def _weave_cooperate(
         priority,
     )
     step_s = float(ws["step_s"])
-    # amendment W2 (weave_close_leader, off unless set): a leader inside minGap
-    # is a leader, not a free road, in the targets' own-acceleration estimate
+    # amendment W2 (weave_close_leader, on by default since Amendment 4): a
+    # leader inside minGap is a leader, not a free road, in the targets'
+    # own-acceleration estimate
     close = _weave_switch(prm, "weave_close_leader")
     # the weave command recorder (WeaveSpec.record_commands; None = off)
     rec: _WeaveCommandRecorder | None = ws.get("cmd_rec")
@@ -2971,8 +2973,10 @@ def _weave_switch(prm: Mapping[str, float], key: str) -> bool:
     """Whether a weave switch of amendment W2 is on (docs/I94_CAL_COLLISIONS.md §13).
 
     ``weave_handback``, ``weave_close_leader``, ``weave_resolve_opposing``
-    (``flowstate_core.config.WEAVE_W2_SWITCHES``): keys with no default, ``1``
-    on, ``0`` or unset off (the schema refuses any other value).
+    (``flowstate_core.config.WEAVE_W2_SWITCHES``): ``1`` on — their default
+    since Amendment 4 (``WEAVE_DEFAULTS``) — ``0`` off (the schema refuses
+    any other value, and any of them on with W1b off). A parameter mapping
+    without the key (a hand-built state) reads off.
     """
     return bool(prm.get(key, 0.0))
 
@@ -3001,8 +3005,9 @@ def _weave_handback_needed(mod: Any, ws: dict[str, Any], vid: str, v: float, ste
 def _weave_entrant_giveup_m(prm: Mapping[str, float]) -> float | None:
     """The entering give-up's distance (amendment W1, ``entrant_giveup_m``) [m].
 
-    ``None`` when the rule is off: the key unset (it has no default,
-    ``flowstate_core.config.WEAVE_OPTIONAL_KEYS``) or ``0``.
+    ``None`` when the rule is off: ``0`` (its default is 5 m since
+    Amendment 4, ``flowstate_core.config.WEAVE_DEFAULTS``; a parameter
+    mapping without the key, a hand-built state, reads off).
     """
     value = prm.get("entrant_giveup_m")
     return float(value) if value is not None and value > 0.0 else None
@@ -3017,9 +3022,10 @@ _WEAVE_DWELL_EPS_S: Final[float] = 1e-6
 def _weave_entrant_giveup_dwell_s(prm: Mapping[str, float]) -> float | None:
     """The entering give-up's dwell (amendment W1b, ``entrant_giveup_dwell_s``) [s].
 
-    ``None`` when W1 gives up at once: the key unset (no default,
-    ``flowstate_core.config.WEAVE_OPTIONAL_KEYS``) or ``0``. The schema refuses
-    a positive dwell without ``entrant_giveup_m``.
+    ``None`` when W1 gives up at once: ``0`` (its default is 60 s since
+    Amendment 4, ``flowstate_core.config.WEAVE_DEFAULTS``; a parameter
+    mapping without the key reads 0). The schema refuses a positive dwell
+    with ``entrant_giveup_m`` 0.
     """
     value = prm.get("entrant_giveup_dwell_s")
     return float(value) if value is not None and value > 0.0 else None
@@ -3149,8 +3155,8 @@ def _weave_step(
     it stopped the through lane behind it and the auxiliary lane beside it.
 
     **The entering give-up** (2026-10-07, amendment W1 of
-    docs/WEAVE_LOSS_DIAGNOSIS.md §6.2; ``entrant_giveup_m``, a key of
-    ``WEAVE_OPTIONAL_KEYS``, unset = off). Its mirror: an entrant still owing
+    docs/WEAVE_LOSS_DIAGNOSIS.md §6.2; ``entrant_giveup_m``, 5 m by default
+    since Amendment 4, ``0`` = off). Its mirror: an entrant still owing
     its change into section lane 1 that has come to a halt
     (``HALTING_SPEED_MS``) within ``entrant_giveup_m`` of the auxiliary
     lane's end (the exit gore), with no change to request this step (neither
@@ -3163,8 +3169,8 @@ def _weave_step(
     nine, for 50 s). Off, nothing of it runs and nothing is written.
 
     **The dwell** (2026-10-07, amendment W1b of docs/WEAVE_LOSS_DIAGNOSIS.md
-    §10; ``entrant_giveup_dwell_s``, a key of ``WEAVE_OPTIONAL_KEYS``, unset =
-    W1 at once). With it, the entering give-up waits: each such entrant's
+    §10; ``entrant_giveup_dwell_s``, 60 s by default since Amendment 4, ``0``
+    = W1 at once). With it, the entering give-up waits: each such entrant's
     clock (``halt_since`` in its state) starts on its first step halted
     within ``entrant_giveup_m`` of the end and resets on any step it is at or
     above the halting speed or farther back — uninterrupted standstill at the
@@ -3172,11 +3178,12 @@ def _weave_step(
     exit only on a step on which the clock has run ``entrant_giveup_dwell_s``
     and W1's own condition holds. A lock at a weaving gore stands for hours
     (docs/I94_COLLAPSE_DIAGNOSIS.md); the section test's ordinary stands, all
-    self-clearing, at most 50.5 s. Unset, nothing of it runs.
+    self-clearing, at most 50.5 s. At ``0``, nothing of it runs.
 
     **The collision guards** (2026-10-07, amendment W2 of
-    docs/I94_CAL_COLLISIONS.md §13; three switches of ``WEAVE_OPTIONAL_KEYS``,
-    unset = off, nothing of them runs). ``weave_handback``: a one-step target
+    docs/I94_CAL_COLLISIONS.md §13; three switches,
+    ``flowstate_core.config.WEAVE_W2_SWITCHES``, on by default since
+    Amendment 4; at ``0`` nothing of them runs). ``weave_handback``: a one-step target
     is withheld in any step where the vehicle's own model must brake harder
     than a commanded vehicle can (:func:`_weave_handback_needed`; a target
     caps braking at ``decel``, WP-95), counted in ``n_handback_skips``.
@@ -3266,7 +3273,8 @@ def _weave_step(
     # amendment W1b (its dwell; None = W1 gives up at once)
     entrant_dwell_s = _weave_entrant_giveup_dwell_s(prm) if entrant_giveup_m is not None else None
     took_exit: Collection[str] = ws.get("took_exit", ())
-    # amendment W2's switches (docs/I94_CAL_COLLISIONS.md §13; off unless set)
+    # amendment W2's switches (docs/I94_CAL_COLLISIONS.md §13; on by default
+    # since Amendment 4, 0 = off)
     handback = _weave_switch(prm, "weave_handback")
     resolve = _weave_switch(prm, "weave_resolve_opposing")
     # the weave command recorder (WeaveSpec.record_commands, 2026-10-07; None =
@@ -3786,13 +3794,17 @@ def _weave_meta(ws: dict[str, Any], n_departed_by_route: dict[str, int]) -> dict
     ``HALTING_SPEED_MS``) still owing their change with no more than
     ``exit_giveup_m`` of section ahead — a subset of ``n_missed``, so the
     identity above holds; ``n_entrant_took_exit`` (amendment W1, written
-    only when ``entrant_giveup_m`` is on, right after ``n_missed_exit``) the
+    only when ``entrant_giveup_m`` is on — by default since Amendment 4 —,
+    right after ``n_missed_exit``) the
     entrants the runner itself rerouted to the paired exit at the auxiliary
     lane's end, halted still owing their change with no more than
     ``entrant_giveup_m`` of section ahead (with ``entrant_giveup_dwell_s``,
     amendment W1b, only after standing there that long) — also a subset of
-    ``n_missed``; amendment W2's counters (docs/I94_CAL_COLLISIONS.md §13),
-    each written only while its switch is on, right after it:
+    ``n_missed``, and with the dwell on W1b's releases, the count
+    ``validation.battery.weave_release_summary`` reports per weave against the
+    entrance's departures; amendment W2's counters (docs/I94_CAL_COLLISIONS.md
+    §13), each written only while its switch is on (by default since
+    Amendment 4), right after it:
     ``n_handback_skips`` (``weave_handback``: vehicle-steps on which a speed
     target was withheld because the vehicle's own model had to brake harder),
     ``n_close_leader_withheld`` (``weave_close_leader``: target requests the
@@ -4471,10 +4483,13 @@ def _measured_constants() -> dict[str, float]:
     on, the lookahead 120 m. The time-gap keys (``accept_gap_s`` …) are not
     read: the measured acceptance replaces them (they were read by the
     vacate and early-move rules' gap-conditioned form, removed on
-    2026-10-06).
+    2026-10-06). Amendment 4's weave rules (W1b, W2;
+    ``flowstate_core.config.WEAVE_AMENDMENT4_DEFAULTS``) are left out: the
+    measured model is not the weave, its constants are fixed, and its zone
+    resolves opposing entries of its own (2026-10-07).
     """
     return {
-        **WEAVE_DEFAULTS,
+        **{k: v for k, v in WEAVE_DEFAULTS.items() if k not in WEAVE_AMENDMENT4_DEFAULTS},
         "force_within_m": merge_model.FORCE_WITHIN_M,
         "force_after_s": merge_model.FORCE_AFTER_S,
         "change_duration_s": merge_model.REQUEST_REISSUE_S,
@@ -7430,15 +7445,15 @@ def run_micro(
                     # destination is the corridor's last edge
                     "gave_up": set(),
                     "through_target": chain_w[-1],
-                    # amendment W1 (entrant_giveup_m, off unless set): the
-                    # entrants rerouted to the paired exit at the auxiliary
+                    # amendment W1 (entrant_giveup_m, on by default since
+                    # Amendment 4): the entrants rerouted to the paired exit at the auxiliary
                     # lane's end, its counter and their new destination (the
                     # off-ramp's last edge, where it leaves the network)
                     "took_exit": set(),
                     "n_entrant_took_exit": 0,
                     "exit_target": exit_w.edges[-1],
-                    # amendment W2 (three switches, off unless set): the fleet
-                    # model and the commanded-braking bound per vehicle of the
+                    # amendment W2 (three switches, on by default since
+                    # Amendment 4): the fleet model and the commanded-braking bound per vehicle of the
                     # handback, the vetoes of the opposing resolution to
                     # restore, and the counters (meta only while on)
                     "cf_model": cfg.fleet.model,

@@ -57,7 +57,12 @@ from typing import Any, Final
 import numpy as np
 import pandas as pd
 
-from validation.criteria import CriteriaProfile, zero_collisions, zero_locks
+from validation.criteria import (
+    W1B_RELEASE_SHARE_FLAG,
+    CriteriaProfile,
+    zero_collisions,
+    zero_locks,
+)
 from validation.fields import speed_field
 from validation.locks import RunLocks, detect_run_locks, lock_flags, split_seeded
 from validation.metrics import (
@@ -599,6 +604,218 @@ def degraded_verdict(verdict: str, weave_verdict: str) -> str:
     if verdict == OK_VERDICT:
         return weave_verdict
     return f"{verdict}; {weave_verdict}"
+
+
+#: W2's switches and the ``meta.json["weave_sections"][i]`` counters each
+#: writes while on (docs/CONTRACTS.md, amendment W2), in reporting order.
+W2_COUNTERS: Final[tuple[tuple[str, tuple[str, ...]], ...]] = (
+    ("weave_handback", ("n_handback_skips",)),
+    ("weave_close_leader", ("n_close_leader_withheld",)),
+    ("weave_resolve_opposing", ("n_opposing_deferred", "n_opposing_vetoed")),
+)
+
+#: What the battery artifact's ``weave_releases`` block means (docs/CONTRACTS.md,
+#: "Weave rules W1b and W2 on by default").
+WEAVE_RELEASE_DEFINITION: Final[str] = (
+    "Per weaving section (meta.json weave_sections; measured merge zones do not run "
+    "W1b), pooled over the runs that list it: w1b_releases is the sum of "
+    "n_entrant_took_exit (the entrants W1b rerouted to the paired exit after standing "
+    "entrant_giveup_dwell_s at the auxiliary lane's end) over the n_runs_w1b runs with "
+    "W1b on (params entrant_giveup_m > 0 and entrant_giveup_dwell_s > 0; a meta without "
+    "params counts as on when it writes the counter), entrance_departed the sum of the "
+    "weave on-ramp's meta.json ramps[k].n_departed over the same runs, share = "
+    "w1b_releases / entrance_departed (NaN when nothing departed or no run had W1b on), "
+    "flagged when share > flag_share (Amendment 4: flagged in the report's limitations, "
+    "not a gate failure). n_runs_w1b_off counts the runs that listed the section with "
+    "W1b off (an opt-out reproducing a result published before Amendment 4, or a run "
+    "written before it), n_runs_w2 / n_runs_w2_off those with all three W2 switches on / "
+    "any off; w2 sums each W2 counter over the runs whose switch was on (null when no "
+    "run records it). The reading of the W1b and W2 rounds' clauses C5b and CW5b "
+    "(artifacts/weave_loss_2026-10-07/w1b/harness/corridor_w1b.py, "
+    "artifacts/weave_collision_guards_2026-10-07/harness/corridor_w2.py; "
+    "docs/DECISIONS_2026-10-07.md §A2)."
+)
+
+
+def _weave_rule_on(entry: Mapping[str, Any], keys: Sequence[str], counter: str) -> bool:
+    """Whether a weave rule ran in one run's section entry.
+
+    Read from the entry's ``params`` (the section's parameters with the
+    defaults applied; every key above 0), or — for an entry without
+    ``params`` — from whether the runner wrote the rule's ``counter``, which it
+    does exactly while the rule is on.
+    """
+    params = entry.get("params")
+    if isinstance(params, Mapping):
+        values = [params.get(key, 0.0) for key in keys]
+        return all(
+            isinstance(v, (int, float)) and not isinstance(v, bool) and v > 0.0 for v in values
+        )
+    return counter in entry
+
+
+def _entrance_departed(meta: Mapping[str, Any], ramp: str) -> int | None:
+    """``n_departed`` of the on-ramp a weave section is named after (None: not recorded).
+
+    The section is named after its on-ramp's ``name``, or its attach edge
+    when the ramp has none (``microsim.runner``).
+    """
+    for entry in meta.get("ramps") or []:
+        if not isinstance(entry, Mapping) or entry.get("kind") != "on":
+            continue
+        name = str(entry.get("name") or "")
+        if name == ramp or (not name and str(entry.get("attach_edge", "")) == ramp):
+            return _count(entry, "n_departed")
+    return None
+
+
+def weave_release_rows(meta: Mapping[str, Any]) -> list[dict[str, Any]] | None:
+    """W1b's releases and W2's counters of one run, per weaving section.
+
+    Args:
+        meta: Parsed ``meta.json`` (:func:`load_meta`).
+
+    Returns:
+        None when the run lists no weaving sections (``weave_sections``
+        absent or empty: it says nothing), else one row per section in the
+        runs' order: ``{ramp, exit, w1b_on, w1b_releases, entrance_departed,
+        w2_on: {switch: bool}, <each W2 counter>}``. ``w1b_releases`` is the
+        section's ``n_entrant_took_exit`` (None when not written: W1 off),
+        ``entrance_departed`` its on-ramp's ``ramps[k].n_departed`` (None when
+        not recorded), a W2 counter None while its switch is off.
+    """
+    weaves = meta.get("weave_sections")
+    if not isinstance(weaves, list) or not weaves:
+        return None
+    rows: list[dict[str, Any]] = []
+    for position, entry in enumerate(weaves):
+        if not isinstance(entry, Mapping):
+            continue
+        ramp = str(entry.get("ramp", "") or "") or f"section {position}"
+        w2_on = {
+            switch: _weave_rule_on(entry, (switch,), counters[0])
+            for switch, counters in W2_COUNTERS
+        }
+        row: dict[str, Any] = {
+            "ramp": ramp,
+            "exit": None if not entry.get("exit") else str(entry["exit"]),
+            "w1b_on": _weave_rule_on(
+                entry, ("entrant_giveup_m", "entrant_giveup_dwell_s"), "n_entrant_took_exit"
+            ),
+            "w1b_releases": _count(entry, "n_entrant_took_exit"),
+            "entrance_departed": _entrance_departed(meta, ramp),
+            "w2_on": w2_on,
+        }
+        for switch, counters in W2_COUNTERS:
+            for counter in counters:
+                row[counter] = _count(entry, counter) if w2_on[switch] else None
+        rows.append(row)
+    return rows
+
+
+def weave_release_summary(
+    metas: Sequence[Mapping[str, Any]], *, flag_share: float = W1B_RELEASE_SHARE_FLAG
+) -> dict[str, Any]:
+    """W1b's releases per weaving section as a share of its entrance's departures.
+
+    Amendment 4 (2026-10-07, docs/FRISCO_PROTOCOL.md; decision A2 of
+    docs/DECISIONS_2026-10-07.md) puts weave rules W1b and W2 into the model
+    at every weaving section and asks every battery and report to state each
+    weave's W1b releases as a share of its entrance's departures, pooled over
+    the seeds, beside ``no_locks``, with W2's counters — a share above 1 %
+    flagged in the limitations, not a gate failure. W1b ends the gore lock
+    that ``no_locks`` would catch, so with W1b on this count is what still
+    shows the deadlock. The reading is ``corridor_w1b.py``'s C5b
+    (:data:`WEAVE_RELEASE_DEFINITION`).
+
+    Args:
+        metas: One parsed ``meta.json`` per run.
+        flag_share: Share above which a section is flagged
+            (:data:`validation.criteria.W1B_RELEASE_SHARE_FLAG`).
+
+    Returns:
+        ``{"flag_share", "n_runs", "sections", "flagged", "definition"}``:
+        ``n_runs`` the runs that list weaving sections; ``sections`` one entry
+        per section keyed by its on-ramp in first-seen order, ``{ramp, exit,
+        n_runs, n_runs_w1b, n_runs_w1b_off, w1b_releases, entrance_departed,
+        share, flagged, n_runs_w2, n_runs_w2_off, w2}``; ``flagged`` the
+        flagged sections' ramps. A run set without weaving sections yields an
+        empty ``sections`` list: it says nothing, it does not claim zero.
+    """
+    sections: dict[str, dict[str, Any]] = {}
+    n_runs = 0
+    for meta in metas:
+        rows = weave_release_rows(meta)
+        if rows is None:
+            continue
+        n_runs += 1
+        for row in rows:
+            s = sections.setdefault(
+                row["ramp"],
+                {
+                    "ramp": row["ramp"],
+                    "exit": None,
+                    "n_runs": 0,
+                    "n_runs_w1b": 0,
+                    "n_runs_w1b_off": 0,
+                    "w1b_releases": 0,
+                    "entrance_departed": 0,
+                    "n_runs_w2": 0,
+                    "n_runs_w2_off": 0,
+                    "w2": {c: None for _, cs in W2_COUNTERS for c in cs},
+                },
+            )
+            if s["exit"] is None and row["exit"]:
+                s["exit"] = row["exit"]
+            s["n_runs"] += 1
+            if not row["w1b_on"]:
+                s["n_runs_w1b_off"] += 1
+            elif row["w1b_releases"] is not None and row["entrance_departed"] is not None:
+                s["n_runs_w1b"] += 1
+                s["w1b_releases"] += row["w1b_releases"]
+                s["entrance_departed"] += row["entrance_departed"]
+            if all(row["w2_on"].values()):
+                s["n_runs_w2"] += 1
+            else:
+                s["n_runs_w2_off"] += 1
+            for _, counters in W2_COUNTERS:
+                for counter in counters:
+                    if row[counter] is not None:
+                        s["w2"][counter] = (s["w2"][counter] or 0) + row[counter]
+    out: list[dict[str, Any]] = []
+    flagged: list[str] = []
+    for s in sections.values():
+        share = (
+            s["w1b_releases"] / s["entrance_departed"]
+            if s["n_runs_w1b"] and s["entrance_departed"] > 0
+            else math.nan
+        )
+        is_flagged = math.isfinite(share) and share > flag_share
+        out.append(
+            {
+                "ramp": s["ramp"],
+                "exit": s["exit"],
+                "n_runs": s["n_runs"],
+                "n_runs_w1b": s["n_runs_w1b"],
+                "n_runs_w1b_off": s["n_runs_w1b_off"],
+                "w1b_releases": s["w1b_releases"],
+                "entrance_departed": s["entrance_departed"],
+                "share": share,
+                "flagged": is_flagged,
+                "n_runs_w2": s["n_runs_w2"],
+                "n_runs_w2_off": s["n_runs_w2_off"],
+                "w2": dict(s["w2"]),
+            }
+        )
+        if is_flagged:
+            flagged.append(s["ramp"])
+    return {
+        "flag_share": flag_share,
+        "n_runs": n_runs,
+        "sections": out,
+        "flagged": flagged,
+        "definition": WEAVE_RELEASE_DEFINITION,
+    }
 
 
 def collision_count(meta: Mapping[str, Any]) -> int | None:

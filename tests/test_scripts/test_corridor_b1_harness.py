@@ -20,7 +20,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from flowstate_core.config import ScenarioConfig
+from flowstate_core.config import ScenarioConfig, config_hash_v3
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 HARNESS = REPO_ROOT / "artifacts" / "i24_discharge_2026-10-07" / "harness"
@@ -39,7 +39,13 @@ cb = _load("corridor_b1")
 hb = _load("hard_braking")
 
 
-def test_make_copy_changes_only_the_name_and_the_factor(tmp_path: Path) -> None:
+def test_make_copy_changes_only_the_name_and_the_factor(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Stage p12 ran this harness under config-hash policy 3 (2026-10-07, before
+    Amendment 4's bump): its source and copy hashes are version-3 hashes, so the
+    harness is run here with ``config_hash_v3`` in place of ``config_hash``."""
+    monkeypatch.setattr(cb, "config_hash", config_hash_v3)
     src = REPO_ROOT / "scenarios" / "i24_replica_flow_speedcal_dc_refit.yaml"
     out = tmp_path / "copy.yaml"
     h = cb.make_copy(src, out, 1.2185, "ada3f406504b")

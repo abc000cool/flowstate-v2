@@ -22,6 +22,7 @@ from typing import Any
 import pytest
 import yaml
 
+from flowstate_core.config import CONFIG_HASH_VERSION, config_hash_v3
 from flowstate_core.rng import spawn_seeds
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -48,8 +49,20 @@ g = probe.g
 needs_grid = pytest.mark.skipif(not (GRID / "MANIFEST.json").is_file(), reason="grid tree absent")
 
 
+@pytest.fixture()
+def policy_v3(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The probe and the driver grid it reads ran under config-hash policy 3
+    (2026-10-07, before Amendment 4's bump): the committed grid tree and records
+    are keyed by version-3 hashes, so the probe runs here with ``config_hash_v3``
+    in place of ``config_hash`` — its plan then IS the grid's, hash for hash, as
+    when it ran. Under policy 4 the probe keys its plan (and new runs) by the
+    current hashes and looks recorded runs up under the policy they were recorded
+    under (``recorded_cell``); the tests without this fixture check that."""
+    monkeypatch.setattr(probe, "config_hash", config_hash_v3)
+
+
 @needs_grid
-def test_the_plan_is_the_grids_pairs_on_two_networks() -> None:
+def test_the_plan_is_the_grids_pairs_on_two_networks(policy_v3: None) -> None:
     plan = probe.build_probe()
     manifest = json.loads((GRID / "MANIFEST.json").read_text())
     grid_hashes = {p["name"]: p["config_hash"] for p in manifest["pairs"]}
@@ -95,19 +108,28 @@ def test_a_small_machine_is_refused(
     assert list(tmp_path.iterdir()) == []
 
 
-def _fake_tree(plan: Any, root: Path) -> None:
-    """Every run's readings = the committed grid readings of its pair (seeds 3-4 repeat 1-2)."""
+def _fake_tree(plan: Any, root: Path, policy: int | None = None) -> None:
+    """Every run's readings = the committed grid readings of its pair (seeds 3-4 repeat 1-2).
+
+    ``policy`` keys the tree by that policy's hashes (``plan.policy_hashes``), as a tree
+    recorded under it is; None by the plan's own (``plan.hashes``)."""
+
+    def key(net: str, name: str) -> str:
+        return plan.hashes[net][name] if policy is None else plan.policy_hashes[net][name][policy]
+
     (root / "as_built").mkdir(parents=True)
     (root / "as_built" / "LANES.json").write_text((GRID / "LANES.json").read_text())
     probe.lanes_for(plan, root)  # the fixed network's table: netconvert only
     for net in plan.specs:
         for name in plan.names:
-            src_hash = plan.hashes["as_built"][name]
+            # the grid's own cell, under the policy it was recorded under (3)
+            hashes = probe._hashes_of(plan, "as_built", name)
+            src_hash = probe.recorded_cell(GRID / name, hashes, plan.seeds)[1]
             for i, seed in enumerate(plan.seeds):
                 src = GRID / name / src_hash / str(plan.seeds[i % 2]) / "readings.json"
                 rd = json.loads(src.read_text())
-                rd["run"] |= {"seed": seed, "config_hash": plan.hashes[net][name]}
-                d = probe._run_dir(root, net, name, plan.hashes[net][name], seed)
+                rd["run"] |= {"seed": seed, "config_hash": key(net, name)}
+                d = probe._run_dir(root, net, name, key(net, name), seed)
                 d.mkdir(parents=True)
                 if net == "as_built" and i < 2:
                     (d / "readings.json").write_text(src.read_text())
@@ -116,7 +138,7 @@ def _fake_tree(plan: Any, root: Path) -> None:
 
 
 @needs_grid
-def test_the_analysis_reproduces_the_grids_scores(tmp_path: Path) -> None:
+def test_the_analysis_reproduces_the_grids_scores(tmp_path: Path, policy_v3: None) -> None:
     plan = probe.build_probe()
     root = tmp_path / "probe"
     _fake_tree(plan, root)
@@ -200,7 +222,7 @@ def test_the_corrected_variants_never_reverse_twice() -> None:
 
 @needs_grid
 def test_targets_already_corrected_are_not_reversed_again(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, policy_v3: None
 ) -> None:
     """After ``--build-observed-lanes --reverse-lane-order S791`` (docs/I94_LANE_SHARES.md §6
     step 1) the targets store S791 corrected: the probe's corrected scores must stay the
@@ -230,3 +252,78 @@ def test_targets_already_corrected_are_not_reversed_again(
     assert res["targets"]["reversed_for_the_corrected_scores"] == []
     assert res["targets"]["already_corrected_in_targets"] == ["S791"]
     assert any("already stores S791 in corrected lane order" in n for n in res["notes"])
+
+
+# --- config-hash policy 4 (docs/CONTRACTS.md section 2): recorded runs under their own policy ---------
+
+
+@needs_grid
+def test_under_policy_4_the_plan_finds_the_grids_runs_under_policy_3() -> None:
+    """No monkeypatch: the plan's hashes are today's (new runs), and the grid's runs, recorded under
+    policy 3, are found under their version-3 hashes."""
+    plan = probe.build_probe()
+    manifest = json.loads((GRID / "MANIFEST.json").read_text())
+    grid_hashes = {p["name"]: p["config_hash"] for p in manifest["pairs"]}
+    for name in plan.names:
+        by_policy = plan.policy_hashes["as_built"][name]
+        assert list(by_policy) == [CONFIG_HASH_VERSION, 3, 2]
+        assert plan.hashes["as_built"][name] == by_policy[CONFIG_HASH_VERSION]
+        assert by_policy[3] == grid_hashes[name] == config_hash_v3(plan.configs["as_built"][name])
+        assert by_policy[CONFIG_HASH_VERSION] != grid_hashes[name]  # the policy moved every hash
+        assert probe.recorded_cell(GRID / name, by_policy, plan.seeds) == (3, grid_hashes[name])
+
+
+def test_a_cell_is_read_under_one_policy_todays_first(tmp_path: Path) -> None:
+    hashes = {CONFIG_HASH_VERSION: "aaaaaaaaaaaa", 3: "bbbbbbbbbbbb", 2: "cccccccccccc"}
+    seeds = [1, 2]
+
+    def record(h: str, seed: int) -> None:
+        d = tmp_path / h / str(seed)
+        d.mkdir(parents=True)
+        (d / "readings.json").write_text("{}")
+
+    assert probe.recorded_cell(tmp_path, hashes, seeds) == (CONFIG_HASH_VERSION, "aaaaaaaaaaaa")
+    record("cccccccccccc", 1)
+    assert probe.recorded_cell(tmp_path, hashes, seeds) == (2, "cccccccccccc")
+    record("bbbbbbbbbbbb", 2)
+    assert probe.recorded_cell(tmp_path, hashes, seeds) == (3, "bbbbbbbbbbbb")
+    record("aaaaaaaaaaaa", 2)  # one of today's seeds: today's cell, never a mix of policies
+    assert probe.recorded_cell(tmp_path, hashes, seeds) == (CONFIG_HASH_VERSION, "aaaaaaaaaaaa")
+    assert probe.recorded_cell(tmp_path, {CONFIG_HASH_VERSION: "dddddddddddd"}, seeds)[0] == (
+        CONFIG_HASH_VERSION
+    )
+
+
+@needs_grid
+def test_the_analysis_reads_a_policy_3_tree_under_policy_4(tmp_path: Path) -> None:
+    """A run tree recorded under policy 3 (the committed probe's, 2026-10-07) is re-analysed
+    under policy 4: every run found, the grid reproduced, and each row states the hash and the
+    policy its runs were read under; the reference's hash is today's, labelled."""
+    plan = probe.build_probe()
+    root = tmp_path / "probe"
+    _fake_tree(plan, root, policy=3)
+    res = probe.analyze_probe(plan, root, tmp_path / "probe.json", argv=["--analyze-only"])
+    assert res["complete"]
+    for net in plan.specs:
+        for name in plan.names:
+            row = res["results"][net][name]
+            assert row["config_hash"] == plan.policy_hashes[net][name][3]
+            assert row["config_hash_version"] == 3 and row["n_seeds_read"] == 4
+        ref = res["networks"][net]
+        assert ref["reference_config_hash_version"] == CONFIG_HASH_VERSION
+    assert res["reproduces_grid"] == {
+        name: {str(s): "identical" for s in plan.seeds[:2]} for name in plan.names
+    }
+    assert any("older config-hash policy" in n for n in res["notes"])
+    # the same tree keyed by today's hashes: read under today's policy, no such note
+    today = tmp_path / "today"
+    _fake_tree(plan, today)
+    res4 = probe.analyze_probe(plan, today, tmp_path / "probe4.json", argv=["--analyze-only"])
+    row4 = res4["results"]["as_built"]["k0.0_kr0.0"]
+    assert row4["config_hash"] == plan.hashes["as_built"]["k0.0_kr0.0"]
+    assert row4["config_hash_version"] == CONFIG_HASH_VERSION
+    assert not any("older config-hash policy" in n for n in res4["notes"])
+    scores = {k: res["results"]["as_built"][k]["scores"]["own"]["lane_rmse_pp"] for k in plan.names}
+    assert scores == {
+        k: res4["results"]["as_built"][k]["scores"]["own"]["lane_rmse_pp"] for k in plan.names
+    }

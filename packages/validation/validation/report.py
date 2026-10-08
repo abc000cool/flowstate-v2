@@ -43,6 +43,18 @@ limitations bullet, and the client summary's confidence table says whether
 the runs are free of locks. A run without either file is "not recorded",
 never lock-free.
 
+**Weave releases** (2026-10-07, Amendment 4 of docs/FRISCO_PROTOCOL.md): weave
+rules W1b and W2 are part of the model at every weaving section, and W1b ends
+the gore lock ``no_locks`` would catch by sending a vehicle that stood a full
+minute at the auxiliary lane's end into the exit. The Model integrity section
+states, per weaving section, W1b's releases as a share of the entrance's
+departures pooled over the runs, with W2's counters
+(:func:`validation.battery.weave_release_summary`, :func:`_weave_release_context`);
+the criteria table carries one reported ``w1b_release_share`` row per section
+after ``no_locks`` (never a pass or a fail); Limitations lists every section
+whose share is above 1 % and every run in which W1b or W2 was turned off. A run
+set without weaving sections gets none of these.
+
 Every metric, figure and criterion describes the same measurement window:
 each run's recorded period minus its configured warm-up
 (:func:`validation.metrics.warmup_from_meta`) and, when the caller passes
@@ -138,8 +150,14 @@ from validation.battery import (
     insertion_stats,
     records_insertion,
     weave_exit_summary,
+    weave_release_summary,
 )
-from validation.criteria import CriteriaProfile, CriteriaResult, evaluate, zero_collisions
+from validation.criteria import (
+    CriteriaProfile,
+    CriteriaResult,
+    evaluate,
+    zero_collisions,
+)
 from validation.fields import SpeedField, speed_field
 from validation.locks import (
     LOCK_MIN_DURATION_S,
@@ -1420,8 +1438,87 @@ def _lock_context(locks: Mapping[str, Any] | None) -> dict[str, Any]:
     }
 
 
+def _weave_release_context(summary: Mapping[str, Any]) -> dict[str, list[str]]:
+    """The Model integrity section's weave-release lines and their limitations.
+
+    Args:
+        summary: :func:`validation.battery.weave_release_summary` over the
+            micro runs.
+
+    Returns:
+        ``{weave_release_lines, weave_release_limitations}``, both empty for a
+        run set without weaving sections; every number in them is formatted
+        from the summary.
+    """
+    flag = _fmt(_PERCENT * float(summary["flag_share"]), 3)
+    lines: list[str] = []
+    limitations: list[str] = []
+    for s in summary["sections"]:
+        exit_name = f" (exit {s['exit']})" if s["exit"] else ""
+        n_runs, n_w1b = int(s["n_runs"]), int(s["n_runs_w1b"])
+        share = float(s["share"])
+        if n_w1b and math.isfinite(share):
+            state = (
+                f"above the {flag} % design bound"
+                if s["flagged"]
+                else f"within the {flag} % design bound"
+            )
+            w1b_text = (
+                f"{s['w1b_releases']} of {s['entrance_departed']} entrance departures "
+                f"({_fmt(_PERCENT * share, 3)} %) over {n_w1b} run(s), {state}"
+            )
+        elif n_w1b:
+            w1b_text = f"no entrance departure recorded over {n_w1b} run(s)"
+        else:
+            w1b_text = "not counted (W1b off in every run that lists the section)"
+        w2 = s["w2"]
+        w2_parts = [
+            f"{label} {'not recorded' if w2[key] is None else w2[key]}"
+            for key, label in (
+                ("n_handback_skips", "handback skips"),
+                ("n_close_leader_withheld", "close-leader withholds"),
+                ("n_opposing_deferred", "opposing deferrals"),
+                ("n_opposing_vetoed", "of them vetoes"),
+            )
+        ]
+        lines.append(
+            f"Weave rules at {s['ramp']}{exit_name}: W1b released {w1b_text}; W2 "
+            f"({s['n_runs_w2']} of {n_runs} run(s) with all three guards on): "
+            + ", ".join(w2_parts)
+            + "."
+        )
+        if s["flagged"]:
+            limitations.append(
+                f"At the {s['ramp']} weave, W1b sent {s['w1b_releases']} of "
+                f"{s['entrance_departed']} entering vehicles ({_fmt(_PERCENT * share, 3)} %, "
+                f"over {n_w1b} run(s)) into the paired exit after each stood the W1b dwell at "
+                f"the end of the auxiliary lane — above the {flag} % design bound of Amendment "
+                "4. W1b is a safeguard that keeps the simulation running, not measured driver "
+                "behaviour: a release ends either a lock at the gore or a long ordinary wait, "
+                "the share counts interventions, not realism, and the exit's and the mainline's "
+                "flows carry those vehicles."
+            )
+        off_w1b, off_w2 = int(s["n_runs_w1b_off"]), int(s["n_runs_w2_off"])
+        if off_w1b or off_w2:
+            parts = []
+            if off_w1b:
+                parts.append(f"W1b off in {off_w1b}")
+            if off_w2:
+                parts.append(f"W2 (any guard) off in {off_w2}")
+            limitations.append(
+                f"At the {s['ramp']} weave, {' and '.join(parts)} of {n_runs} run(s). Amendment "
+                "4 puts both rules into the model; turning one off is allowed only to "
+                "reproduce a result published before it, and such runs are not the model's "
+                "current form."
+            )
+    return {"weave_release_lines": lines, "weave_release_limitations": limitations}
+
+
 def _integrity_context(
-    micro_runs: list[_RunInfo], run_set: Path, locks: Mapping[str, Any] | None = None
+    micro_runs: list[_RunInfo],
+    run_set: Path,
+    locks: Mapping[str, Any] | None = None,
+    weave_releases: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """The Model integrity section and its limitations bullets.
 
@@ -1435,18 +1532,22 @@ def _integrity_context(
     limitations bullet naming the count, the runs and the lanes.
 
     Locks come from ``locks`` (:func:`_lock_context`): their line, table,
-    banner and limitations bullets follow the collisions'.
+    banner and limitations bullets follow the collisions'. The weave rules'
+    lines and limitations (:func:`_weave_release_context`, Amendment 4) come
+    from ``weave_releases`` and follow the locks'.
 
     Args:
         micro_runs: The run set's microscopic runs.
         run_set: The run-set root (run labels are paths relative to it).
         locks: :func:`validation.locks.lock_summary` over the micro runs, or
             None when no run is recorded.
+        weave_releases: :func:`validation.battery.weave_release_summary` over
+            the micro runs; None (or no sections) adds no line.
 
     Returns:
         ``{collision_line, collision_runs, forced_lines, locations,
         location_note, limitations, banner, lock_line, lock_rows, lock_note,
-        lock_banner}`` for the template; every number in them is formatted
+        lock_banner, weave_release_lines}`` for the template; every number in them is formatted
         from the summaries. ``banner`` is the model-integrity failure line
         under the title when any run records a collision (the
         ``no_collisions`` criterion fails), else None; ``lock_banner`` the
@@ -1454,6 +1555,13 @@ def _integrity_context(
     """
     lock = _lock_context(locks)
     lock_limitations = lock.pop("lock_limitations")
+    weave = (
+        _weave_release_context(weave_releases)
+        if weave_releases is not None
+        else {"weave_release_lines": [], "weave_release_limitations": []}
+    )
+    lock_limitations = [*lock_limitations, *weave.pop("weave_release_limitations")]
+    lock = {**lock, **weave}
     names = [str(r.path.relative_to(run_set)) for r in micro_runs]
     metas = [r.meta for r in micro_runs]
     summary = collision_summary(metas, labels=names)
@@ -2464,6 +2572,9 @@ def generate_report(
     else:
         wave_speed = math.nan
     smallest = min(groups, key=lambda g: len(set(g.seeds)))
+    # Amendment 4 (2026-10-07): W1b's releases and W2's counters per weaving
+    # section, from every micro run's meta.json (none without a weave)
+    weave_releases = weave_release_summary([r.meta for r in micro_runs])
     known_locks = {_run_key(k): v for k, v in (locks_by_run or {}).items()}
     lock_records: list[RunLocks] = [
         known_locks.get(_run_key(r.path)) or detect_run_locks(r.path, meta=r.meta)
@@ -2488,6 +2599,7 @@ def generate_report(
         # Model integrity (WP-98): every micro run of the set, every group.
         collision_counts=collision_counts([r.meta for r in micro_runs]),
         lock_records=lock_records,
+        weave_releases=weave_releases if weave_releases["sections"] else None,
     )
     criteria_note = _wave_criterion_note(
         reference=reference,
@@ -2501,6 +2613,17 @@ def generate_report(
             f" Replicate criterion input: the smallest group ({smallest.label}, n = "
             f"{len(set(smallest.seeds))} distinct seeds); each group's own replicate "
             "check is under Metrics."
+        )
+    if weave_releases["sections"]:
+        criteria_note += (
+            " A row marked REPORTED is a disclosure, never a pass or a fail: Amendment 4 "
+            "(docs/FRISCO_PROTOCOL.md, 2026-10-07) puts weave rules W1b and W2 into the model "
+            "at every weaving section, and each w1b_release_share row states the share of the "
+            "entrance's departures W1b sent into the paired exit after standing its dwell at "
+            "the end of the auxiliary lane, pooled over every run of the set, with W2's "
+            "counters. A "
+            f"share above {_fmt(_PERCENT * float(weave_releases['flag_share']), 3)} % is "
+            "listed under Limitations."
         )
 
     # An empty matrix (no analysis window fully inside the run, or no observed
@@ -2598,7 +2721,7 @@ def generate_report(
         measurement_note=_measurement_note(micro_runs, measure_span, span is None),
         insertion_note=_insertion_note(micro_runs),
         weave_exit_notes=_weave_exit_notes(micro_runs),
-        integrity=_integrity_context(micro_runs, run_set, locks),
+        integrity=_integrity_context(micro_runs, run_set, locks, weave_releases),
         calibrations=calibrations,
         observed=(
             _observed_rows(observed, p.wave_speed_band_kmh) if observed is not None else None

@@ -503,6 +503,40 @@ document does not set is false); it is never written into a new record.
 of the two dict-valued merge blocks (`merge_defaults`:
 `SCRIPTED_MERGE_DEFAULTS`, `WEAVE_DEFAULTS`), which a model dump does not
 show (`merge_params` defaults to `{}`). Fields that only observe a run (`WeaveSpec.record_commands`) are left out of the payload at every value (2026-10-07; `HASH_PAYLOAD_CONTEXT_KEY`).
+**Policy v4 (2026-10-07, Amendment 4; decision A2 of docs/DECISIONS_2026-10-07.md):**
+the payload rule of v2 and v3, with `CONFIG_HASH_VERSION` = 4, bumped because
+weave rules W1b and W2 became defaults of every weaving section:
+`WEAVE_AMENDMENT4_DEFAULTS` (`entrant_giveup_m` 5, `entrant_giveup_dwell_s` 60,
+`weave_handback`, `weave_close_leader`, `weave_resolve_opposing` 1) joined
+`WEAVE_DEFAULTS`, and `WEAVE_OPTIONAL_KEYS` is empty. *Why a bump, not a
+hash-neutral flip.* The precedent is v3's `SCRIPTED_MERGE_DEFAULTS["force_guard"]`:
+a default inside a dict-valued block (`merge_params`, `weave_params`) is not in
+the payload, which carries the block as written, so a weave block that sets
+none of the five keys has the same payload under v3 and v4 while it runs other
+physics. Leaving the version alone would let one hash name two physics (a v3
+record of `_dc_cal` and a v4 run of the same file), which the policy forbids;
+so every hash moves once, the ring's (`d5472987265c` → `258c09ac0074`) and every
+other scenario's without a weaving section included, though their physics is
+unchanged. *What stays valid.* No model field's default changed and the payload
+rule is unchanged, so a document's version-3 payload is its version-4 payload:
+`flowstate_core.config.config_hash_v3(document)` (the payload hashed under
+`hash_version` 3, the document validated with `PRE_AMENDMENT4_CONTEXT_KEY` so a
+W2-alone block of the G fixtures still reads) reproduces every version-3 hash —
+every committed scenario's (`tests/golden/scenario_config_hashes.json`, written
+by the policy-3 code at cd470a9) and every committed record's
+(`tests/test_flowstate_core/test_config_hash.py`,
+`test_every_committed_record_reproduces_under_its_policy`: 44 records under v3,
+15 under v2; two records older than their scenario file's last rewrite
+reproduce under no policy, as before). Records dated 2026-10-04 to 2026-10-07
+quote version-3 hashes; it is never written into a new record. *What a file
+written with the old defaults means now.* `weave_params` are stored as written;
+a block without the five keys meant "W1b and W2 off" under v3 and means "on"
+under v4 — the same file, another run, under another hash. The committed weave
+scenarios that set none of the keys (10) or only W1b's (2) therefore change
+behaviour (listed in the dated section "Weave rules W1b and W2 on by default");
+`_dc_cal_w1b_w2`, which sets all five, keeps its payload and its physics and
+moves by the version alone. To reproduce a pre-amendment result, set the keys
+to 0 (`WEAVE_AMENDMENT4_OFF`; W2's three with W1b's).
 
 **Ramp-meter stop placement (2026-09-23, docs/LESSONS.md row 31).** The
 meter used to set its stop only once a vehicle was on the ramp's last edge;
@@ -3418,7 +3452,7 @@ Owner decision of 2026-10-04 (roadmap item 6). A SUMO collision is a model defec
 - *Battery artifact* (`scripts/corridor_battery.py`). Top-level `zero_collisions` right after `collisions`: `collision_free` over the seeds' metas (true / false / null; null without metas). The criteria list carries the row; the console prints each row's `status`. Additive: `schema` stays `flowstate.corridor_validation/1` and every other key is unchanged.
 - *Sweep summary* (`scripts/corridor_sweep.py`). Per cell, after `diagnostics`: `collisions` = `{n_runs, n_runs_recorded, total, runs_with_collisions: [{seed, n}], runs_not_recorded: [seed]}` over the seeds with a `metrics.json` (a run without `meta.json` or without the counter is not recorded; `total` null when none records it) and `zero_collisions` (the flag). Top level, after `cells`: `zero_collisions` over every run of every complete cell. One console line, `collisions: PASS — zero in all N run(s)` / `FAIL — collisions in <cell> (n), …` / `NOT RECORDED — not recorded for j of N run(s)`. Additive.
 - *API.* `GET /runs/{id}/metrics` does not expose `n_collisions`, so nothing is added there.
-- *Not wired.* `scripts/i24_validate.py` and `scripts/m3_us101_validate.py` call `evaluate` without counts: their `no_collisions` row reads NOT RECORDED until they pass their runs' counts.
+- *Not wired.* `scripts/m3_us101_validate.py` calls `evaluate` without counts: its `no_collisions` row reads NOT RECORDED until it passes its runs' counts. `scripts/i24_validate.py` has passed them since 2026-10-06 (0fb137b): each replicate's `meta.json` `n_collisions` is recorded in `simulated.n_collisions_per_replicate`, pooled in `collisions` and scored in the row (the sentence above was stale until 2026-10-07).
 - *Pipeline.* Stages 18 and 19 of `scripts/gcp/pipeline_i24.sh` were written for the old defaults and are unchanged; a dated note above them says what their arms would now run.
 
 ## Detector data quality and ramp estimates (WP-101) — 2026-10-04
@@ -3764,6 +3798,10 @@ No config field added.
 
 ## Weave entering give-up, amendment W1 (opt-in, off) — 2026-10-07
 
+*Default changed the same day (Amendment 4, dated section "Weave rules W1b and
+W2 on by default"): `entrant_giveup_m` is 5 m in `WEAVE_DEFAULTS`; 0 turns it
+off. The text below is the contract as added.*
+
 - **Config.** `WeaveSpec.weave_params` accepts `entrant_giveup_m` [m], the
   one key of `flowstate_core.config.WEAVE_OPTIONAL_KEYS` (keys with no
   default; `WEAVE_KEYS` = `WEAVE_DEFAULTS` keys plus these). Unset or 0 is
@@ -3792,6 +3830,10 @@ No config field added.
 
 ## Weave entering give-up's dwell, amendment W1b (opt-in, off) — 2026-10-07
 
+*Default changed the same day (Amendment 4): `entrant_giveup_dwell_s` is 60 s in
+`WEAVE_DEFAULTS`; 0 gives up at once (W1), allowed only with W2 off. The text
+below is the contract as added.*
+
 - **Config.** `WeaveSpec.weave_params` accepts `entrant_giveup_dwell_s` [s], the
   second key of `WEAVE_OPTIONAL_KEYS` (no default; `WEAVE_DEFAULTS` and
   `tests/golden/config_defaults.json` unchanged). Unset or 0 leaves W1's
@@ -3815,6 +3857,11 @@ No config field added.
   instead of the grid's). Without them the grid runs as before.
 
 ## Weave collision guards, amendment W2 (opt-in, off) — 2026-10-07
+
+*Default changed the same day (Amendment 4): the three switches are 1 in
+`WEAVE_DEFAULTS`, so their counters are written by default; 0 turns one off,
+and any of them on with W1b off is refused. The text below is the contract as
+added.*
 
 - **Config.** `WeaveSpec.weave_params` accepts three switches,
   `weave_handback`, `weave_close_leader` and `weave_resolve_opposing`
@@ -3850,6 +3897,153 @@ No config field added.
   A withheld target is not counted in `n_cooperations` or `n_changer_eased`.
 - **Script.** `scripts/merge_model_selfcheck.py grid` zone rows carry the
   counters when present.
+
+## Weave rules W1b and W2 on by default; their counts in every battery and report (Amendment 4) — 2026-10-07
+
+Decision A2 of docs/DECISIONS_2026-10-07.md; the amendment's text is in
+docs/FRISCO_PROTOCOL.md (Amendment 4).
+
+- **Config** (`flowstate_core.config`). `WEAVE_AMENDMENT4_DEFAULTS` =
+  `{entrant_giveup_m: 5, entrant_giveup_dwell_s: 60, weave_handback: 1,
+  weave_close_leader: 1, weave_resolve_opposing: 1}` closes `WEAVE_DEFAULTS`, in
+  that order (the order the committed scenarios write them in, so a section
+  setting all five records its `params` in `meta.json` exactly as before);
+  `WEAVE_OPTIONAL_KEYS` is empty; `WEAVE_W1B_KEYS` names W1b's two keys;
+  `WEAVE_AMENDMENT4_OFF` sets all five to 0 (the weave before 2026-10-07).
+  `weave_params` stay stored and hashed as written. `WeaveSpec` validation reads
+  the values with the defaults applied: a negative distance or dwell is refused;
+  a positive dwell set while `entrant_giveup_m` is 0 is refused (as before);
+  **any of W2's switches on — explicitly or by default — with W1b off
+  (`entrant_giveup_m` or `entrant_giveup_dwell_s` at 0) is refused**, the error
+  naming Amendment 4 and the switches to turn off. Opting out of any rule is
+  allowed only to reproduce a result published before the amendment (policy,
+  not checked). Measured merge zones (`merge: measured`) are unchanged: their
+  weave block still takes no `weave_params`, and `microsim.runner.
+  _measured_constants` leaves the five keys out (the measured model's constants
+  are fixed; it resolves opposing entries of its own).
+- **Hash.** Policy v4 (§2 above): every hash moved once; `config_hash_v3`
+- **Scripts reconciled with policy v4 (2026-10-07).** `scripts/i94_calibration_days.py` labels every hash it writes `policy v<CONFIG_HASH_VERSION>`, and its `--check` reads each header's hash under the policy the header names (an unlabelled demand record under its scenario header's), so the committed `_dc_cal` family, written under v3, checks unchanged. `scripts/i94_netfix_probe.py` finds recorded runs under today's, the v3 or the v2 hash, one policy per (network, pair), never mixed; each result row states the `config_hash` it read and `config_hash_version` (a note when an older policy was read), its lane files `reference_config_hash_version` beside `reference_config_hash`; new runs are keyed by today's hash only (under v4 the slice's weaves run W1b and W2, which the v3 runs did not). `scripts/run_pairs.py` refuses an older-policy pin and says so; `PAIRS.json` records `config_hash_version` (p8c's pins stay v3: policy 4 runs W1b and W2 at those weaves, not p8's physics; launch p8c from a policy-3 commit). `scripts/i24_fit_boundary_ramps.py` accepts a v2 or v3 base hash; `scripts/apply_driver_calibration.py` labels its header with the current policy and its `--check` notes a header hash its own label does not give. Pipeline pins p12 and p14 (sources without weave sections: the version alone moved) re-pinned to v4 with the v3 values beside them; the b1b2 harness's reproduction row accepts the committed battery's v3 hash for the same file (`_same_file_across_policies`). Known stale, left as found: `artifacts/i24_boundary_ramps_fit.json` records `base_config_hash` 009ed0e2a7c0, which matches no policy for `scenarios/i24_replica_speedcal.yaml` (the scenario was rewritten after the fit); the boundary-ramps test's docstring in `tests/test_calibration` calls the current hash v3.
+  reproduces version-3 hashes, from a scenario document or a validated
+  `ScenarioConfig` (so a check written `config_hash(cfg) == recorded` reads
+  `config_hash_v3(cfg) == recorded` against a version-3 record).
+- **Runner** (`microsim.runner`). No code path changed: the rules read
+  `ws["params"]`, which now carries the defaults. A weaving section that sets
+  nothing writes, by default, `n_entrant_took_exit` (W1b's releases) and W2's
+  `n_handback_skips`, `n_close_leader_withheld`, `n_opposing_deferred`,
+  `n_opposing_vetoed` in `meta.json["weave_sections"][i]`, and the five keys in
+  its `params`. Checked against the pre-change tree (cd470a9) on the T.H.52
+  section fixture with the calibrated drivers, seed 4: all five set explicitly
+  gives byte-identical `trajectories`, `vehicles`, `edges` and `journeys`
+  parquet files and the same `weave_sections` entry (only the config hash
+  differs, v3 → v4); all five set to 0 gives the pre-change unset run's parquet
+  files byte for byte (its `params` now list the five keys at 0); the ring
+  (90 s) and `corridor_10km` (120 s) give byte-identical files. In the test suite
+  (`TestAmendment4Defaults`), unset equals all five set, file for file.
+- **Release counts** (`validation.battery`). `weave_release_rows(meta)` — per
+  weaving section of one run, null when it lists none: `{ramp, exit, w1b_on,
+  w1b_releases, entrance_departed, w2_on: {switch: bool}, n_handback_skips,
+  n_close_leader_withheld, n_opposing_deferred, n_opposing_vetoed}`.
+  `w1b_releases` is `n_entrant_took_exit` — the reading of the W1b and W2
+  rounds' clauses C5b and CW5b (`corridor_w1b.py`, `corridor_w2.py`), not
+  `n_missed − n_missed_exit`, which also counts the vehicles that left the
+  section or the network still owing a change; `entrance_departed` is the weave
+  on-ramp's `meta.json["ramps"][k].n_departed` (matched by name, else by attach
+  edge); W1b on means `params` `entrant_giveup_m` > 0 and
+  `entrant_giveup_dwell_s` > 0 (W1 at once is not W1b), a W2 switch on its
+  `params` value 1; a meta without `params` (hand-written, or older) is read
+  from whether the counter was written. `weave_release_summary(metas,
+  flag_share=0.01)` pools them per section: `{flag_share, n_runs, sections:
+  [{ramp, exit, n_runs, n_runs_w1b, n_runs_w1b_off, w1b_releases,
+  entrance_departed, share, flagged, n_runs_w2, n_runs_w2_off, w2: {counter:
+  sum or null}}], flagged, definition}`; `share = w1b_releases /
+  entrance_departed` over the runs with W1b on (NaN when none, or nothing
+  departed), `flagged` when strictly above `flag_share`
+  (`validation.criteria.W1B_RELEASE_SHARE_FLAG` = 0.01, p10's CW5b bound); W2's
+  counters are summed over the runs whose switch was on. Weaving sections only.
+- **Criteria** (`validation.criteria`). `evaluate(..., weave_releases=None)`:
+  with a summary that has sections, one row per section after `no_locks`, named
+  `w1b_release_share (<section>)`: `value` the share, `threshold` "reported
+  beside no_locks, not gating …", `detail` starting `reported, not gating`
+  (`REPORTED`) with the counts, the bound's verdict ("within" / "ABOVE … flagged
+  in Limitations"), the runs with W1b or W2 off and W2's pooled counters. Status
+  `REPORTED` (new `CriterionStatus` value): never a pass or a fail; `passed` is
+  true when the share was computed, false (with `evaluated` false and `value`
+  null or NaN) when no run with W1b on recorded it. Without the argument, or for
+  a run set without weaving sections, no row is written: every existing
+  caller's rows are unchanged.
+- **Battery artifact** (`scripts/corridor_battery.py`), additively:
+  `per_seed[i].weave_releases` (the seed's `weave_release_rows`, null without a
+  weaving section) and, after `zero_locks`, `weave_releases` (the summary; null
+  when no seed lists a weaving section). The criteria carry the reported rows
+  (the one change to an existing key's value, and only for a corridor with a
+  weaving section); `notes` and every other key are unchanged; schema
+  unchanged. Console: one `weave releases` line per section after the `locks`
+  line (`<ramp>: W1b n of N entrance departures (x %, within|ABOVE the 1 %
+  bound, k run(s)); W2 handback …, close-leader …, opposing …, vetoed …`, with
+  `OFF in k run(s)` for runs that opted out).
+- **Report** (`validation.report.generate_report`). Model integrity: one bullet
+  per weaving section after `Locks:` (`Weave rules at <ramp> (exit <exit>): W1b
+  released n of N entrance departures (x %) over k run(s), within|above the 1 %
+  design bound; W2 (k of n run(s) with all three guards on): handback skips …,
+  close-leader withholds …, opposing deferrals …, of them vetoes ….`). The
+  criteria table carries the reported rows, and the note under it a sentence
+  saying what REPORTED means. Limitations: for each flagged section, `At the
+  <ramp> weave, W1b sent n of N entering vehicles (x %, over k run(s)) into the
+  paired exit … above the 1 % design bound of Amendment 4 …`; for a section
+  with W1b or W2 off in some run, `At the <ramp> weave, W1b off in k and/or W2
+  (any guard) off in j of n run(s). …`. A run set without weaving sections gets
+  none of these (byte-identical report). The client summary is unchanged.
+- **Committed scenarios whose behaviour changes** (no file edited): every
+  weave scenario that sets none of the five keys — `mndot_i94_wb_stpaul_weave`,
+  `_weave_dc`, `_weave_dc_cal`, `_weave_dc_cal_netfix`, `_weave_dc_cal_sf`,
+  `_weave_dc_netfix`, `_weave_head60`, `_weave_head60_scripted`,
+  `_weave_slice`, `_weave_slice_netfix` (W1b and W2 now on at both sections) —
+  and the two that set W1b only, `_weave_dc_w1b` and `_weave_dc_cal_w1b` (W2
+  now on too: they no longer reproduce p9's and p10's arm A unless W2's three
+  switches are set to 0). Unchanged: `_weave_dc_cal_w1b_w2` (all five set), the
+  measured scenarios (`_weave_measured`, `_weave_slice_measured`,
+  `i24_replica_flow_speedcal_measured`) and every scenario without a weaving
+  section. W2 alone (the G fixtures' arm) can no longer be configured; its
+  published results are reproduced with release 2.6.0.
+- **Goldens.** All regenerated (every hash moved). Only `merge_weave`'s numbers
+  moved, and by little: σ_v spatial 3.939601 → 3.939596 m/s, temporal 3.449196 →
+  3.449189 m/s, VMT 169.64882 → 169.64885 veh-km, fuel 90.53918 → 90.53913
+  ml/veh-km; every count unchanged. The regeneration also writes the config
+  snapshot's fields added since 2026-10-04 (`fleet.speed_factor`, `speed_dev`,
+  `network.merge_model_set`) and the measured-merge counters in the exact list.
+  `tests/golden/config_defaults.json` regenerated (`hash_version` 4, the five
+  weave keys).
+- **Tests.** `tests/test_flowstate_core/test_config_hash.py` (v4 pins; every
+  committed scenario's v3 and v4 hash; every committed record under its policy;
+  the defaults; a section setting all five moves by the version alone; W2
+  without W1b refused, read by `config_hash_v3`),
+  `tests/test_validation/test_validation_weave_releases.py` (rows, summary,
+  criteria rows, battery artifact additivity and console line, report lines,
+  limitations and silence without weaves), `TestAmendment4Defaults` and the
+  amendment arms of the W1 / W1b / W2 and capacity fixture tests in
+  `tests/test_microsim/test_microsim_merge_managed_meter.py` (the published
+  fixture pins run with the keys at 0; the default arm's readings are measured
+  and stated). The unit tests' `_weave_state` base has the five keys at 0.
+  Script tests that compare with version-3 records now use `config_hash_v3`
+  (`test_apply_driver_calibration`, `test_boundary_limit_factor`,
+  `test_calibrate_driver_grid`), and the tests of stages and harnesses that ran
+  under policy 3 run them with `config_hash_v3` in place of `config_hash`
+  (`test_corridor_b1_harness`, `test_corridor_b1b2_harness`, `test_run_pairs`'s
+  p8c guard — which also checks that the guard now refuses the stage's
+  version-3 pins —, `test_i94_netfix_probe`).
+- **Not changed here** (outside this change's files; each compares a current
+  hash with a version-3 record, or labels a current hash "policy v3"):
+  `scripts/gcp/pipeline_i24.sh` stages that pin version-3 hashes
+  (`--expect-hash` in p8c, `--source-hash` in p12/p14 through the archived
+  `corridor_b1.py`), which refuse under policy 4 if re-run;
+  `scripts/i94_netfix_probe.py`'s grid lookups (the committed grid tree is keyed
+  by version-3 hashes); `scripts/i24_fit_boundary_ramps.py`'s provenance check
+  (accepts the current and version-2 hashes, not version 3);
+  `scripts/apply_driver_calibration.py` and `scripts/i94_calibration_days.py`,
+  which write `# config hash <current hash> (policy v3).`; and
+  `tests/test_scripts/test_i94_calibration_days.py` (five tests compare the
+  `_dc_cal` family's version-3 header and demand-record hashes with the
+  current hash).
 
 ## Demand balance rules (`calibration.onboarding`) — 2026-10-07
 

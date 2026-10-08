@@ -22,12 +22,12 @@ from pathlib import Path
 from tests.test_scripts.test_p8c_stage import BASH, GCP, _stubs, _tgz
 
 ARMS = [
-    ("canonical", "i24_replica_flow_speedcal", "ae5861a4d906", "flow_speedcal_ref"),
-    ("dc_refit", "i24_replica_flow_speedcal_dc_refit", "ada3f406504b", "dc_refit"),
-    ("dc", "i24_replica_flow_speedcal_dc", "8976a1773674", "dc"),
+    ("canonical", "i24_replica_flow_speedcal", "5a8e079c4bfa", "flow_speedcal_ref"),
+    ("dc_refit", "i24_replica_flow_speedcal_dc_refit", "6d3b6abd9aaf", "dc_refit"),
+    ("dc", "i24_replica_flow_speedcal_dc", "651680edc811", "dc"),
 ]
 H = "uv run --no-sync python artifacts/i24_discharge_2026-10-07/harness"
-RUN = "runs/i24_validation/p12_canonical_b1/8378b1c05b1f/6914975401685141156"
+RUN = "runs/i24_validation/p12_canonical_b1/07a08342792c/6914975401685141156"  # policy-v4 copy hash (v3 8378b1c05b1f)
 
 
 def _repo(tmp: Path) -> Path:

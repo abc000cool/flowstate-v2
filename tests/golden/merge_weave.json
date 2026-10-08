@@ -6,13 +6,19 @@
   "overrides": {},
   "producer": "microsim.run_micro + validation.metrics.compute_metrics",
   "regenerate": "uv run --no-sync python tests/test_microsim/test_microsim_golden.py --regenerate merge_weave",
-  "generated_at": "2026-10-04T20:46:30+00:00",
+  "generated_at": "2026-10-08T02:41:00+00:00",
   "tolerance": {
     "relative": 1e-06,
     "exact": [
       "n_collisions",
       "n_heavy",
       "n_hov",
+      "n_measured_changed_in",
+      "n_measured_changed_out",
+      "n_measured_exited",
+      "n_measured_forced",
+      "n_measured_missed_exit",
+      "n_measured_relax_granted",
       "n_meter_releases",
       "n_scripted_forced",
       "n_scripted_merged",
@@ -25,7 +31,7 @@
       "wave_count"
     ]
   },
-  "config_hash": "7f18d8f4db38",
+  "config_hash": "95579dce2b8e",
   "seed": 3,
   "sumo_seed": 3,
   "tier": "micro",
@@ -123,6 +129,7 @@
       "netconvert_extra": [],
       "patch_files": [],
       "internal_links": false,
+      "merge_model_set": "central",
       "lane_end_giveup_m": 0.0
     },
     "fleet": {
@@ -152,7 +159,9 @@
       "min_gap_lat": null,
       "lat_alignment": null,
       "lc_overtake_right": null,
-      "hov_fraction": 0.0
+      "hov_fraction": 0.0,
+      "speed_factor": 1.0,
+      "speed_dev": 0.0
     },
     "av": {
       "penetration": 0.0,
@@ -195,7 +204,7 @@
     "n_meter_releases": 0,
     "n_scripted_merged": 0,
     "n_scripted_forced": 0,
-    "fuel_total_ml": 15359.865784148404,
+    "fuel_total_ml": 15359.859620969357,
     "n_weave_changed_in": 14,
     "n_weave_changed_out": 19,
     "n_weave_forced": 2,
@@ -205,11 +214,11 @@
     "throughput_veh_h": 1680.0,
     "mean_tt_s": 69.50033705917387,
     "p90_tt_s": 84.12578798261438,
-    "sigma_v_spatial_ms": 3.939601032453864,
-    "sigma_v_temporal_ms": 3.44919579387952,
-    "vmt_veh_km": 169.64882282287346,
+    "sigma_v_spatial_ms": 3.9395958688846857,
+    "sigma_v_temporal_ms": 3.4491887265557475,
+    "vmt_veh_km": 169.64885004203342,
     "vht_veh_h": 1.7491666666666672,
-    "fuel_ml_per_veh_km": 90.53918281640713,
+    "fuel_ml_per_veh_km": 90.53913196089268,
     "wave_count": 0,
     "wave_speed_kmh": null,
     "wave_amplitude_ms": null,

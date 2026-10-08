@@ -12,7 +12,7 @@ refit, which must be the one part (i)'s reading selects). It never reads traject
 braking counts ``runs/i24_validation/<label>/hard_braking.json`` and the ramp-flow reduction
 ``artifacts/i24_b2_ramp_flows_<label>.json`` (``harness_b2/corridor_b2.py reduce``).
 
-* Part (i), the B1 + B2 arm (label ``p14_b1b2``: the committed B2 arm, hash 909b89f298c5, with
+* Part (i), the B1 + B2 arm (label ``p14_b1b2``: the committed B2 arm, hash 909b89f298c5 under policy v3, 7082bcea5442 under v4, with
   ``network.boundary.limit_factor`` 1.2185) against B2 alone re-run on the same machine (``p14_b2_ref``).
   A1-A5 are §8.3's, read on this one arm against the B2 reference with ``harness/corridor_b1.py``'s
   estimators unchanged (``battery``, ``evaluate_arm``): A1 0 collisions in every B1 + B2 run and steps below
@@ -94,9 +94,11 @@ FACTOR = 1.2185  # §7.5 / §8.3, scripts/boundary_limit_factor.py
 REF_LABEL = "p14_b2_ref"
 # B1 + B2 (scenarios/i24_replica_flow_rc_speedcal_dc_refit_b1.yaml, written by the stage)
 ARM_LABEL = "p14_b1b2"
-B2_HASH = "909b89f298c5"
+B2_HASH = "7082bcea5442"  # config-hash policy v4 (2026-10-07); the committed p13 battery records the v3 hash
+B2_HASH_V3 = "909b89f298c5"
 # expected (computed 2026-10-07 from the committed B2 arm); another hash is reported, not a problem
-B1B2_HASH = "e19e5ab64186"
+B1B2_HASH = "582ba839b84c"  # policy v4; the committed p14 battery records the v3 hash
+B1B2_HASH_V3 = "e19e5ab64186"
 # the committed B2 battery (stage p13) the re-run must reproduce exactly
 P13_BATTERY = "artifacts/i24_validation_dc_refit_rc.json"
 # step 3's _dc_refit battery: the seeds of record
@@ -187,6 +189,23 @@ def gate_rows(art: dict[str, Any]) -> list[dict[str, Any]]:
     ]
 
 
+def _same_file_across_policies(here: dict[str, Any], c: dict[str, Any]) -> bool:
+    """The re-run quotes today's hash, the committed battery its policy's (docs/CONTRACTS.md §2, policy v4)."""
+    import yaml
+
+    from flowstate_core.config import ScenarioConfig, config_hash, config_hash_v3
+
+    if here.get("scenario") != c.get("scenario"):
+        return False
+    path = REPO / "scenarios" / f"{c['scenario']}.yaml"
+    if not path.is_file():
+        return False
+    doc = yaml.safe_load(path.read_text())
+    return here["config_hash"] == config_hash(ScenarioConfig.model_validate(doc)) and c[
+        "config_hash"
+    ] == config_hash_v3(doc)
+
+
 def reproduces(here: dict[str, Any], committed_path: str) -> dict[str, Any]:
     """The B2 re-run against the committed p13 battery, field by field (exact, NaN-safe)."""
     c = load(committed_path)
@@ -205,7 +224,8 @@ def reproduces(here: dict[str, Any], committed_path: str) -> dict[str, Any]:
         ]
 
     checks = {
-        "config_hash": here["config_hash"] == c["config_hash"],
+        "config_hash": here["config_hash"] == c["config_hash"]
+        or _same_file_across_policies(here, c),
         "seeds": _canon(here["seeds"]) == _canon(c["seeds"]),
         "counts_per_replicate": _canon(hs["counts_per_replicate"])
         == _canon(cs["counts_per_replicate"]),
@@ -530,8 +550,16 @@ def part_i(runs_root: Path, zone: dict[str, Any]) -> dict[str, Any]:
         "keys": "criteria and reported as harness/corridor_b1.py evaluate_arm writes them: 'reference' is B2 "
         "alone, 'b1' is B1 + B2",
         "expected_hashes": {
-            "b2": {"expected": B2_HASH, "matches": ref_art["config_hash"] == B2_HASH},
-            "b1b2": {"expected": B1B2_HASH, "matches": arm_art["config_hash"] == B1B2_HASH},
+            "b2": {
+                "expected": B2_HASH,
+                "expected_v3": B2_HASH_V3,
+                "matches": ref_art["config_hash"] in (B2_HASH, B2_HASH_V3),
+            },
+            "b1b2": {
+                "expected": B1B2_HASH,
+                "expected_v3": B1B2_HASH_V3,
+                "matches": arm_art["config_hash"] in (B1B2_HASH, B1B2_HASH_V3),
+            },
         },
         "same_seeds_as_step3": same_step3,
         "reference_reproduces_p13": repro,

@@ -18,6 +18,8 @@ from types import ModuleType
 
 import pytest
 
+from flowstate_core.config import ScenarioConfig, config_hash, config_hash_v3
+
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SCRIPTS = REPO_ROOT / "scripts"
 
@@ -86,13 +88,28 @@ def test_i24_reproduces_the_registered_factor(i24: dict) -> None:
     assert inp["mean_driver"]["vehicle_length_m"] == 5.0
     # the factor reproduces the recorded flow in equilibrium
     assert i24["q_eq_check_veh_h_lane"] == pytest.approx(1502.25, abs=0.5)
-    # one factor for the three arms of the stage (same schedule, window, T and s0)
+    # one factor for the three arms of the stage (same schedule, window, T and s0);
+    # the script reports the current policy's hashes, the stage registered them
+    # under policy 3 (2026-10-07, before Amendment 4's bump)
     shared = {s["name"]: s["config_hash"] for s in i24["scenarios_sharing_the_factor"]}
-    assert shared == {
+    registered = {
         "i24_replica_flow_speedcal": "ae5861a4d906",
         "i24_replica_flow_speedcal_dc": "8976a1773674",
+        "i24_replica_flow_speedcal_dc_refit": "ada3f406504b",
     }
-    assert i24["scenario"]["config_hash"] == "ada3f406504b"
+    current = {
+        name: config_hash(ScenarioConfig.from_yaml(REPO_ROOT / "scenarios" / f"{name}.yaml"))
+        for name in registered
+    }
+    v3 = {
+        name: config_hash_v3(ScenarioConfig.from_yaml(REPO_ROOT / "scenarios" / f"{name}.yaml"))
+        for name in registered
+    }
+    assert v3 == registered
+    assert shared == {k: current[k] for k in shared} and set(shared) == set(registered) - {
+        "i24_replica_flow_speedcal_dc_refit"
+    }
+    assert i24["scenario"]["config_hash"] == current["i24_replica_flow_speedcal_dc_refit"]
     # §8.3's A2 band
     assert i24["a2_band_veh_h"] == [5829, 6309]
 
