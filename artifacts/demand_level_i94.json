@@ -1,0 +1,1853 @@
+{
+ "schema": "flowstate.demand_level_readout/1",
+ "created_at": "2026-10-08T10:43:39+00:00",
+ "code": "f454c7d390d6ccbd511811e72ea678bdd0596562",
+ "vm_snapshot": "34fe1cf5e29b22fce0a8751d97a5a7be165fb62d",
+ "spec": "docs/PRE_FRISCO_PROGRAM.md B5 (criteria: docs/I24_DISCHARGE_DIAGNOSIS.md \u00a78.4.5 C1-C5, fixed 2026-10-07 before any run; the rule: docs/FRISCO_PROTOCOL.md Amendment 6)",
+ "status": "PROPOSED, not adopted: a candidate is a proposal for the arm's demand level; adoption is the owner's call",
+ "corridor": "i94",
+ "fit": {
+  "path": "artifacts/demand_level_fit_i94.json",
+  "sha256": "f20da88a5b281c1b2ded81683396f4f1dcfd8855dfaf04f3960618e929d585db",
+  "from_arm": {
+   "scenario": "scenarios/mndot_i94_wb_stpaul_weave_dc_cal_w1b_w2_rbc.yaml",
+   "sha256": "d9eae2e7b164793a70cf46994ff770043748a9111ca402d92e4eea0b6414cc1a",
+   "name": "mndot_i94_wb_stpaul_weave_xlsfg_dc_cal_w1b_w2_rbc",
+   "config_hash": "ad158ff561b1",
+   "battery": {
+    "path": "artifacts/validation_mndot_i94_wb_stpaul_weave_xlsfg_dc_cal_w1b_w2_rbc.json",
+    "sha256": "3d3575622c574b30efa5fa8cd0a2e43e0e834f6c05d14e2bc8f28fd3563f1e5e",
+    "realised_mean": 0.9788583475490039,
+    "n_replicates": 20
+   }
+  },
+  "min_inserted": 0.9688583475490039,
+  "seeds": [
+   6914975401685141156,
+   134183728835869882,
+   2378473973028931053,
+   3747978530954135749,
+   677105600768189526
+  ],
+  "grid": {
+   "scales": [
+    0.95,
+    0.975,
+    1.0,
+    1.025,
+    1.05
+   ],
+   "count_error": 0.05,
+   "count_error_source": "artifacts/p1_rehearsal_2026-10-04/dq/data_quality.json parameters.count_error",
+   "n_runs": 26,
+   "runs_root": "runs/mndot_i94_b5_fit"
+  },
+  "checks": {
+   "corridor": true,
+   "seeds_are_the_from_arm_batterys_first_five": true,
+   "floor_is_from_arm_minus_0.01": true,
+   "reference_is_one": true,
+   "grid": true,
+   "grid_inside_count_error": true,
+   "objectives_and_choice_rederived": true,
+   "reproduction_exact": true
+  },
+  "rederived": {
+   "final": {
+    "chosen_scale": 0.95,
+    "constraint_unmet": false,
+    "order": [
+     0.95,
+     0.975,
+     1.0,
+     1.025
+    ],
+    "decided_by": "share",
+    "differs": [],
+    "ok": true
+   }
+  },
+  "selection": {
+   "rule": "among the scales whose mean inserted fraction over the fit seeds is at least min_inserted (the from-arm battery's mean realised share - 0.01), the largest share of fit-window flow bins with GEH < 5; ties to the smaller mean GEH over the same bins, then the smaller change |s - reference_scale|, then the smaller scale; no qualifying scale: constraint_unmet, nothing chosen (docs/PRE_FRISCO_PROGRAM.md B5, docs/FRISCO_PROTOCOL.md Amendment 6)",
+   "chosen_scale": 0.95,
+   "constraint_unmet": false,
+   "min_inserted": 0.9688583475490039,
+   "reference_scale": 1.0,
+   "seeds": [
+    6914975401685141156,
+    134183728835869882,
+    2378473973028931053,
+    3747978530954135749,
+    677105600768189526
+   ],
+   "qualifying_scales": [
+    0.95,
+    0.975,
+    1.0,
+    1.025
+   ],
+   "order": [
+    0.95,
+    0.975,
+    1.0,
+    1.025
+   ],
+   "decided_by": "share",
+   "reason": "s = 0.95: GEH < 5 on 128 of 210 fit-window bins (0.6095, mean GEH 5.014; pooled over 5 seeds), the best of the 4 of 5 scales whose mean inserted fraction is at least 0.9689 (this one 0.9905)",
+   "per_scale": [
+    {
+     "scale": 0.95,
+     "mean_inserted": 0.9905486148832157,
+     "inserted_per_seed": [
+      0.9906979902227051,
+      0.99208989679522,
+      0.9923954372623575,
+      0.9881518196632265,
+      0.9894079304725693
+     ],
+     "meets_constraint": true,
+     "objective": {
+      "estimator": "pooled",
+      "n_bins": 210,
+      "n_under_5": 128,
+      "under_5": 0.6095238095238096,
+      "mean_geh": 5.013937193818884
+     },
+     "change": 0.05
+    },
+    {
+     "scale": 0.975,
+     "mean_inserted": 0.9869967607589079,
+     "inserted_per_seed": [
+      0.9867786077874,
+      0.9868116612679315,
+      0.9883982283334435,
+      0.986514179943148,
+      0.9864811264626165
+     ],
+     "meets_constraint": true,
+     "objective": {
+      "estimator": "pooled",
+      "n_bins": 210,
+      "n_under_5": 125,
+      "under_5": 0.5952380952380952,
+      "mean_geh": 4.755693805458242
+     },
+     "change": 0.025
+    },
+    {
+     "scale": 1.0,
+     "mean_inserted": 0.9796066819015739,
+     "inserted_per_seed": [
+      0.9743474202581351,
+      0.9806559593163604,
+      0.983456178184042,
+      0.9779522997199781,
+      0.981621552029354
+     ],
+     "meets_constraint": true,
+     "objective": {
+      "estimator": "pooled",
+      "n_bins": 210,
+      "n_under_5": 118,
+      "under_5": 0.5619047619047619,
+      "mean_geh": 5.049374077120766
+     },
+     "change": 0.0
+    },
+    {
+     "scale": 1.025,
+     "mean_inserted": 0.9690189545154496,
+     "inserted_per_seed": [
+      0.9692578505642347,
+      0.9698865243768271,
+      0.9698236569955678,
+      0.9685977430610128,
+      0.9675289975796059
+     ],
+     "meets_constraint": true,
+     "objective": {
+      "estimator": "pooled",
+      "n_bins": 210,
+      "n_under_5": 103,
+      "under_5": 0.49047619047619045,
+      "mean_geh": 5.422775138331431
+     },
+     "change": 0.025
+    },
+    {
+     "scale": 1.05,
+     "mean_inserted": 0.9569504525233932,
+     "inserted_per_seed": [
+      0.9523853351741065,
+      0.962478907807946,
+      0.9674489952446694,
+      0.94894922534131,
+      0.9534897990489339
+     ],
+     "meets_constraint": false,
+     "objective": {
+      "estimator": "pooled",
+      "n_bins": 210,
+      "n_under_5": 82,
+      "under_5": 0.3904761904761905,
+      "mean_geh": 6.779582473879729
+     },
+     "change": 0.05
+    }
+   ]
+  },
+  "chosen": {
+   "scale": 0.95,
+   "config_hash": "bd00fbaba89a",
+   "mean_inserted": 0.9905486148832157,
+   "objective": {
+    "estimator": "pooled",
+    "n_bins": 210,
+    "n_under_5": 128,
+    "under_5": 0.6095238095238096,
+    "mean_geh": 5.013937193818884
+   },
+   "held_out": {
+    "estimator": "pooled",
+    "n_bins": 210,
+    "n_under_5": 119,
+    "under_5": 0.5666666666666667,
+    "mean_geh": 5.326223444313659,
+    "what": "validation-day station-hours (reported)"
+   }
+  },
+  "constraint_unmet": false,
+  "reproduction": {
+   "run": true,
+   "what": "the from-arm scenario file on the first fit seed, against the from-arm battery's per_seed row of that seed (simulation-side quantities): the code tree reproduces the battery the criteria compare with",
+   "seed": 6914975401685141156,
+   "config_hash": "ad158ff561b1",
+   "checks": {
+    "config_hash": true,
+    "insertion": true,
+    "n_collisions": true,
+    "link_hour_volumes": true
+   },
+   "exact": true,
+   "differs": [],
+   "reported": {
+    "rmspe_equal": true
+   }
+  },
+  "per_scale": [
+   {
+    "scale": 0.95,
+    "config_hash": "bd00fbaba89a",
+    "mean_inserted": 0.9905486148832157,
+    "meets_constraint": true,
+    "objective": {
+     "estimator": "pooled",
+     "n_bins": 210,
+     "n_under_5": 128,
+     "under_5": 0.6095238095238096,
+     "mean_geh": 5.013937193818884
+    },
+    "held_out": {
+     "estimator": "pooled",
+     "n_bins": 210,
+     "n_under_5": 119,
+     "under_5": 0.5666666666666667,
+     "mean_geh": 5.326223444313659,
+     "what": "validation-day station-hours (reported)"
+    },
+    "speed_rmspe_reported": {
+     "rmspe_5min_segment_mean": 0.41677300717148585,
+     "rmspe_15min_point_mean": 0.28893053408250857
+    },
+    "collisions": [
+     0,
+     0,
+     0,
+     0,
+     0
+    ],
+    "locked": [
+     false,
+     false,
+     false,
+     false,
+     false
+    ],
+    "per_seed": [
+     {
+      "seed": 6914975401685141156,
+      "run_dir": "runs/mndot_i94_b5_fit/s0.950/bd00fbaba89a/6914975401685141156",
+      "config_hash": "bd00fbaba89a",
+      "planned": 29456,
+      "departed": 29182,
+      "arrived": 28110,
+      "inserted_fraction": 0.9906979902227051,
+      "n_collisions": 0,
+      "locked": false,
+      "geh_calibration_days": {
+       "estimator": "pooled",
+       "n_bins": 42,
+       "n_under_5": 25,
+       "under_5": 0.5952380952380952,
+       "mean_geh": 4.919751204456536
+      },
+      "geh_validation_days": {
+       "estimator": "pooled",
+       "n_bins": 42,
+       "n_under_5": 24,
+       "under_5": 0.5714285714285714,
+       "mean_geh": 5.2230073231915055
+      },
+      "rmspe_5min_segment": 0.412499200162716,
+      "rmspe_15min_point": 0.2870855653168381,
+      "wave_speed_kmh": 4.3636620333501055
+     },
+     {
+      "seed": 134183728835869882,
+      "run_dir": "runs/mndot_i94_b5_fit/s0.950/bd00fbaba89a/134183728835869882",
+      "config_hash": "bd00fbaba89a",
+      "planned": 29456,
+      "departed": 29223,
+      "arrived": 28048,
+      "inserted_fraction": 0.99208989679522,
+      "n_collisions": 0,
+      "locked": false,
+      "geh_calibration_days": {
+       "estimator": "pooled",
+       "n_bins": 42,
+       "n_under_5": 26,
+       "under_5": 0.6190476190476191,
+       "mean_geh": 4.900313805979143
+      },
+      "geh_validation_days": {
+       "estimator": "pooled",
+       "n_bins": 42,
+       "n_under_5": 25,
+       "under_5": 0.5952380952380952,
+       "mean_geh": 5.219897582604982
+      },
+      "rmspe_5min_segment": 0.41011842419524913,
+      "rmspe_15min_point": 0.28338374564081154,
+      "wave_speed_kmh": 4.4596495926609645
+     },
+     {
+      "seed": 2378473973028931053,
+      "run_dir": "runs/mndot_i94_b5_fit/s0.950/bd00fbaba89a/2378473973028931053",
+      "config_hash": "bd00fbaba89a",
+      "planned": 29456,
+      "departed": 29232,
+      "arrived": 28275,
+      "inserted_fraction": 0.9923954372623575,
+      "n_collisions": 0,
+      "locked": false,
+      "geh_calibration_days": {
+       "estimator": "pooled",
+       "n_bins": 42,
+       "n_under_5": 25,
+       "under_5": 0.5952380952380952,
+       "mean_geh": 5.035061581115442
+      },
+      "geh_validation_days": {
+       "estimator": "pooled",
+       "n_bins": 42,
+       "n_under_5": 23,
+       "under_5": 0.5476190476190477,
+       "mean_geh": 5.334713964622773
+      },
+      "rmspe_5min_segment": 0.390481127427451,
+      "rmspe_15min_point": 0.3100746767303886,
+      "wave_speed_kmh": 4.287584424440931
+     },
+     {
+      "seed": 3747978530954135749,
+      "run_dir": "runs/mndot_i94_b5_fit/s0.950/bd00fbaba89a/3747978530954135749",
+      "config_hash": "bd00fbaba89a",
+      "planned": 29456,
+      "departed": 29107,
+      "arrived": 27890,
+      "inserted_fraction": 0.9881518196632265,
+      "n_collisions": 0,
+      "locked": false,
+      "geh_calibration_days": {
+       "estimator": "pooled",
+       "n_bins": 42,
+       "n_under_5": 26,
+       "under_5": 0.6190476190476191,
+       "mean_geh": 5.038344345160764
+      },
+      "geh_validation_days": {
+       "estimator": "pooled",
+       "n_bins": 42,
+       "n_under_5": 24,
+       "under_5": 0.5714285714285714,
+       "mean_geh": 5.3578641796956035
+      },
+      "rmspe_5min_segment": 0.41823742270030484,
+      "rmspe_15min_point": 0.28835397557634773,
+      "wave_speed_kmh": 4.130523558794249
+     },
+     {
+      "seed": 677105600768189526,
+      "run_dir": "runs/mndot_i94_b5_fit/s0.950/bd00fbaba89a/677105600768189526",
+      "config_hash": "bd00fbaba89a",
+      "planned": 29456,
+      "departed": 29144,
+      "arrived": 27886,
+      "inserted_fraction": 0.9894079304725693,
+      "n_collisions": 0,
+      "locked": false,
+      "geh_calibration_days": {
+       "estimator": "pooled",
+       "n_bins": 42,
+       "n_under_5": 26,
+       "under_5": 0.6190476190476191,
+       "mean_geh": 5.176215032382536
+      },
+      "geh_validation_days": {
+       "estimator": "pooled",
+       "n_bins": 42,
+       "n_under_5": 23,
+       "under_5": 0.5476190476190477,
+       "mean_geh": 5.495634171453434
+      },
+      "rmspe_5min_segment": 0.45252886137170834,
+      "rmspe_15min_point": 0.27575470714815703,
+      "wave_speed_kmh": 4.813607948531721
+     }
+    ]
+   },
+   {
+    "scale": 0.975,
+    "config_hash": "09d643c04a49",
+    "mean_inserted": 0.9869967607589079,
+    "meets_constraint": true,
+    "objective": {
+     "estimator": "pooled",
+     "n_bins": 210,
+     "n_under_5": 125,
+     "under_5": 0.5952380952380952,
+     "mean_geh": 4.755693805458242
+    },
+    "held_out": {
+     "estimator": "pooled",
+     "n_bins": 210,
+     "n_under_5": 122,
+     "under_5": 0.580952380952381,
+     "mean_geh": 5.108689690209327,
+     "what": "validation-day station-hours (reported)"
+    },
+    "speed_rmspe_reported": {
+     "rmspe_5min_segment_mean": 0.5136439916463083,
+     "rmspe_15min_point_mean": 0.34049761981441173
+    },
+    "collisions": [
+     0,
+     0,
+     0,
+     0,
+     0
+    ],
+    "locked": [
+     false,
+     false,
+     false,
+     false,
+     false
+    ],
+    "per_seed": [
+     {
+      "seed": 6914975401685141156,
+      "run_dir": "runs/mndot_i94_b5_fit/s0.975/09d643c04a49/6914975401685141156",
+      "config_hash": "09d643c04a49",
+      "planned": 30254,
+      "departed": 29854,
+      "arrived": 28291,
+      "inserted_fraction": 0.9867786077874,
+      "n_collisions": 0,
+      "locked": false,
+      "geh_calibration_days": {
+       "estimator": "pooled",
+       "n_bins": 42,
+       "n_under_5": 28,
+       "under_5": 0.6666666666666666,
+       "mean_geh": 4.344352016343042
+      },
+      "geh_validation_days": {
+       "estimator": "pooled",
+       "n_bins": 42,
+       "n_under_5": 25,
+       "under_5": 0.5952380952380952,
+       "mean_geh": 4.707130610490391
+      },
+      "rmspe_5min_segment": 0.500230141322037,
+      "rmspe_15min_point": 0.32696585909729126,
+      "wave_speed_kmh": 4.633658107859968
+     },
+     {
+      "seed": 134183728835869882,
+      "run_dir": "runs/mndot_i94_b5_fit/s0.975/09d643c04a49/134183728835869882",
+      "config_hash": "09d643c04a49",
+      "planned": 30254,
+      "departed": 29855,
+      "arrived": 28042,
+      "inserted_fraction": 0.9868116612679315,
+      "n_collisions": 0,
+      "locked": false,
+      "geh_calibration_days": {
+       "estimator": "pooled",
+       "n_bins": 42,
+       "n_under_5": 21,
+       "under_5": 0.5,
+       "mean_geh": 5.534019111423489
+      },
+      "geh_validation_days": {
+       "estimator": "pooled",
+       "n_bins": 42,
+       "n_under_5": 22,
+       "under_5": 0.5238095238095238,
+       "mean_geh": 5.892438428314828
+      },
+      "rmspe_5min_segment": 0.5524668311042986,
+      "rmspe_15min_point": 0.37616692677242547,
+      "wave_speed_kmh": 5.173064107787033
+     },
+     {
+      "seed": 2378473973028931053,
+      "run_dir": "runs/mndot_i94_b5_fit/s0.975/09d643c04a49/2378473973028931053",
+      "config_hash": "09d643c04a49",
+      "planned": 30254,
+      "departed": 29903,
+      "arrived": 28344,
+      "inserted_fraction": 0.9883982283334435,
+      "n_collisions": 0,
+      "locked": false,
+      "geh_calibration_days": {
+       "estimator": "pooled",
+       "n_bins": 42,
+       "n_under_5": 25,
+       "under_5": 0.5952380952380952,
+       "mean_geh": 4.913722977994959
+      },
+      "geh_validation_days": {
+       "estimator": "pooled",
+       "n_bins": 42,
+       "n_under_5": 24,
+       "under_5": 0.5714285714285714,
+       "mean_geh": 5.273919480697795
+      },
+      "rmspe_5min_segment": 0.506934676322026,
+      "rmspe_15min_point": 0.3301444109501237,
+      "wave_speed_kmh": 4.690017879992852
+     },
+     {
+      "seed": 3747978530954135749,
+      "run_dir": "runs/mndot_i94_b5_fit/s0.975/09d643c04a49/3747978530954135749",
+      "config_hash": "09d643c04a49",
+      "planned": 30254,
+      "departed": 29846,
+      "arrived": 28283,
+      "inserted_fraction": 0.986514179943148,
+      "n_collisions": 0,
+      "locked": false,
+      "geh_calibration_days": {
+       "estimator": "pooled",
+       "n_bins": 42,
+       "n_under_5": 26,
+       "under_5": 0.6190476190476191,
+       "mean_geh": 4.46817843865727
+      },
+      "geh_validation_days": {
+       "estimator": "pooled",
+       "n_bins": 42,
+       "n_under_5": 26,
+       "under_5": 0.6190476190476191,
+       "mean_geh": 4.815953912369972
+      },
+      "rmspe_5min_segment": 0.5008406719585291,
+      "rmspe_15min_point": 0.33569740144167926,
+      "wave_speed_kmh": 4.641716124801505
+     },
+     {
+      "seed": 677105600768189526,
+      "run_dir": "runs/mndot_i94_b5_fit/s0.975/09d643c04a49/677105600768189526",
+      "config_hash": "09d643c04a49",
+      "planned": 30254,
+      "departed": 29845,
+      "arrived": 28189,
+      "inserted_fraction": 0.9864811264626165,
+      "n_collisions": 0,
+      "locked": false,
+      "geh_calibration_days": {
+       "estimator": "pooled",
+       "n_bins": 42,
+       "n_under_5": 25,
+       "under_5": 0.5952380952380952,
+       "mean_geh": 4.518196482872449
+      },
+      "geh_validation_days": {
+       "estimator": "pooled",
+       "n_bins": 42,
+       "n_under_5": 25,
+       "under_5": 0.5952380952380952,
+       "mean_geh": 4.85400601917365
+      },
+      "rmspe_5min_segment": 0.5077476375246505,
+      "rmspe_15min_point": 0.3335135008105389,
+      "wave_speed_kmh": 4.485466090744039
+     }
+    ]
+   },
+   {
+    "scale": 1.0,
+    "config_hash": "275fa582e617",
+    "mean_inserted": 0.9796066819015739,
+    "meets_constraint": true,
+    "objective": {
+     "estimator": "pooled",
+     "n_bins": 210,
+     "n_under_5": 118,
+     "under_5": 0.5619047619047619,
+     "mean_geh": 5.049374077120766
+    },
+    "held_out": {
+     "estimator": "pooled",
+     "n_bins": 210,
+     "n_under_5": 105,
+     "under_5": 0.5,
+     "mean_geh": 5.4819718533308714,
+     "what": "validation-day station-hours (reported)"
+    },
+    "speed_rmspe_reported": {
+     "rmspe_5min_segment_mean": 0.5669153302837397,
+     "rmspe_15min_point_mean": 0.39199202402348166
+    },
+    "collisions": [
+     0,
+     0,
+     0,
+     0,
+     0
+    ],
+    "locked": [
+     false,
+     false,
+     false,
+     false,
+     false
+    ],
+    "per_seed": [
+     {
+      "seed": 6914975401685141156,
+      "run_dir": "runs/mndot_i94_b5_fit/s1.000/275fa582e617/6914975401685141156",
+      "config_hash": "275fa582e617",
+      "planned": 31069,
+      "departed": 30272,
+      "arrived": 28231,
+      "inserted_fraction": 0.9743474202581351,
+      "n_collisions": 0,
+      "locked": false,
+      "geh_calibration_days": {
+       "estimator": "pooled",
+       "n_bins": 42,
+       "n_under_5": 23,
+       "under_5": 0.5476190476190477,
+       "mean_geh": 5.325725057458064
+      },
+      "geh_validation_days": {
+       "estimator": "pooled",
+       "n_bins": 42,
+       "n_under_5": 21,
+       "under_5": 0.5,
+       "mean_geh": 5.769485890634712
+      },
+      "rmspe_5min_segment": 0.5710783310129142,
+      "rmspe_15min_point": 0.3885173802460771,
+      "wave_speed_kmh": 4.8339684231224975
+     },
+     {
+      "seed": 134183728835869882,
+      "run_dir": "runs/mndot_i94_b5_fit/s1.000/275fa582e617/134183728835869882",
+      "config_hash": "275fa582e617",
+      "planned": 31069,
+      "departed": 30468,
+      "arrived": 28403,
+      "inserted_fraction": 0.9806559593163604,
+      "n_collisions": 0,
+      "locked": false,
+      "geh_calibration_days": {
+       "estimator": "pooled",
+       "n_bins": 42,
+       "n_under_5": 22,
+       "under_5": 0.5238095238095238,
+       "mean_geh": 5.217816567467606
+      },
+      "geh_validation_days": {
+       "estimator": "pooled",
+       "n_bins": 42,
+       "n_under_5": 20,
+       "under_5": 0.47619047619047616,
+       "mean_geh": 5.638784962395572
+      },
+      "rmspe_5min_segment": 0.5767603133643832,
+      "rmspe_15min_point": 0.4002399154464161,
+      "wave_speed_kmh": 5.4043189701946295
+     },
+     {
+      "seed": 2378473973028931053,
+      "run_dir": "runs/mndot_i94_b5_fit/s1.000/275fa582e617/2378473973028931053",
+      "config_hash": "275fa582e617",
+      "planned": 31069,
+      "departed": 30555,
+      "arrived": 28544,
+      "inserted_fraction": 0.983456178184042,
+      "n_collisions": 0,
+      "locked": false,
+      "geh_calibration_days": {
+       "estimator": "pooled",
+       "n_bins": 42,
+       "n_under_5": 26,
+       "under_5": 0.6190476190476191,
+       "mean_geh": 4.8863958134953815
+      },
+      "geh_validation_days": {
+       "estimator": "pooled",
+       "n_bins": 42,
+       "n_under_5": 21,
+       "under_5": 0.5,
+       "mean_geh": 5.313878929700459
+      },
+      "rmspe_5min_segment": 0.5581928202235896,
+      "rmspe_15min_point": 0.38848242694979906,
+      "wave_speed_kmh": 5.755362273390688
+     },
+     {
+      "seed": 3747978530954135749,
+      "run_dir": "runs/mndot_i94_b5_fit/s1.000/275fa582e617/3747978530954135749",
+      "config_hash": "275fa582e617",
+      "planned": 31069,
+      "departed": 30384,
+      "arrived": 28317,
+      "inserted_fraction": 0.9779522997199781,
+      "n_collisions": 0,
+      "locked": false,
+      "geh_calibration_days": {
+       "estimator": "pooled",
+       "n_bins": 42,
+       "n_under_5": 24,
+       "under_5": 0.5714285714285714,
+       "mean_geh": 4.972602052937892
+      },
+      "geh_validation_days": {
+       "estimator": "pooled",
+       "n_bins": 42,
+       "n_under_5": 23,
+       "under_5": 0.5476190476190477,
+       "mean_geh": 5.421526796856705
+      },
+      "rmspe_5min_segment": 0.5705856514003171,
+      "rmspe_15min_point": 0.393607077708953,
+      "wave_speed_kmh": 5.394614919204329
+     },
+     {
+      "seed": 677105600768189526,
+      "run_dir": "runs/mndot_i94_b5_fit/s1.000/275fa582e617/677105600768189526",
+      "config_hash": "275fa582e617",
+      "planned": 31069,
+      "departed": 30498,
+      "arrived": 28533,
+      "inserted_fraction": 0.981621552029354,
+      "n_collisions": 0,
+      "locked": false,
+      "geh_calibration_days": {
+       "estimator": "pooled",
+       "n_bins": 42,
+       "n_under_5": 23,
+       "under_5": 0.5476190476190477,
+       "mean_geh": 4.844330894244886
+      },
+      "geh_validation_days": {
+       "estimator": "pooled",
+       "n_bins": 42,
+       "n_under_5": 20,
+       "under_5": 0.47619047619047616,
+       "mean_geh": 5.266182687066909
+      },
+      "rmspe_5min_segment": 0.5579595354174948,
+      "rmspe_15min_point": 0.3891133197661631,
+      "wave_speed_kmh": 4.92919593311451
+     }
+    ]
+   },
+   {
+    "scale": 1.025,
+    "config_hash": "7ae614e78418",
+    "mean_inserted": 0.9690189545154496,
+    "meets_constraint": true,
+    "objective": {
+     "estimator": "pooled",
+     "n_bins": 210,
+     "n_under_5": 103,
+     "under_5": 0.49047619047619045,
+     "mean_geh": 5.422775138331431
+    },
+    "held_out": {
+     "estimator": "pooled",
+     "n_bins": 210,
+     "n_under_5": 92,
+     "under_5": 0.4380952380952381,
+     "mean_geh": 5.7909256441838055,
+     "what": "validation-day station-hours (reported)"
+    },
+    "speed_rmspe_reported": {
+     "rmspe_5min_segment_mean": 0.6027588635573204,
+     "rmspe_15min_point_mean": 0.42465525201436305
+    },
+    "collisions": [
+     0,
+     0,
+     0,
+     0,
+     0
+    ],
+    "locked": [
+     false,
+     false,
+     false,
+     false,
+     false
+    ],
+    "per_seed": [
+     {
+      "seed": 6914975401685141156,
+      "run_dir": "runs/mndot_i94_b5_fit/s1.025/7ae614e78418/6914975401685141156",
+      "config_hash": "7ae614e78418",
+      "planned": 31813,
+      "departed": 30835,
+      "arrived": 28686,
+      "inserted_fraction": 0.9692578505642347,
+      "n_collisions": 0,
+      "locked": false,
+      "geh_calibration_days": {
+       "estimator": "pooled",
+       "n_bins": 42,
+       "n_under_5": 23,
+       "under_5": 0.5476190476190477,
+       "mean_geh": 5.152730579280915
+      },
+      "geh_validation_days": {
+       "estimator": "pooled",
+       "n_bins": 42,
+       "n_under_5": 21,
+       "under_5": 0.5,
+       "mean_geh": 5.548795969281251
+      },
+      "rmspe_5min_segment": 0.5985382567582989,
+      "rmspe_15min_point": 0.4108581775897636,
+      "wave_speed_kmh": 5.440374255261829
+     },
+     {
+      "seed": 134183728835869882,
+      "run_dir": "runs/mndot_i94_b5_fit/s1.025/7ae614e78418/134183728835869882",
+      "config_hash": "7ae614e78418",
+      "planned": 31813,
+      "departed": 30855,
+      "arrived": 28691,
+      "inserted_fraction": 0.9698865243768271,
+      "n_collisions": 0,
+      "locked": false,
+      "geh_calibration_days": {
+       "estimator": "pooled",
+       "n_bins": 42,
+       "n_under_5": 23,
+       "under_5": 0.5476190476190477,
+       "mean_geh": 4.585132916069193
+      },
+      "geh_validation_days": {
+       "estimator": "pooled",
+       "n_bins": 42,
+       "n_under_5": 22,
+       "under_5": 0.5238095238095238,
+       "mean_geh": 5.03188771283252
+      },
+      "rmspe_5min_segment": 0.5723896771874664,
+      "rmspe_15min_point": 0.4001943489129456,
+      "wave_speed_kmh": 5.384074145604497
+     },
+     {
+      "seed": 2378473973028931053,
+      "run_dir": "runs/mndot_i94_b5_fit/s1.025/7ae614e78418/2378473973028931053",
+      "config_hash": "7ae614e78418",
+      "planned": 31813,
+      "departed": 30853,
+      "arrived": 28499,
+      "inserted_fraction": 0.9698236569955678,
+      "n_collisions": 0,
+      "locked": false,
+      "geh_calibration_days": {
+       "estimator": "pooled",
+       "n_bins": 42,
+       "n_under_5": 19,
+       "under_5": 0.4523809523809524,
+       "mean_geh": 6.129657770137235
+      },
+      "geh_validation_days": {
+       "estimator": "pooled",
+       "n_bins": 42,
+       "n_under_5": 16,
+       "under_5": 0.38095238095238093,
+       "mean_geh": 6.470294945995708
+      },
+      "rmspe_5min_segment": 0.6162764343484639,
+      "rmspe_15min_point": 0.44033718050030757,
+      "wave_speed_kmh": 5.938133074200397
+     },
+     {
+      "seed": 3747978530954135749,
+      "run_dir": "runs/mndot_i94_b5_fit/s1.025/7ae614e78418/3747978530954135749",
+      "config_hash": "7ae614e78418",
+      "planned": 31813,
+      "departed": 30814,
+      "arrived": 28367,
+      "inserted_fraction": 0.9685977430610128,
+      "n_collisions": 0,
+      "locked": false,
+      "geh_calibration_days": {
+       "estimator": "pooled",
+       "n_bins": 42,
+       "n_under_5": 18,
+       "under_5": 0.42857142857142855,
+       "mean_geh": 5.747368454847413
+      },
+      "geh_validation_days": {
+       "estimator": "pooled",
+       "n_bins": 42,
+       "n_under_5": 16,
+       "under_5": 0.38095238095238093,
+       "mean_geh": 6.082631710396866
+      },
+      "rmspe_5min_segment": 0.6148568015696527,
+      "rmspe_15min_point": 0.4381398265588312,
+      "wave_speed_kmh": 5.369905583927383
+     },
+     {
+      "seed": 677105600768189526,
+      "run_dir": "runs/mndot_i94_b5_fit/s1.025/7ae614e78418/677105600768189526",
+      "config_hash": "7ae614e78418",
+      "planned": 31813,
+      "departed": 30780,
+      "arrived": 28404,
+      "inserted_fraction": 0.9675289975796059,
+      "n_collisions": 0,
+      "locked": false,
+      "geh_calibration_days": {
+       "estimator": "pooled",
+       "n_bins": 42,
+       "n_under_5": 20,
+       "under_5": 0.47619047619047616,
+       "mean_geh": 5.498985971322403
+      },
+      "geh_validation_days": {
+       "estimator": "pooled",
+       "n_bins": 42,
+       "n_under_5": 17,
+       "under_5": 0.40476190476190477,
+       "mean_geh": 5.821017882412684
+      },
+      "rmspe_5min_segment": 0.6117331479227204,
+      "rmspe_15min_point": 0.4337467265099673,
+      "wave_speed_kmh": 5.7972026081898775
+     }
+    ]
+   },
+   {
+    "scale": 1.05,
+    "config_hash": "2ad1013cf986",
+    "mean_inserted": 0.9569504525233932,
+    "meets_constraint": false,
+    "objective": {
+     "estimator": "pooled",
+     "n_bins": 210,
+     "n_under_5": 82,
+     "under_5": 0.3904761904761905,
+     "mean_geh": 6.779582473879729
+    },
+    "held_out": {
+     "estimator": "pooled",
+     "n_bins": 210,
+     "n_under_5": 68,
+     "under_5": 0.3238095238095238,
+     "mean_geh": 7.095873071863588,
+     "what": "validation-day station-hours (reported)"
+    },
+    "speed_rmspe_reported": {
+     "rmspe_5min_segment_mean": 0.6374203368683223,
+     "rmspe_15min_point_mean": 0.4607830571104835
+    },
+    "collisions": [
+     0,
+     1,
+     0,
+     0,
+     0
+    ],
+    "locked": [
+     false,
+     false,
+     false,
+     false,
+     false
+    ],
+    "per_seed": [
+     {
+      "seed": 6914975401685141156,
+      "run_dir": "runs/mndot_i94_b5_fit/s1.050/2ad1013cf986/6914975401685141156",
+      "config_hash": "2ad1013cf986",
+      "planned": 32595,
+      "departed": 31043,
+      "arrived": 28238,
+      "inserted_fraction": 0.9523853351741065,
+      "n_collisions": 0,
+      "locked": false,
+      "geh_calibration_days": {
+       "estimator": "pooled",
+       "n_bins": 42,
+       "n_under_5": 15,
+       "under_5": 0.35714285714285715,
+       "mean_geh": 6.944326009643822
+      },
+      "geh_validation_days": {
+       "estimator": "pooled",
+       "n_bins": 42,
+       "n_under_5": 13,
+       "under_5": 0.30952380952380953,
+       "mean_geh": 7.26642760674077
+      },
+      "rmspe_5min_segment": 0.6405009057722266,
+      "rmspe_15min_point": 0.4644427248431945,
+      "wave_speed_kmh": 6.526958347055566
+     },
+     {
+      "seed": 134183728835869882,
+      "run_dir": "runs/mndot_i94_b5_fit/s1.050/2ad1013cf986/134183728835869882",
+      "config_hash": "2ad1013cf986",
+      "planned": 32595,
+      "departed": 31372,
+      "arrived": 28363,
+      "inserted_fraction": 0.962478907807946,
+      "n_collisions": 1,
+      "locked": false,
+      "geh_calibration_days": {
+       "estimator": "pooled",
+       "n_bins": 42,
+       "n_under_5": 19,
+       "under_5": 0.4523809523809524,
+       "mean_geh": 6.365577631317253
+      },
+      "geh_validation_days": {
+       "estimator": "pooled",
+       "n_bins": 42,
+       "n_under_5": 13,
+       "under_5": 0.30952380952380953,
+       "mean_geh": 6.676088606953966
+      },
+      "rmspe_5min_segment": 0.6345362582591656,
+      "rmspe_15min_point": 0.46690626111396244,
+      "wave_speed_kmh": 5.52423640272234
+     },
+     {
+      "seed": 2378473973028931053,
+      "run_dir": "runs/mndot_i94_b5_fit/s1.050/2ad1013cf986/2378473973028931053",
+      "config_hash": "2ad1013cf986",
+      "planned": 32595,
+      "departed": 31534,
+      "arrived": 28771,
+      "inserted_fraction": 0.9674489952446694,
+      "n_collisions": 0,
+      "locked": false,
+      "geh_calibration_days": {
+       "estimator": "pooled",
+       "n_bins": 42,
+       "n_under_5": 17,
+       "under_5": 0.40476190476190477,
+       "mean_geh": 6.236045783349617
+      },
+      "geh_validation_days": {
+       "estimator": "pooled",
+       "n_bins": 42,
+       "n_under_5": 15,
+       "under_5": 0.35714285714285715,
+       "mean_geh": 6.549337305315657
+      },
+      "rmspe_5min_segment": 0.6285999640770566,
+      "rmspe_15min_point": 0.44691817721056665,
+      "wave_speed_kmh": 5.836982814239338
+     },
+     {
+      "seed": 3747978530954135749,
+      "run_dir": "runs/mndot_i94_b5_fit/s1.050/2ad1013cf986/3747978530954135749",
+      "config_hash": "2ad1013cf986",
+      "planned": 32595,
+      "departed": 30931,
+      "arrived": 28212,
+      "inserted_fraction": 0.94894922534131,
+      "n_collisions": 0,
+      "locked": false,
+      "geh_calibration_days": {
+       "estimator": "pooled",
+       "n_bins": 42,
+       "n_under_5": 16,
+       "under_5": 0.38095238095238093,
+       "mean_geh": 7.122732405245978
+      },
+      "geh_validation_days": {
+       "estimator": "pooled",
+       "n_bins": 42,
+       "n_under_5": 15,
+       "under_5": 0.35714285714285715,
+       "mean_geh": 7.433344747789342
+      },
+      "rmspe_5min_segment": 0.6382312112482261,
+      "rmspe_15min_point": 0.45614098159342115,
+      "wave_speed_kmh": 5.878098439809079
+     },
+     {
+      "seed": 677105600768189526,
+      "run_dir": "runs/mndot_i94_b5_fit/s1.050/2ad1013cf986/677105600768189526",
+      "config_hash": "2ad1013cf986",
+      "planned": 32595,
+      "departed": 31079,
+      "arrived": 28238,
+      "inserted_fraction": 0.9534897990489339,
+      "n_collisions": 0,
+      "locked": false,
+      "geh_calibration_days": {
+       "estimator": "pooled",
+       "n_bins": 42,
+       "n_under_5": 15,
+       "under_5": 0.35714285714285715,
+       "mean_geh": 7.229230539841973
+      },
+      "geh_validation_days": {
+       "estimator": "pooled",
+       "n_bins": 42,
+       "n_under_5": 12,
+       "under_5": 0.2857142857142857,
+       "mean_geh": 7.554167092518205
+      },
+      "rmspe_5min_segment": 0.6452333449849365,
+      "rmspe_15min_point": 0.46950714079127276,
+      "wave_speed_kmh": 6.34537466791742
+     }
+    ]
+   }
+  ]
+ },
+ "refit_battery": {
+  "path": "artifacts/validation_mndot_i94_wb_stpaul_weave_xlsfg_dc_cal_w1b_w2_rbc_b5.json",
+  "sha256": "a549ce05530df82ab6ae94c3171de80091f5f03d7f47775abdc228aef891b47b",
+  "scenario": "scenarios/mndot_i94_wb_stpaul_weave_dc_cal_w1b_w2_rbc_b5.yaml",
+  "config_hash": "bd00fbaba89a",
+  "gate": {
+   "path": "artifacts/baseline_gate_mndot_i94_wb_stpaul_weave_xlsfg_dc_cal_w1b_w2_rbc_b5.json",
+   "sha256": "2bcd8dc1db06f5b1d2d986b4fdaa2c65c66394cd85cfe0a2fd7bedab7ad20d9f"
+  },
+  "gated_report": {
+   "path": "artifacts/validation_mndot_i94_wb_stpaul_weave_xlsfg_dc_cal_w1b_w2_rbc_b5_gated.json",
+   "present": true
+  }
+ },
+ "from_battery": {
+  "path": "artifacts/validation_mndot_i94_wb_stpaul_weave_xlsfg_dc_cal_w1b_w2_rbc.json",
+  "sha256": "3d3575622c574b30efa5fa8cd0a2e43e0e834f6c05d14e2bc8f28fd3563f1e5e",
+  "scenario": "scenarios/mndot_i94_wb_stpaul_weave_dc_cal_w1b_w2_rbc.yaml",
+  "config_hash": "ad158ff561b1",
+  "gate": {
+   "path": "artifacts/baseline_gate_mndot_i94_wb_stpaul_weave_xlsfg_dc_cal_w1b_w2_rbc.json",
+   "sha256": "ae1bc8af2b1c6d0f7f3c4f89285358fdc0352daccb938f0bad91f6a910edc93a"
+  }
+ },
+ "level_unchanged": false,
+ "level_unchanged_reproduces_from_arm": null,
+ "criteria": {
+  "C1": {
+   "rule": "0 collisions in every run",
+   "collisions": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "verdict": true
+  },
+  "C2": {
+   "rule": "mean realised share (insertion departed fraction) >= the from-arm's - 0.01",
+   "refit": [
+    0.99077098044541,
+    0.9901402576359919,
+    0.9914017032548281
+   ],
+   "from_arm": [
+    0.9788583475490039,
+    0.977138205894482,
+    0.9805784892035259
+   ],
+   "paired_refit_minus_from": [
+    0.011912632896406272,
+    0.010083390290198852,
+    0.013741875502613691
+   ],
+   "literal_reading_ge_from_arm": true,
+   "verdict": true
+  },
+  "C3": {
+   "rule": "calibration-day GEH < 5 share (baseline gate C1, anchored hours) not below the from-arm's",
+   "refit": 0.6130952380952381,
+   "from_arm": 0.5333333333333333,
+   "verdict": true
+  },
+  "C4": {
+   "rule": "calibration-day 15-min station-speed RMSPE (baseline gate C3) <= the from-arm's + 0.02",
+   "refit": 0.29302937673661594,
+   "from_arm": 0.3968858021918003,
+   "verdict": true
+  },
+  "C5": {
+   "rule": "the wave verdict (baseline gate C4) unchanged where the from-arm passes",
+   "from_arm_status": "fail",
+   "refit_status": "fail",
+   "verdict": null,
+   "note": "the from-arm does not pass C4; C5 does not bind"
+  },
+  "NL": {
+   "rule": "no seed's departed share below 0.8 of the battery median (protocol \u00a79.5, the plan's common rules)",
+   "per_seed_collapsed": [
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false
+   ],
+   "verdict": true
+  }
+ },
+ "verdicts": {
+  "C1": true,
+  "C2": true,
+  "C3": true,
+  "C4": true,
+  "C5": null,
+  "NL": true
+ },
+ "criteria_hold": true,
+ "candidate": true,
+ "problems": [],
+ "reported": {
+  "gate": {
+   "C1|calibration": {
+    "refit": {
+     "status": "fail",
+     "value": 0.6130952380952381,
+     "satisfied": false,
+     "gating": true,
+     "target": "GEH < 5 on >= 85.0 % of station-hour comparisons, hours anchored at the study period's start"
+    },
+    "from_arm": {
+     "status": "fail",
+     "value": 0.5333333333333333,
+     "satisfied": false,
+     "gating": true,
+     "target": "GEH < 5 on >= 85.0 % of station-hour comparisons, hours anchored at the study period's start"
+    }
+   },
+   "C1|validation": {
+    "refit": {
+     "status": "fail",
+     "value": 0.5630952380952381,
+     "satisfied": false,
+     "gating": true,
+     "target": "GEH < 5 on >= 85.0 % of station-hour comparisons, hours anchored at the study period's start"
+    },
+    "from_arm": {
+     "status": "fail",
+     "value": 0.4880952380952381,
+     "satisfied": false,
+     "gating": true,
+     "target": "GEH < 5 on >= 85.0 % of station-hour comparisons, hours anchored at the study period's start"
+    }
+   },
+   "C2|calibration": {
+    "refit": {
+     "status": "fail",
+     "value": 0.319047619047619,
+     "satisfied": false,
+     "gating": false,
+     "target": "GEH < 3 on >= 100.0 % of station-hour comparisons, hours anchored at the study period's start"
+    },
+    "from_arm": {
+     "status": "fail",
+     "value": 0.3904761904761905,
+     "satisfied": false,
+     "gating": false,
+     "target": "GEH < 3 on >= 100.0 % of station-hour comparisons, hours anchored at the study period's start"
+    }
+   },
+   "C2|validation": {
+    "refit": {
+     "status": "fail",
+     "value": 0.30238095238095236,
+     "satisfied": false,
+     "gating": false,
+     "target": "GEH < 3 on >= 100.0 % of station-hour comparisons, hours anchored at the study period's start"
+    },
+    "from_arm": {
+     "status": "fail",
+     "value": 0.33690476190476193,
+     "satisfied": false,
+     "gating": false,
+     "target": "GEH < 3 on >= 100.0 % of station-hour comparisons, hours anchored at the study period's start"
+    }
+   },
+   "C3|calibration": {
+    "refit": {
+     "status": "fail",
+     "value": 0.29302937673661594,
+     "satisfied": false,
+     "gating": true,
+     "target": "RMSPE <= 15.0 % on station mean speeds at 15-minute aggregation"
+    },
+    "from_arm": {
+     "status": "fail",
+     "value": 0.3968858021918003,
+     "satisfied": false,
+     "gating": true,
+     "target": "RMSPE <= 15.0 % on station mean speeds at 15-minute aggregation"
+    }
+   },
+   "C3|validation": {
+    "refit": {
+     "status": "fail",
+     "value": 0.3339295649774011,
+     "satisfied": false,
+     "gating": true,
+     "target": "RMSPE <= 15.0 % on station mean speeds at 15-minute aggregation"
+    },
+    "from_arm": {
+     "status": "fail",
+     "value": 0.3902959550534109,
+     "satisfied": false,
+     "gating": true,
+     "target": "RMSPE <= 15.0 % on station mean speeds at 15-minute aggregation"
+    }
+   },
+   "C4|calibration": {
+    "refit": {
+     "status": "fail",
+     "value": 4.382972626445753,
+     "satisfied": false,
+     "gating": true,
+     "target": "simulated backward wave speed (stack detector) in 14-22 km/h with a backward front in at least 80.0 % of the replicates, or not applicable when fewer than 3 station pairs show a valid cross-correlation on the calibration days"
+    },
+    "from_arm": {
+     "status": "fail",
+     "value": 5.375319819664741,
+     "satisfied": false,
+     "gating": true,
+     "target": "simulated backward wave speed (stack detector) in 14-22 km/h with a backward front in at least 80.0 % of the replicates, or not applicable when fewer than 3 station pairs show a valid cross-correlation on the calibration days"
+    }
+   },
+   "C6|calibration": {
+    "refit": {
+     "status": "pass",
+     "value": 0.0,
+     "satisfied": true,
+     "gating": true,
+     "target": "every observed bottleneck active for 30 min or more reproduced at the same or an adjacent station pair in at least 80.0 % of replicates (matched one to one), median activation within 15 min, duration and queue reach within tolerance, and phantom bottlenecks in at most half the replicates (protocol section 5)"
+    },
+    "from_arm": {
+     "status": "pass",
+     "value": 0.0,
+     "satisfied": true,
+     "gating": true,
+     "target": "every observed bottleneck active for 30 min or more reproduced at the same or an adjacent station pair in at least 80.0 % of replicates (matched one to one), median activation within 15 min, duration and queue reach within tolerance, and phantom bottlenecks in at most half the replicates (protocol section 5)"
+    }
+   },
+   "C6|validation": {
+    "refit": {
+     "status": "pass",
+     "value": 0.0,
+     "satisfied": true,
+     "gating": true,
+     "target": "every observed bottleneck active for 30 min or more reproduced at the same or an adjacent station pair in at least 80.0 % of replicates (matched one to one), median activation within 15 min, duration and queue reach within tolerance, and phantom bottlenecks in at most half the replicates (protocol section 5)"
+    },
+    "from_arm": {
+     "status": "pass",
+     "value": 0.0,
+     "satisfied": true,
+     "gating": true,
+     "target": "every observed bottleneck active for 30 min or more reproduced at the same or an adjacent station pair in at least 80.0 % of replicates (matched one to one), median activation within 15 min, duration and queue reach within tolerance, and phantom bottlenecks in at most half the replicates (protocol section 5)"
+    }
+   }
+  },
+  "gate_verdict": {
+   "refit": "failed",
+   "from_arm": "failed"
+  },
+  "insertion": {
+   "refit": {
+    "n_runs": 20,
+    "planned": 589120,
+    "departed": 583683,
+    "mean_arrived": 28068.8,
+    "n_with_arrived": 20,
+    "mean_departed_fraction": 0.99077098044541,
+    "min_departed_fraction": 0.9881518196632265,
+    "starved_ramps": [],
+    "verdict": "ok"
+   },
+   "from_arm": {
+    "n_runs": 20,
+    "planned": 621380,
+    "departed": 608243,
+    "mean_arrived": 28415.65,
+    "n_with_arrived": 20,
+    "mean_departed_fraction": 0.9788583475490039,
+    "min_departed_fraction": 0.9711931507290225,
+    "starved_ramps": [],
+    "verdict": "backlog: 2 % of planned vehicles never departed"
+   }
+  },
+  "collisions": {
+   "refit": {
+    "n_runs": 20,
+    "n_runs_recorded": 20,
+    "runs_not_recorded": [],
+    "total": 0,
+    "n_runs_with_collisions": 0,
+    "runs_with_collisions": [],
+    "per_run": {
+     "mean": 0.0,
+     "lo95": 0.0,
+     "hi95": 0.0,
+     "n": 20,
+     "underpowered": false
+    },
+    "rate": {
+     "per_vehicles": 1000,
+     "value": 0.0,
+     "n_collisions": 0,
+     "n_departed": 583683,
+     "n_runs": 20
+    },
+    "n_logged": 0,
+    "locations": [],
+    "definition": "total is the sum of meta.json n_collisions over the n_runs_recorded replicates that record the counter: SUMO collision detections over the whole run, warm-up included, a colliding pair counted once when it is first detected (docs/CONTRACTS.md). per_run is the two-sided t-interval over those per-replicate counts. rate.value = rate.per_vehicles * rate.n_collisions / rate.n_departed over the rate.n_runs replicates that record both n_collisions and n_vehicles_departed (null when no vehicle departed). locations groups the logged events (meta.json collisions: each run lists its first events only, n_logged of total) by SUMO lane; edge is the lane id without its _<index> suffix, pos_m_min / pos_m_max the positions along the lane [m], runs the replicates in which the lane had one. A replicate without the counter is not recorded (per_seed n_collisions null), never zero; the block is null when no replicate records it."
+   },
+   "from_arm": {
+    "n_runs": 20,
+    "n_runs_recorded": 20,
+    "runs_not_recorded": [],
+    "total": 0,
+    "n_runs_with_collisions": 0,
+    "runs_with_collisions": [],
+    "per_run": {
+     "mean": 0.0,
+     "lo95": 0.0,
+     "hi95": 0.0,
+     "n": 20,
+     "underpowered": false
+    },
+    "rate": {
+     "per_vehicles": 1000,
+     "value": 0.0,
+     "n_collisions": 0,
+     "n_departed": 608243,
+     "n_runs": 20
+    },
+    "n_logged": 0,
+    "locations": [],
+    "definition": "total is the sum of meta.json n_collisions over the n_runs_recorded replicates that record the counter: SUMO collision detections over the whole run, warm-up included, a colliding pair counted once when it is first detected (docs/CONTRACTS.md). per_run is the two-sided t-interval over those per-replicate counts. rate.value = rate.per_vehicles * rate.n_collisions / rate.n_departed over the rate.n_runs replicates that record both n_collisions and n_vehicles_departed (null when no vehicle departed). locations groups the logged events (meta.json collisions: each run lists its first events only, n_logged of total) by SUMO lane; edge is the lane id without its _<index> suffix, pos_m_min / pos_m_max the positions along the lane [m], runs the replicates in which the lane had one. A replicate without the counter is not recorded (per_seed n_collisions null), never zero; the block is null when no replicate records it."
+   }
+  },
+  "locks": {
+   "refit": {
+    "zero_locks": true,
+    "locks": {
+     "n_runs": 20,
+     "n_runs_recorded": 20,
+     "runs_not_recorded": [],
+     "n_runs_locked": 0,
+     "share_locked": {
+      "value": 0.0,
+      "lo95": 0.0,
+      "hi95": 0.1684334709830853,
+      "method": "Clopper-Pearson exact binomial, two-sided 95 %"
+     },
+     "runs_locked": [],
+     "by_section": [],
+     "sources": {
+      "edges": 20,
+      "vehicles": 20
+     },
+     "runs_partially_recorded": [],
+     "seeded_standstills": [],
+     "params": {
+      "min_duration_s": 600.0,
+      "max_flow_veh_s": 0.005,
+      "min_density_veh_m": 0.02,
+      "head_merge_distance_m": 300.0,
+      "section_distance_m": 250.0,
+      "section_tolerance_m": 1.0,
+      "end_empty_downstream_m": 100.0,
+      "end_queue_span_m": 200.0,
+      "end_queue_min_vehicles": 10,
+      "cross_upstream_m": 50.0,
+      "cross_downstream_m": 10.0
+     },
+     "definition": "validation.locks (docs/CONTRACTS.md, 'Locks'). A run locks when vehicles stand with zero discharge past a point for at least params.min_duration_s while vehicles are queued upstream of it. Space-time reader (edges.parquet): a 15 s x 100 m cell stands when its Edie density is at least params.min_density_veh_m and its flow at most params.max_flow_veh_s; a cell standing for min_duration_s is locked; in each bin the locked cells form standing queues (gaps under params.head_merge_distance_m bridged), followed from bin to bin by overlap; a queue joining one downstream before standing min_duration_s on its own is part of that lock; a lock's head is the most downstream cell its front reached; onset_s is its first locked bin, release_s the last locked bin of its last queue's cells (null: to the run's end). Run-end reader (vehicles.parquet): a vehicle in the network at the end with none within params.end_empty_downstream_m ahead and at least params.end_queue_min_vehicles within params.end_queue_span_m behind, past which no vehicle from upstream was last seen within min_duration_s of the end; onset_s is then an upper bound and duration_s a lower bound. section: the weave, merge or diverge whose gore (ramp attach_end_x_m) lies in [x_lo_m - params.section_tolerance_m, x_hi_m + params.section_distance_m]. n_trapped_in_network: vehicles in the network at the end, upstream of the head and bound past it; n_never_departed_upstream: vehicles of origins at or upstream of the head that never entered the network (any ordinary backlog of those origins included). A run with neither file is not recorded (locked null), never unlocked; a run with vehicles.parquet alone is partially recorded (runs_partially_recorded): a lock found there counts, but with none found locked is null, not false, since the run-end reader cannot see a lock released before the end. A standstill explained by a seeded disturbance (a lane closure or the seeded perturbation reaching the head, with less than min_duration_s of the standstill outside its time window) is listed in seeded_standstills, not as a lock. share_locked is the locked share of the recorded runs with its two-sided Clopper-Pearson interval (a lower bound when runs are partially recorded)."
+    }
+   },
+   "from_arm": {
+    "zero_locks": true
+   }
+  },
+  "breakdown": {
+   "refit": {
+    "rule": "a replicate realising less than 0.9 of its planned demand while the battery's mean realised share is at least 0.95 (coordinator's pre-registration 2026-10-07; reported, gating only by a later amendment)",
+    "applies": true,
+    "per_replicate": [
+     false,
+     false,
+     false,
+     false,
+     false,
+     false,
+     false,
+     false,
+     false,
+     false,
+     false,
+     false,
+     false,
+     false,
+     false,
+     false,
+     false,
+     false,
+     false,
+     false
+    ],
+    "n_breakdowns": 0,
+    "locked_per_replicate": [
+     false,
+     false,
+     false,
+     false,
+     false,
+     false,
+     false,
+     false,
+     false,
+     false,
+     false,
+     false,
+     false,
+     false,
+     false,
+     false,
+     false,
+     false,
+     false,
+     false
+    ]
+   },
+   "from_arm": {
+    "rule": "a replicate realising less than 0.9 of its planned demand while the battery's mean realised share is at least 0.95 (coordinator's pre-registration 2026-10-07; reported, gating only by a later amendment)",
+    "applies": true,
+    "per_replicate": [
+     false,
+     false,
+     false,
+     false,
+     false,
+     false,
+     false,
+     false,
+     false,
+     false,
+     false,
+     false,
+     false,
+     false,
+     false,
+     false,
+     false,
+     false,
+     false,
+     false
+    ],
+    "n_breakdowns": 0,
+    "locked_per_replicate": [
+     false,
+     false,
+     false,
+     false,
+     false,
+     false,
+     false,
+     false,
+     false,
+     false,
+     false,
+     false,
+     false,
+     false,
+     false,
+     false,
+     false,
+     false,
+     false,
+     false
+    ]
+   }
+  },
+  "weave_exits": {
+   "refit": {
+    "threshold_share": 0.02,
+    "n_runs": 20,
+    "sections": [
+     {
+      "ramp": "on-ramp 745524613",
+      "exit": "C-D split 18208090",
+      "n_runs": 20,
+      "reached": 29144,
+      "missed_exit": {
+       "n": 537,
+       "share": 0.018425748009881966
+      },
+      "flagged": false
+     },
+     {
+      "ramp": "on-ramp 769818012",
+      "exit": "off-ramp 18207598",
+      "n_runs": 20,
+      "reached": 76975,
+      "missed_exit": {
+       "n": 975,
+       "share": 0.012666450146151347
+      },
+      "flagged": false
+     }
+    ],
+    "verdict": "ok"
+   },
+   "from_arm": {
+    "threshold_share": 0.02,
+    "n_runs": 20,
+    "sections": [
+     {
+      "ramp": "on-ramp 745524613",
+      "exit": "C-D split 18208090",
+      "n_runs": 20,
+      "reached": 29359,
+      "missed_exit": {
+       "n": 436,
+       "share": 0.014850642051841003
+      },
+      "flagged": false
+     },
+     {
+      "ramp": "on-ramp 769818012",
+      "exit": "off-ramp 18207598",
+      "n_runs": 20,
+      "reached": 77449,
+      "missed_exit": {
+       "n": 976,
+       "share": 0.012601841211636045
+      },
+      "flagged": false
+     }
+    ],
+    "verdict": "ok"
+   }
+  },
+  "battery_criteria_rows": {
+   "refit": [
+    {
+     "name": "link_flows_geh",
+     "value": 0.7583333333333333,
+     "passed": false,
+     "evaluated": true,
+     "threshold": "GEH < 5 for > 85% of link-hour comparisons"
+    },
+    {
+     "name": "wave_speed",
+     "value": 4.382972626445753,
+     "passed": false,
+     "evaluated": true,
+     "threshold": "backward wave speed in [14, 22] km/h (emergent, unseeded)"
+    },
+    {
+     "name": "ring_emergence",
+     "value": null,
+     "passed": false,
+     "evaluated": false,
+     "threshold": "Sugiyama ring emergence benchmark reproduced"
+    },
+    {
+     "name": "ring_dampening",
+     "value": null,
+     "passed": false,
+     "evaluated": false,
+     "threshold": "Stern single-AV dampening benchmark reproduced"
+    },
+    {
+     "name": "n_seeds",
+     "value": 20.0,
+     "passed": true,
+     "evaluated": true,
+     "threshold": "n_seeds >= 20"
+    },
+    {
+     "name": "sensitivity_grid",
+     "value": null,
+     "passed": false,
+     "evaluated": false,
+     "threshold": "penetration {1%, 2%, 5%, 10%, 15%, 20%} x compliance {25%, 50%, 80%, 100%} grid published with CIs"
+    },
+    {
+     "name": "no_collisions",
+     "value": 0.0,
+     "passed": true,
+     "evaluated": true,
+     "threshold": "zero SUMO collisions in every run, each run recording the counter"
+    },
+    {
+     "name": "no_locks",
+     "value": 0.0,
+     "passed": true,
+     "evaluated": true,
+     "threshold": "no run locked (no queue standing without discharge for 10 min or more), every run recorded"
+    },
+    {
+     "name": "w1b_release_share (on-ramp 745524613)",
+     "value": 0.0018191268191268192,
+     "passed": true,
+     "evaluated": true,
+     "threshold": "reported beside no_locks, not gating: W1b releases as a share of the entrance's departures, pooled over the runs; above 1% flagged in Limitations"
+    },
+    {
+     "name": "w1b_release_share (on-ramp 769818012)",
+     "value": 4.379098562560897e-05,
+     "passed": true,
+     "evaluated": true,
+     "threshold": "reported beside no_locks, not gating: W1b releases as a share of the entrance's departures, pooled over the runs; above 1% flagged in Limitations"
+    }
+   ],
+   "from_arm": [
+    {
+     "name": "link_flows_geh",
+     "value": 0.6773809523809524,
+     "passed": false,
+     "evaluated": true,
+     "threshold": "GEH < 5 for > 85% of link-hour comparisons"
+    },
+    {
+     "name": "wave_speed",
+     "value": 5.375319819664741,
+     "passed": false,
+     "evaluated": true,
+     "threshold": "backward wave speed in [14, 22] km/h (emergent, unseeded)"
+    },
+    {
+     "name": "ring_emergence",
+     "value": null,
+     "passed": false,
+     "evaluated": false,
+     "threshold": "Sugiyama ring emergence benchmark reproduced"
+    },
+    {
+     "name": "ring_dampening",
+     "value": null,
+     "passed": false,
+     "evaluated": false,
+     "threshold": "Stern single-AV dampening benchmark reproduced"
+    },
+    {
+     "name": "n_seeds",
+     "value": 20.0,
+     "passed": true,
+     "evaluated": true,
+     "threshold": "n_seeds >= 20"
+    },
+    {
+     "name": "sensitivity_grid",
+     "value": null,
+     "passed": false,
+     "evaluated": false,
+     "threshold": "penetration {1%, 2%, 5%, 10%, 15%, 20%} x compliance {25%, 50%, 80%, 100%} grid published with CIs"
+    },
+    {
+     "name": "no_collisions",
+     "value": 0.0,
+     "passed": true,
+     "evaluated": true,
+     "threshold": "zero SUMO collisions in every run, each run recording the counter"
+    },
+    {
+     "name": "no_locks",
+     "value": 0.0,
+     "passed": true,
+     "evaluated": true,
+     "threshold": "no run locked (no queue standing without discharge for 10 min or more), every run recorded"
+    },
+    {
+     "name": "w1b_release_share (on-ramp 745524613)",
+     "value": 0.013815142576204522,
+     "passed": true,
+     "evaluated": true,
+     "threshold": "reported beside no_locks, not gating: W1b releases as a share of the entrance's departures, pooled over the runs; above 1% flagged in Limitations"
+    },
+    {
+     "name": "w1b_release_share (on-ramp 769818012)",
+     "value": 6.521951802776177e-05,
+     "passed": true,
+     "evaluated": true,
+     "threshold": "reported beside no_locks, not gating: W1b releases as a share of the entrance's departures, pooled over the runs; above 1% flagged in Limitations"
+    }
+   ]
+  }
+ },
+ "not_validation": "a demand refit on the calibration days the battery is scored on; the validation days are read by the gate, unchanged (protocol \u00a73): the gate's verdict, not this readout, is the validation reading"
+}

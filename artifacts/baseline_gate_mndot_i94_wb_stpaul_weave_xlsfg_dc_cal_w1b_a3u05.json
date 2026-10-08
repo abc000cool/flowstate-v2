@@ -1,0 +1,1427 @@
+{
+  "schema": "flowstate.baseline_gate/1",
+  "protocol": "docs/FRISCO_PROTOCOL.md section 6",
+  "passed": false,
+  "verdict": "failed",
+  "strategy_results_allowed": false,
+  "headline": "Baseline gate FAILED (docs/FRISCO_PROTOCOL.md section 6): C1 link flows (calibration), C3 speeds (calibration), C1 link flows (validation), C3 speeds (validation), C4 wave speed (calibration), C5 collisions (all runs). No strategy recommendation may be made from this model.",
+  "reasons": [
+    "Link flows, calibration days: GEH < 5 on 74.9 % of 840 station-hour comparisons pooled over 20 replicate(s) (per-replicate mean 74.9 %, 95 % interval 73.2 % to 76.6 %); the target is >= 85.0 %, short by 10.1 percentage points; hours anchored at the study period's start (1800 s).",
+    "Speeds, calibration days: RMSPE of 15-minute station mean speeds 42.5 % (mean over 20 replicate(s), 95 % interval 40.6 % to 44.4 %; point speeds at the stations, as a loop reads them); the target is at most 15.0 %, over by 27.5 percentage points (diagnostics: 5 min 44.7 %; 60 min 36.2 %).",
+    "Link flows, validation days: GEH < 5 on 73.2 % of 840 station-hour comparisons pooled over 20 replicate(s) (per-replicate mean 73.2 %, 95 % interval 71.4 % to 75.0 %); the target is >= 85.0 %, short by 11.8 percentage points; hours anchored at the study period's start (1800 s).",
+    "Speeds, validation days: RMSPE of 15-minute station mean speeds 54.3 % (mean over 20 replicate(s), 95 % interval 51.1 % to 57.4 %; point speeds at the stations, as a loop reads them); the target is at most 15.0 %, over by 39.3 percentage points (diagnostics: 5 min 58.2 %; 60 min 42.4 %).",
+    "Wave speed: a backward front in 18 of 20 replicate(s) (90.0 %; at least 80.0 % needed, a replicate without a front counting as a miss); simulated backward wave speed 3.8 km/h, 95 % interval 3.6 to 4.1 km/h over those replicates (stack detector); the band is 14-22 km/h, outside it by 10.2 km/h; observed on the calibration days (detector cross-correlation): median 19.1 km/h from 7 of 13 station pairs.",
+    "Collisions: 1 SUMO collision(s) in 1 of 20 run(s) that record the counter; the gate requires zero."
+  ],
+  "checks": [
+    {
+      "check": "replicates",
+      "name": "Replicates",
+      "day_set": "all runs",
+      "status": "pass",
+      "gating": true,
+      "satisfied": true,
+      "value": 20.0,
+      "target": "every check scored over at least 20 seeded replicates",
+      "shortfall": null,
+      "plain": "Replicates: 20 seeded replicate(s); the protocol scores every check over at least 20.",
+      "label": "[FlowState] CLAUDE.md section 0.6; protocol section 4"
+    },
+    {
+      "check": "days",
+      "name": "Day sets",
+      "day_set": "both day sets",
+      "status": "pass",
+      "gating": true,
+      "satisfied": true,
+      "value": null,
+      "target": "a day split is supplied, its calibration and validation sides are disjoint and non-empty, and each day set's artifact holds exactly its side's dates",
+      "shortfall": null,
+      "plain": "Day sets: the calibration-day artifact holds exactly the split's 5 calibration day(s) and the validation-day artifact its 4 validation day(s), none shared.",
+      "label": "[FlowState] protocol section 3.2"
+    },
+    {
+      "check": "quality",
+      "name": "Targets quality-masked",
+      "day_set": "both day sets",
+      "status": "pass",
+      "gating": true,
+      "satisfied": true,
+      "value": null,
+      "target": "each day set's observed targets were built with the data-quality check's verdicts masked out (source.quality recorded)",
+      "shortfall": null,
+      "plain": "Targets quality-masked: calibration days: runs/p1_rehearsal/dq/data_quality.json (sha256 8cae907dec40): 24 masked detector-day(s) (24 excluded whole), 912 reading(s) set aside; validation days: runs/p1_rehearsal/dq/data_quality.json (sha256 8cae907dec40): 19 masked detector-day(s) (19 excluded whole), 720 reading(s) set aside.",
+      "label": "[FlowState] protocol section 2.2"
+    },
+    {
+      "check": "C1",
+      "name": "Link flows",
+      "day_set": "calibration",
+      "status": "fail",
+      "gating": true,
+      "satisfied": false,
+      "value": 0.7488095238095238,
+      "target": "GEH < 5 on >= 85.0 % of station-hour comparisons, hours anchored at the study period's start",
+      "shortfall": 0.10119047619047616,
+      "plain": "Link flows, calibration days: GEH < 5 on 74.9 % of 840 station-hour comparisons pooled over 20 replicate(s) (per-replicate mean 74.9 %, 95 % interval 73.2 % to 76.6 %); the target is >= 85.0 %, short by 10.1 percentage points; hours anchored at the study period's start (1800 s).",
+      "label": "[federal] FHWA TAT Vol. III 2004 (profile fhwa_default)"
+    },
+    {
+      "check": "C2",
+      "name": "Link flows, Texas criterion",
+      "day_set": "calibration",
+      "status": "fail",
+      "gating": false,
+      "satisfied": false,
+      "value": 0.5857142857142857,
+      "target": "GEH < 3 on >= 100.0 % of station-hour comparisons, hours anchored at the study period's start",
+      "shortfall": 0.41428571428571426,
+      "plain": "Link flows, Texas criterion, calibration days: GEH < 3 on 58.6 % of 840 station-hour comparisons pooled over 20 replicate(s) (per-replicate mean 74.9 %, 95 % interval 73.2 % to 76.6 %); the target is >= 100.0 %, short by 41.4 percentage points; hours anchored at the study period's start (1800 s).",
+      "label": "[federal] TxDOT TSAP ch. 13 (profile txdot_tsap_ch13); reported, not gating"
+    },
+    {
+      "check": "C3",
+      "name": "Speeds",
+      "day_set": "calibration",
+      "status": "fail",
+      "gating": true,
+      "satisfied": false,
+      "value": 0.42518233636984154,
+      "target": "RMSPE <= 15.0 % on station mean speeds at 15-minute aggregation",
+      "shortfall": 0.2751823363698416,
+      "plain": "Speeds, calibration days: RMSPE of 15-minute station mean speeds 42.5 % (mean over 20 replicate(s), 95 % interval 40.6 % to 44.4 %; point speeds at the stations, as a loop reads them); the target is at most 15.0 %, over by 27.5 percentage points (diagnostics: 5 min 44.7 %; 60 min 36.2 %).",
+      "label": "common microsimulation practice (CLAUDE.md section 7.1), cited in the report"
+    },
+    {
+      "check": "C6",
+      "name": "Bottlenecks",
+      "day_set": "calibration",
+      "status": "pass",
+      "gating": true,
+      "satisfied": true,
+      "value": 0.0,
+      "target": "every observed bottleneck active for 30 min or more reproduced at the same or an adjacent station pair in at least 80.0 % of replicates (matched one to one), median activation within 15 min, duration and queue reach within tolerance, and phantom bottlenecks in at most half the replicates (protocol section 5)",
+      "shortfall": null,
+      "plain": "Bottlenecks, calibration days: 0 observed bottleneck(s), 0 active for 30 min or more, compared with 20 replicate(s) (point speeds at the stations, as a loop reads them); all four rules hold.",
+      "label": "[FlowState] protocol section 5"
+    },
+    {
+      "check": "C1",
+      "name": "Link flows",
+      "day_set": "validation",
+      "status": "fail",
+      "gating": true,
+      "satisfied": false,
+      "value": 0.7321428571428571,
+      "target": "GEH < 5 on >= 85.0 % of station-hour comparisons, hours anchored at the study period's start",
+      "shortfall": 0.11785714285714288,
+      "plain": "Link flows, validation days: GEH < 5 on 73.2 % of 840 station-hour comparisons pooled over 20 replicate(s) (per-replicate mean 73.2 %, 95 % interval 71.4 % to 75.0 %); the target is >= 85.0 %, short by 11.8 percentage points; hours anchored at the study period's start (1800 s).",
+      "label": "[federal] FHWA TAT Vol. III 2004 (profile fhwa_default)"
+    },
+    {
+      "check": "C2",
+      "name": "Link flows, Texas criterion",
+      "day_set": "validation",
+      "status": "fail",
+      "gating": false,
+      "satisfied": false,
+      "value": 0.5607142857142857,
+      "target": "GEH < 3 on >= 100.0 % of station-hour comparisons, hours anchored at the study period's start",
+      "shortfall": 0.4392857142857143,
+      "plain": "Link flows, Texas criterion, validation days: GEH < 3 on 56.1 % of 840 station-hour comparisons pooled over 20 replicate(s) (per-replicate mean 73.2 %, 95 % interval 71.4 % to 75.0 %); the target is >= 100.0 %, short by 43.9 percentage points; hours anchored at the study period's start (1800 s).",
+      "label": "[federal] TxDOT TSAP ch. 13 (profile txdot_tsap_ch13); reported, not gating"
+    },
+    {
+      "check": "C3",
+      "name": "Speeds",
+      "day_set": "validation",
+      "status": "fail",
+      "gating": true,
+      "satisfied": false,
+      "value": 0.5426092332975329,
+      "target": "RMSPE <= 15.0 % on station mean speeds at 15-minute aggregation",
+      "shortfall": 0.39260923329753283,
+      "plain": "Speeds, validation days: RMSPE of 15-minute station mean speeds 54.3 % (mean over 20 replicate(s), 95 % interval 51.1 % to 57.4 %; point speeds at the stations, as a loop reads them); the target is at most 15.0 %, over by 39.3 percentage points (diagnostics: 5 min 58.2 %; 60 min 42.4 %).",
+      "label": "common microsimulation practice (CLAUDE.md section 7.1), cited in the report"
+    },
+    {
+      "check": "C6",
+      "name": "Bottlenecks",
+      "day_set": "validation",
+      "status": "pass",
+      "gating": true,
+      "satisfied": true,
+      "value": 0.0,
+      "target": "every observed bottleneck active for 30 min or more reproduced at the same or an adjacent station pair in at least 80.0 % of replicates (matched one to one), median activation within 15 min, duration and queue reach within tolerance, and phantom bottlenecks in at most half the replicates (protocol section 5)",
+      "shortfall": null,
+      "plain": "Bottlenecks, validation days: 1 observed bottleneck(s), 0 active for 30 min or more, compared with 20 replicate(s) (point speeds at the stations, as a loop reads them); all four rules hold.",
+      "label": "[FlowState] protocol section 5"
+    },
+    {
+      "check": "C4",
+      "name": "Wave speed",
+      "day_set": "calibration",
+      "status": "fail",
+      "gating": true,
+      "satisfied": false,
+      "value": 3.83806801637676,
+      "target": "simulated backward wave speed (stack detector) in 14-22 km/h with a backward front in at least 80.0 % of the replicates, or not applicable when fewer than 3 station pairs show a valid cross-correlation on the calibration days",
+      "shortfall": 10.16193198362324,
+      "plain": "Wave speed: a backward front in 18 of 20 replicate(s) (90.0 %; at least 80.0 % needed, a replicate without a front counting as a miss); simulated backward wave speed 3.8 km/h, 95 % interval 3.6 to 4.1 km/h over those replicates (stack detector); the band is 14-22 km/h, outside it by 10.2 km/h; observed on the calibration days (detector cross-correlation): median 19.1 km/h from 7 of 13 station pairs.",
+      "label": "empirical stop-and-go literature (flowstate_core.constants.WAVE_SPEED_BAND_KMH)"
+    },
+    {
+      "check": "C5",
+      "name": "Collisions",
+      "day_set": "all runs",
+      "status": "fail",
+      "gating": true,
+      "satisfied": false,
+      "value": 1.0,
+      "target": "zero SUMO collisions in every run, each run recording the counter",
+      "shortfall": 1.0,
+      "plain": "Collisions: 1 SUMO collision(s) in 1 of 20 run(s) that record the counter; the gate requires zero.",
+      "label": "[FlowState] CLAUDE.md section 3.3; owner decision 2026-10-04"
+    }
+  ],
+  "n_replicates": 20,
+  "config_hash": "03fec0ed5521",
+  "scenario": "runs/p24_a3/scenarios/mndot_i94_wb_stpaul_weave_xlsfg_dc_cal_w1b_a3u05.yaml",
+  "split": {
+    "path": "artifacts/p1_rehearsal_2026-10-04/day_split.json",
+    "seed": 20261004,
+    "calibration_dates": [
+      "2026-09-02",
+      "2026-09-03",
+      "2026-09-08",
+      "2026-09-15",
+      "2026-09-16"
+    ],
+    "validation_dates": [
+      "2026-09-01",
+      "2026-09-09",
+      "2026-09-10",
+      "2026-09-17"
+    ],
+    "underpowered": false,
+    "underpowered_reason": ""
+  },
+  "excluded_detectors": {
+    "3240": "S792 lane-3 loop chatters: 14 percent occupancy against 27-32 percent on its neighbours, 78 percent null night samples, count rises 775 veh/h into a bracket nothing enters (docs/ONBOARDING_MNDOT.md section 7 item 2, 2026-09-24)"
+  },
+  "day_sets": {
+    "calibration": {
+      "day_set": "calibration",
+      "observations_path": "artifacts/p1_rehearsal_2026-10-04/observations_calibration.json",
+      "dates": [
+        "20260902",
+        "20260903",
+        "20260908",
+        "20260915",
+        "20260916"
+      ],
+      "dates_recorded": true,
+      "subset_set": "calibration",
+      "n_replicates": 20,
+      "quality": {
+        "path": "runs/p1_rehearsal/dq/data_quality.json",
+        "sha256": "8cae907dec40646229a19e26f9b5cc9e04d7c4a0af24d87f80cc4742ccbfba53",
+        "n_masked_sensor_days": 24,
+        "masked_sensor_days": [
+          {
+            "sensor": "rnd_87205",
+            "date": "2026-09-02",
+            "verdict": "exclude",
+            "checks": [
+              "impossible"
+            ]
+          },
+          {
+            "sensor": "rnd_87209",
+            "date": "2026-09-02",
+            "verdict": "exclude",
+            "checks": [
+              "missing"
+            ]
+          },
+          {
+            "sensor": "rnd_88823",
+            "date": "2026-09-02",
+            "verdict": "exclude",
+            "checks": [
+              "zero_day"
+            ]
+          },
+          {
+            "sensor": "rnd_88827",
+            "date": "2026-09-02",
+            "verdict": "exclude",
+            "checks": [
+              "low_flow",
+              "day_outlier"
+            ]
+          },
+          {
+            "sensor": "rnd_88835",
+            "date": "2026-09-02",
+            "verdict": "exclude",
+            "checks": [
+              "zero_day"
+            ]
+          },
+          {
+            "sensor": "rnd_87205",
+            "date": "2026-09-03",
+            "verdict": "exclude",
+            "checks": [
+              "day_outlier"
+            ]
+          },
+          {
+            "sensor": "rnd_87209",
+            "date": "2026-09-03",
+            "verdict": "exclude",
+            "checks": [
+              "missing"
+            ]
+          },
+          {
+            "sensor": "rnd_88823",
+            "date": "2026-09-03",
+            "verdict": "exclude",
+            "checks": [
+              "zero_day"
+            ]
+          },
+          {
+            "sensor": "rnd_88827",
+            "date": "2026-09-03",
+            "verdict": "exclude",
+            "checks": [
+              "low_flow",
+              "day_outlier"
+            ]
+          },
+          {
+            "sensor": "rnd_88835",
+            "date": "2026-09-03",
+            "verdict": "exclude",
+            "checks": [
+              "zero_day"
+            ]
+          },
+          {
+            "sensor": "rnd_87205",
+            "date": "2026-09-08",
+            "verdict": "exclude",
+            "checks": [
+              "impossible"
+            ]
+          },
+          {
+            "sensor": "rnd_87209",
+            "date": "2026-09-08",
+            "verdict": "exclude",
+            "checks": [
+              "missing"
+            ]
+          },
+          {
+            "sensor": "rnd_88823",
+            "date": "2026-09-08",
+            "verdict": "exclude",
+            "checks": [
+              "zero_day"
+            ]
+          },
+          {
+            "sensor": "rnd_88827",
+            "date": "2026-09-08",
+            "verdict": "exclude",
+            "checks": [
+              "low_flow",
+              "day_outlier"
+            ]
+          },
+          {
+            "sensor": "rnd_88835",
+            "date": "2026-09-08",
+            "verdict": "exclude",
+            "checks": [
+              "zero_day"
+            ]
+          },
+          {
+            "sensor": "rnd_87209",
+            "date": "2026-09-15",
+            "verdict": "exclude",
+            "checks": [
+              "missing"
+            ]
+          },
+          {
+            "sensor": "rnd_88823",
+            "date": "2026-09-15",
+            "verdict": "exclude",
+            "checks": [
+              "zero_day"
+            ]
+          },
+          {
+            "sensor": "rnd_88827",
+            "date": "2026-09-15",
+            "verdict": "exclude",
+            "checks": [
+              "low_flow",
+              "day_outlier"
+            ]
+          },
+          {
+            "sensor": "rnd_88835",
+            "date": "2026-09-15",
+            "verdict": "exclude",
+            "checks": [
+              "zero_day"
+            ]
+          },
+          {
+            "sensor": "rnd_87205",
+            "date": "2026-09-16",
+            "verdict": "exclude",
+            "checks": [
+              "impossible"
+            ]
+          },
+          {
+            "sensor": "rnd_87209",
+            "date": "2026-09-16",
+            "verdict": "exclude",
+            "checks": [
+              "missing"
+            ]
+          },
+          {
+            "sensor": "rnd_88823",
+            "date": "2026-09-16",
+            "verdict": "exclude",
+            "checks": [
+              "zero_day"
+            ]
+          },
+          {
+            "sensor": "rnd_88827",
+            "date": "2026-09-16",
+            "verdict": "exclude",
+            "checks": [
+              "low_flow",
+              "day_outlier"
+            ]
+          },
+          {
+            "sensor": "rnd_88835",
+            "date": "2026-09-16",
+            "verdict": "exclude",
+            "checks": [
+              "zero_day"
+            ]
+          }
+        ],
+        "n_masked_windows": 912,
+        "rule": "exclude drops the sensor-day; suspect sets aside only the windows and quantities its findings name; a station reading is set aside when any lane sensor of the station (lanes that never reported anywhere in the report excepted) sets it aside; a reading whose window overlaps a set-aside window of the report is set aside; applied before the dates are averaged"
+      },
+      "speed_source": "point",
+      "hour_anchor": "study_period_start",
+      "hour_anchor_s": 1800.0,
+      "geh": {
+        "n_comparisons": 840,
+        "n_unmatched_station_hours": 0,
+        "pass_fraction_pooled": 0.7488095238095238,
+        "pass_fraction_ci": {
+          "mean": 0.7488095238095239,
+          "lo95": 0.7316700304978854,
+          "hi95": 0.7659490171211625,
+          "n": 20,
+          "underpowered": false
+        },
+        "texas_pass_fraction_pooled": 0.5857142857142857,
+        "texas_n_failing": 348
+      },
+      "rmspe": {
+        "300": {
+          "ci": {
+            "mean": 0.4471136834643109,
+            "lo95": 0.4281944361365518,
+            "hi95": 0.46603293079207003,
+            "n": 20,
+            "underpowered": false
+          },
+          "per_replicate": [
+            0.4976356882646804,
+            0.4356959862261926,
+            0.5096855161494397,
+            0.3886133998715904,
+            0.4128037584890327,
+            0.41656747656016274,
+            0.41479204102446016,
+            0.4798305014713405,
+            0.44926445963671335,
+            0.37117177953769226,
+            0.47416095180751533,
+            0.4481020354082886,
+            0.4786706126665896,
+            0.4948197961407259,
+            0.4654021381402302,
+            0.4172615898711066,
+            0.4640484449638865,
+            0.49455250171304715,
+            0.43857138712871174,
+            0.3906236042148124
+          ],
+          "n_cells_pooled": 11760
+        },
+        "900": {
+          "ci": {
+            "mean": 0.42518233636984154,
+            "lo95": 0.4064307773501364,
+            "hi95": 0.4439338953895467,
+            "n": 20,
+            "underpowered": false
+          },
+          "per_replicate": [
+            0.4761003512815777,
+            0.4163182009891146,
+            0.48742510063073596,
+            0.3670208693408249,
+            0.39066435903273666,
+            0.3940009469925823,
+            0.3910201728939404,
+            0.46006205672441636,
+            0.4264868296785503,
+            0.34933809626658513,
+            0.4507630506136529,
+            0.4269397832950143,
+            0.4549624981485539,
+            0.47096447892146037,
+            0.4423178677109817,
+            0.39523465715166284,
+            0.443568268051722,
+            0.4703372484840296,
+            0.4200477946977326,
+            0.3700740964909566
+          ],
+          "n_cells_pooled": 3920
+        },
+        "3600": {
+          "ci": {
+            "mean": 0.3617522344160076,
+            "lo95": 0.3469245652182826,
+            "hi95": 0.37657990361373267,
+            "n": 20,
+            "underpowered": false
+          },
+          "per_replicate": [
+            0.4134539039660956,
+            0.34837419422190685,
+            0.41352084536624667,
+            0.30794105213232886,
+            0.32413548604574366,
+            0.3284674299684039,
+            0.3272551387756649,
+            0.3945827448749987,
+            0.3577292165368976,
+            0.3174862257688055,
+            0.36610393857639617,
+            0.357763674335395,
+            0.38865565757615106,
+            0.3915651375136963,
+            0.3784338837019523,
+            0.34866447110624793,
+            0.37923351465834704,
+            0.3949790774444588,
+            0.3507273835870748,
+            0.34597171216333916
+          ],
+          "n_cells_pooled": 840
+        }
+      },
+      "replicate_mean_field": [
+        {
+          "aggregation": "5 min",
+          "rmspe": "0.4149",
+          "floor": "0.03733"
+        },
+        {
+          "aggregation": "15 min (criterion)",
+          "rmspe": "0.4047",
+          "floor": "0.07091"
+        },
+        {
+          "aggregation": "30 min",
+          "rmspe": "0.3876",
+          "floor": ""
+        },
+        {
+          "aggregation": "60 min",
+          "rmspe": "0.3544",
+          "floor": ""
+        },
+        {
+          "aggregation": "whole period",
+          "rmspe": "0.1823",
+          "floor": ""
+        }
+      ],
+      "bottlenecks": {
+        "passed": true,
+        "n_replicates": 20,
+        "station_ids": [
+          "S1063",
+          "S1064",
+          "S1065",
+          "S1066",
+          "S1067",
+          "S1068",
+          "S1947",
+          "S1069",
+          "S1070",
+          "S1948",
+          "S792",
+          "S791",
+          "S790",
+          "S97"
+        ],
+        "rules": [
+          {
+            "rule": "location",
+            "passed": true,
+            "applicable": false,
+            "detail": "no observed bottleneck was active for at least 30 min (0 activated in all); nothing to reproduce"
+          },
+          {
+            "rule": "timing",
+            "passed": true,
+            "applicable": false,
+            "detail": "no observed bottleneck was active for at least 30 min (0 activated in all); nothing to reproduce"
+          },
+          {
+            "rule": "queue_reach",
+            "passed": true,
+            "applicable": false,
+            "detail": "no observed bottleneck was active for at least 30 min (0 activated in all); nothing to reproduce"
+          },
+          {
+            "rule": "no_phantom",
+            "passed": true,
+            "applicable": true,
+            "detail": "1 of 20 replicates (5%; limit 50%) contain a bottleneck active for more than 30 min away from every observed one (counted once per replicate); by station pair: S790\u2192S97 in 1"
+          }
+        ],
+        "observed": [],
+        "matches": [],
+        "phantoms": [
+          {
+            "pair_index": 12,
+            "upstream": "S790",
+            "downstream": "S97",
+            "n_replicates_long": 1,
+            "n_replicates_any": 1,
+            "share_long": 0.05
+          }
+        ],
+        "n_replicates_with_phantom": 1,
+        "phantom_share": 0.05,
+        "phantom_replicates": [
+          16
+        ],
+        "simulated": [
+          [],
+          [],
+          [],
+          [],
+          [],
+          [],
+          [],
+          [],
+          [],
+          [],
+          [],
+          [],
+          [],
+          [],
+          [],
+          [],
+          [
+            {
+              "pair_index": 12,
+              "activation_s": 3600.0,
+              "active_s": 2100.0,
+              "queue_reach_index": 5
+            }
+          ],
+          [],
+          [],
+          []
+        ],
+        "notes": [
+          "simulated station speed = mean speed of the vehicles crossing the station's position in the window, each crossing interpolated between consecutive trajectory samples (observed_scores.json station_point_speeds_sim), as a loop detector there reads it (protocol section 5)"
+        ],
+        "thresholds": {
+          "upstream_speed_max_ms": 17.8816,
+          "upstream_speed_max": "40 mph (docs/FRISCO_PROTOCOL.md section 5)",
+          "speed_difference_min_ms": 8.9408,
+          "speed_difference_min": "20 mph (section 5)",
+          "window_s": 300.0,
+          "persistence": "5 of 7 consecutive windows (section 5; from a secondary summary, to be verified against Chen, Skabardonis & Varaiya 2004 before the first Frisco run)",
+          "min_observed_active_s": 1800.0,
+          "adjacent_pairs": 1,
+          "location_min_replicate_share": 0.8,
+          "activation_tolerance_s": 900.0,
+          "duration_tolerance_share": 0.3,
+          "queue_reach_tolerance_stations": 1,
+          "phantom_active_s": 1800.0,
+          "phantom_max_replicate_share": 0.5,
+          "phantom_counted": "per replicate: a replicate with any phantom counts once (section 5.4)",
+          "matching": "observed and simulated bottlenecks matched one to one per replicate (section 5.4): most reproduced, then most at their own pair, then longest active",
+          "label": "FlowState rules (docs/FRISCO_PROTOCOL.md section 5)"
+        }
+      },
+      "bottleneck_note": "",
+      "detector_wave_speed": {
+        "median_kmh": 19.09912030242231,
+        "iqr_kmh": [
+          17.980520133764735,
+          23.92259573027253
+        ],
+        "n_pairs": 13,
+        "n_used": 7,
+        "rejections": "2 fewer than min_events congested episodes downstream, 3 peak correlation below the acceptance floor, 1 peak lag is not positive (no backward propagation)",
+        "loo_n_dates": 5,
+        "loo_median_min_kmh": 18.46153923064884,
+        "loo_median_max_kmh": 20.807394948225088,
+        "loo_pairs_min": 5
+      },
+      "excluded_detectors": {
+        "3240": "S792 lane-3 loop chatters: 14 percent occupancy against 27-32 percent on its neighbours, 78 percent null night samples, count rises 775 veh/h into a bracket nothing enters (docs/ONBOARDING_MNDOT.md section 7 item 2, 2026-09-24)"
+      },
+      "notes": [
+        "C1 hours anchored at the study period's start (the warm-up's end), so the whole study period is scored (observed_scores.json link_hours_anchored; protocol section 4, C1)",
+        "simulated station speed = mean speed of the vehicles crossing the station's position in the window, each crossing interpolated between consecutive trajectory samples (observed_scores.json station_point_speeds_sim), as a loop detector there reads it (protocol section 5)",
+        "a station window no vehicle crosses reads the mean speed of the vehicles standing over the loop (front bumper within one vehicle length past the station; about zero in a stopped queue, as an occupied loop that counts nothing reads), and is not measured only when the loop is empty (observed_scores.json station_point_standstill)",
+        "speed blocks are anchored at the study period's start (the first analysed window); analysed windows at its end that fill no whole block are not scored: 6 at 60 min (C3 is the 15-minute value)"
+      ]
+    },
+    "validation": {
+      "day_set": "validation",
+      "observations_path": "artifacts/p1_rehearsal_2026-10-04/observations_validation.json",
+      "dates": [
+        "20260901",
+        "20260909",
+        "20260910",
+        "20260917"
+      ],
+      "dates_recorded": true,
+      "subset_set": "validation",
+      "n_replicates": 20,
+      "quality": {
+        "path": "runs/p1_rehearsal/dq/data_quality.json",
+        "sha256": "8cae907dec40646229a19e26f9b5cc9e04d7c4a0af24d87f80cc4742ccbfba53",
+        "n_masked_sensor_days": 19,
+        "masked_sensor_days": [
+          {
+            "sensor": "rnd_87205",
+            "date": "2026-09-01",
+            "verdict": "exclude",
+            "checks": [
+              "impossible"
+            ]
+          },
+          {
+            "sensor": "rnd_87209",
+            "date": "2026-09-01",
+            "verdict": "exclude",
+            "checks": [
+              "missing"
+            ]
+          },
+          {
+            "sensor": "rnd_88823",
+            "date": "2026-09-01",
+            "verdict": "exclude",
+            "checks": [
+              "zero_day"
+            ]
+          },
+          {
+            "sensor": "rnd_88827",
+            "date": "2026-09-01",
+            "verdict": "exclude",
+            "checks": [
+              "low_flow",
+              "day_outlier"
+            ]
+          },
+          {
+            "sensor": "rnd_88835",
+            "date": "2026-09-01",
+            "verdict": "exclude",
+            "checks": [
+              "zero_day"
+            ]
+          },
+          {
+            "sensor": "rnd_87205",
+            "date": "2026-09-09",
+            "verdict": "exclude",
+            "checks": [
+              "impossible"
+            ]
+          },
+          {
+            "sensor": "rnd_87209",
+            "date": "2026-09-09",
+            "verdict": "exclude",
+            "checks": [
+              "missing"
+            ]
+          },
+          {
+            "sensor": "rnd_88823",
+            "date": "2026-09-09",
+            "verdict": "exclude",
+            "checks": [
+              "zero_day"
+            ]
+          },
+          {
+            "sensor": "rnd_88827",
+            "date": "2026-09-09",
+            "verdict": "exclude",
+            "checks": [
+              "low_flow",
+              "day_outlier"
+            ]
+          },
+          {
+            "sensor": "rnd_88835",
+            "date": "2026-09-09",
+            "verdict": "exclude",
+            "checks": [
+              "zero_day"
+            ]
+          },
+          {
+            "sensor": "rnd_87209",
+            "date": "2026-09-10",
+            "verdict": "exclude",
+            "checks": [
+              "missing"
+            ]
+          },
+          {
+            "sensor": "rnd_88823",
+            "date": "2026-09-10",
+            "verdict": "exclude",
+            "checks": [
+              "zero_day"
+            ]
+          },
+          {
+            "sensor": "rnd_88827",
+            "date": "2026-09-10",
+            "verdict": "exclude",
+            "checks": [
+              "zero_day"
+            ]
+          },
+          {
+            "sensor": "rnd_88835",
+            "date": "2026-09-10",
+            "verdict": "exclude",
+            "checks": [
+              "zero_day"
+            ]
+          },
+          {
+            "sensor": "rnd_87205",
+            "date": "2026-09-17",
+            "verdict": "exclude",
+            "checks": [
+              "impossible"
+            ]
+          },
+          {
+            "sensor": "rnd_87209",
+            "date": "2026-09-17",
+            "verdict": "exclude",
+            "checks": [
+              "missing"
+            ]
+          },
+          {
+            "sensor": "rnd_88823",
+            "date": "2026-09-17",
+            "verdict": "exclude",
+            "checks": [
+              "zero_day"
+            ]
+          },
+          {
+            "sensor": "rnd_88827",
+            "date": "2026-09-17",
+            "verdict": "exclude",
+            "checks": [
+              "low_flow",
+              "day_outlier"
+            ]
+          },
+          {
+            "sensor": "rnd_88835",
+            "date": "2026-09-17",
+            "verdict": "exclude",
+            "checks": [
+              "zero_day"
+            ]
+          }
+        ],
+        "n_masked_windows": 720,
+        "rule": "exclude drops the sensor-day; suspect sets aside only the windows and quantities its findings name; a station reading is set aside when any lane sensor of the station (lanes that never reported anywhere in the report excepted) sets it aside; a reading whose window overlaps a set-aside window of the report is set aside; applied before the dates are averaged"
+      },
+      "speed_source": "point",
+      "hour_anchor": "study_period_start",
+      "hour_anchor_s": 1800.0,
+      "geh": {
+        "n_comparisons": 840,
+        "n_unmatched_station_hours": 0,
+        "pass_fraction_pooled": 0.7321428571428571,
+        "pass_fraction_ci": {
+          "mean": 0.7321428571428572,
+          "lo95": 0.7141114477707906,
+          "hi95": 0.7501742665149238,
+          "n": 20,
+          "underpowered": false
+        },
+        "texas_pass_fraction_pooled": 0.5607142857142857,
+        "texas_n_failing": 369
+      },
+      "rmspe": {
+        "300": {
+          "ci": {
+            "mean": 0.5819065626732639,
+            "lo95": 0.5493316520590297,
+            "hi95": 0.6144814732874981,
+            "n": 20,
+            "underpowered": false
+          },
+          "per_replicate": [
+            0.6671667180841482,
+            0.55959846360302,
+            0.6813497005363531,
+            0.478640893825188,
+            0.5191775086034346,
+            0.5171993906204112,
+            0.517965903665662,
+            0.6308259523248395,
+            0.5825080809462067,
+            0.4478067166386696,
+            0.6372434660111387,
+            0.5765269256235619,
+            0.6432936114207574,
+            0.664411517209678,
+            0.6346956116160282,
+            0.54911591049383,
+            0.6118852128258396,
+            0.6610951795121751,
+            0.5488496029141318,
+            0.5087748869902046
+          ],
+          "n_cells_pooled": 11760
+        },
+        "900": {
+          "ci": {
+            "mean": 0.5426092332975329,
+            "lo95": 0.5110755727684652,
+            "hi95": 0.5741428938266006,
+            "n": 20,
+            "underpowered": false
+          },
+          "per_replicate": [
+            0.6241770445883372,
+            0.5280754331998045,
+            0.6429124611276968,
+            0.4449618183492462,
+            0.4854639087410481,
+            0.47739117937816106,
+            0.48443588717232966,
+            0.5917227211502925,
+            0.5467263332004052,
+            0.40578594474766183,
+            0.5965776735848479,
+            0.5405317877676857,
+            0.5935237403968929,
+            0.6177694033594128,
+            0.5883522335486282,
+            0.5104469556927765,
+            0.5697346165499332,
+            0.6200665313297681,
+            0.5196117922522631,
+            0.463917199813466
+          ],
+          "n_cells_pooled": 3920
+        },
+        "3600": {
+          "ci": {
+            "mean": 0.4242319879132667,
+            "lo95": 0.40375783584484404,
+            "hi95": 0.4447061399816894,
+            "n": 20,
+            "underpowered": false
+          },
+          "per_replicate": [
+            0.4889127004339481,
+            0.41173282019583995,
+            0.4906087332100457,
+            0.3463974448612853,
+            0.37435189592099777,
+            0.3699140203582822,
+            0.3804654529823814,
+            0.461573122929563,
+            0.4225707861591734,
+            0.3582605672445249,
+            0.4424897032852076,
+            0.4198564638955737,
+            0.45951593336159935,
+            0.46822350432184523,
+            0.4546985676066757,
+            0.4098086686946462,
+            0.44647523903816966,
+            0.47283025842444115,
+            0.40655805018780117,
+            0.3993958251533321
+          ],
+          "n_cells_pooled": 840
+        }
+      },
+      "replicate_mean_field": [
+        {
+          "aggregation": "5 min",
+          "rmspe": "0.5482",
+          "floor": "0.0396"
+        },
+        {
+          "aggregation": "15 min (criterion)",
+          "rmspe": "0.5214",
+          "floor": "0.08203"
+        },
+        {
+          "aggregation": "30 min",
+          "rmspe": "0.4971",
+          "floor": ""
+        },
+        {
+          "aggregation": "60 min",
+          "rmspe": "0.4176",
+          "floor": ""
+        },
+        {
+          "aggregation": "whole period",
+          "rmspe": "0.1881",
+          "floor": ""
+        }
+      ],
+      "bottlenecks": {
+        "passed": true,
+        "n_replicates": 20,
+        "station_ids": [
+          "S1063",
+          "S1064",
+          "S1065",
+          "S1066",
+          "S1067",
+          "S1068",
+          "S1947",
+          "S1069",
+          "S1070",
+          "S1948",
+          "S792",
+          "S791",
+          "S790",
+          "S97"
+        ],
+        "rules": [
+          {
+            "rule": "location",
+            "passed": true,
+            "applicable": false,
+            "detail": "no observed bottleneck was active for at least 30 min (1 activated in all); nothing to reproduce"
+          },
+          {
+            "rule": "timing",
+            "passed": true,
+            "applicable": false,
+            "detail": "no observed bottleneck was active for at least 30 min (1 activated in all); nothing to reproduce"
+          },
+          {
+            "rule": "queue_reach",
+            "passed": true,
+            "applicable": false,
+            "detail": "no observed bottleneck was active for at least 30 min (1 activated in all); nothing to reproduce"
+          },
+          {
+            "rule": "no_phantom",
+            "passed": true,
+            "applicable": true,
+            "detail": "0 of 20 replicates (0%; limit 50%) contain a bottleneck active for more than 30 min away from every observed one (counted once per replicate); no simulated bottleneck away from the observed ones"
+          }
+        ],
+        "observed": [
+          {
+            "pair_index": 12,
+            "upstream": "S790",
+            "downstream": "S97",
+            "upstream_x_m": 10128.0,
+            "downstream_x_m": 11071.8,
+            "activation_s": 3600.0,
+            "activation_clock": "06:30",
+            "active_s": 1500.0,
+            "episodes": [
+              [
+                3600.0,
+                5100.0
+              ]
+            ],
+            "queue_reach_index": 6,
+            "queue_reach_station": "S1947"
+          }
+        ],
+        "matches": [],
+        "phantoms": [],
+        "n_replicates_with_phantom": 0,
+        "phantom_share": 0.0,
+        "phantom_replicates": [],
+        "simulated": [
+          [],
+          [],
+          [],
+          [],
+          [],
+          [],
+          [],
+          [],
+          [],
+          [],
+          [],
+          [],
+          [],
+          [],
+          [],
+          [],
+          [
+            {
+              "pair_index": 12,
+              "activation_s": 3600.0,
+              "active_s": 2100.0,
+              "queue_reach_index": 5
+            }
+          ],
+          [],
+          [],
+          []
+        ],
+        "notes": [
+          "simulated station speed = mean speed of the vehicles crossing the station's position in the window, each crossing interpolated between consecutive trajectory samples (observed_scores.json station_point_speeds_sim), as a loop detector there reads it (protocol section 5)"
+        ],
+        "thresholds": {
+          "upstream_speed_max_ms": 17.8816,
+          "upstream_speed_max": "40 mph (docs/FRISCO_PROTOCOL.md section 5)",
+          "speed_difference_min_ms": 8.9408,
+          "speed_difference_min": "20 mph (section 5)",
+          "window_s": 300.0,
+          "persistence": "5 of 7 consecutive windows (section 5; from a secondary summary, to be verified against Chen, Skabardonis & Varaiya 2004 before the first Frisco run)",
+          "min_observed_active_s": 1800.0,
+          "adjacent_pairs": 1,
+          "location_min_replicate_share": 0.8,
+          "activation_tolerance_s": 900.0,
+          "duration_tolerance_share": 0.3,
+          "queue_reach_tolerance_stations": 1,
+          "phantom_active_s": 1800.0,
+          "phantom_max_replicate_share": 0.5,
+          "phantom_counted": "per replicate: a replicate with any phantom counts once (section 5.4)",
+          "matching": "observed and simulated bottlenecks matched one to one per replicate (section 5.4): most reproduced, then most at their own pair, then longest active",
+          "label": "FlowState rules (docs/FRISCO_PROTOCOL.md section 5)"
+        }
+      },
+      "bottleneck_note": "",
+      "detector_wave_speed": {
+        "median_kmh": 19.308152197391564,
+        "iqr_kmh": [
+          18.17260403981194,
+          24.400419994072088
+        ],
+        "n_pairs": 13,
+        "n_used": 5,
+        "rejections": "2 fewer than min_events congested episodes downstream, 5 peak correlation below the acceptance floor, 1 peak lag is not positive (no backward propagation)",
+        "loo_n_dates": 4,
+        "loo_median_min_kmh": 19.162824095914218,
+        "loo_median_max_kmh": 21.513097299796506,
+        "loo_pairs_min": 4
+      },
+      "excluded_detectors": {
+        "3240": "S792 lane-3 loop chatters: 14 percent occupancy against 27-32 percent on its neighbours, 78 percent null night samples, count rises 775 veh/h into a bracket nothing enters (docs/ONBOARDING_MNDOT.md section 7 item 2, 2026-09-24)"
+      },
+      "notes": [
+        "C1 hours anchored at the study period's start (the warm-up's end), so the whole study period is scored (observed_scores.json link_hours_anchored; protocol section 4, C1)",
+        "simulated station speed = mean speed of the vehicles crossing the station's position in the window, each crossing interpolated between consecutive trajectory samples (observed_scores.json station_point_speeds_sim), as a loop detector there reads it (protocol section 5)",
+        "a station window no vehicle crosses reads the mean speed of the vehicles standing over the loop (front bumper within one vehicle length past the station; about zero in a stopped queue, as an occupied loop that counts nothing reads), and is not measured only when the loop is empty (observed_scores.json station_point_standstill)",
+        "speed blocks are anchored at the study period's start (the first analysed window); analysed windows at its end that fill no whole block are not scored: 6 at 60 min (C3 is the 15-minute value)"
+      ]
+    }
+  },
+  "per_day": {
+    "note": "validation days one by one (docs/FRISCO_PROTOCOL.md section 3.5): reported so the spread across days is visible; not part of the gate",
+    "checks": [
+      "C1",
+      "C3",
+      "C6"
+    ],
+    "rows": [
+      {
+        "date": "20260901",
+        "date_key": "20260901",
+        "path": "artifacts/p1_rehearsal_2026-10-04/per_day/observations_2026-09-01.json",
+        "quality_masked": true,
+        "checks": [
+          {
+            "check": "C1",
+            "name": "Link flows",
+            "day_set": "validation day 20260901",
+            "status": "fail",
+            "gating": false,
+            "satisfied": false,
+            "value": 0.6654761904761904,
+            "target": "GEH < 5 on >= 85.0 % of station-hour comparisons, hours anchored at the study period's start",
+            "shortfall": 0.18452380952380953,
+            "plain": "Link flows, validation day 20260901: GEH < 5 on 66.5 % of 840 station-hour comparisons pooled over 20 replicate(s) (per-replicate mean 66.5 %, 95 % interval 64.7 % to 68.4 %); the target is >= 85.0 %, short by 18.5 percentage points; hours anchored at the study period's start (1800 s).",
+            "label": "[federal] FHWA TAT Vol. III 2004 (profile fhwa_default)"
+          },
+          {
+            "check": "C3",
+            "name": "Speeds",
+            "day_set": "validation day 20260901",
+            "status": "fail",
+            "gating": false,
+            "satisfied": false,
+            "value": 0.7033875983890056,
+            "target": "RMSPE <= 15.0 % on station mean speeds at 15-minute aggregation",
+            "shortfall": 0.5533875983890055,
+            "plain": "Speeds, validation day 20260901: RMSPE of 15-minute station mean speeds 70.3 % (mean over 20 replicate(s), 95 % interval 67.7 % to 73.0 %; point speeds at the stations, as a loop reads them); the target is at most 15.0 %, over by 55.3 percentage points (diagnostics: 5 min 77.7 %; 60 min 59.0 %).",
+            "label": "common microsimulation practice (CLAUDE.md section 7.1), cited in the report"
+          },
+          {
+            "check": "C6",
+            "name": "Bottlenecks",
+            "day_set": "validation day 20260901",
+            "status": "fail",
+            "gating": false,
+            "satisfied": false,
+            "value": 3.0,
+            "target": "every observed bottleneck active for 30 min or more reproduced at the same or an adjacent station pair in at least 80.0 % of replicates (matched one to one), median activation within 15 min, duration and queue reach within tolerance, and phantom bottlenecks in at most half the replicates (protocol section 5)",
+            "shortfall": 3.0,
+            "plain": "Bottlenecks, validation day 20260901: 1 observed bottleneck(s), 1 active for 30 min or more, compared with 20 replicate(s) (point speeds at the stations, as a loop reads them); rule location fails \u2014 S790\u2192S97: reproduced at the same or an adjacent pair in 1 of 20 replicates (5%; needs 80%); rule timing fails \u2014 S790\u2192S97: median activation +0 min from the observed 06:30 (tolerance 15 min); median duration 35 min against 105 min observed (-67%; tolerance 30%); rule queue_reach fails \u2014 S790\u2192S97: median queue reach at station index 5 against 3 (S1066) observed (tolerance 1 station).",
+            "label": "[FlowState] protocol section 5"
+          }
+        ]
+      },
+      {
+        "date": "20260909",
+        "date_key": "20260909",
+        "path": "artifacts/p1_rehearsal_2026-10-04/per_day/observations_2026-09-09.json",
+        "quality_masked": true,
+        "checks": [
+          {
+            "check": "C1",
+            "name": "Link flows",
+            "day_set": "validation day 20260909",
+            "status": "fail",
+            "gating": false,
+            "satisfied": false,
+            "value": 0.7345238095238096,
+            "target": "GEH < 5 on >= 85.0 % of station-hour comparisons, hours anchored at the study period's start",
+            "shortfall": 0.1154761904761904,
+            "plain": "Link flows, validation day 20260909: GEH < 5 on 73.5 % of 840 station-hour comparisons pooled over 20 replicate(s) (per-replicate mean 73.5 %, 95 % interval 70.6 % to 76.4 %); the target is >= 85.0 %, short by 11.5 percentage points; hours anchored at the study period's start (1800 s).",
+            "label": "[federal] FHWA TAT Vol. III 2004 (profile fhwa_default)"
+          },
+          {
+            "check": "C3",
+            "name": "Speeds",
+            "day_set": "validation day 20260909",
+            "status": "fail",
+            "gating": false,
+            "satisfied": false,
+            "value": 0.828259853032786,
+            "target": "RMSPE <= 15.0 % on station mean speeds at 15-minute aggregation",
+            "shortfall": 0.678259853032786,
+            "plain": "Speeds, validation day 20260909: RMSPE of 15-minute station mean speeds 82.8 % (mean over 20 replicate(s), 95 % interval 79.7 % to 85.9 %; point speeds at the stations, as a loop reads them); the target is at most 15.0 %, over by 67.8 percentage points (diagnostics: 5 min 90.7 %; 60 min 68.8 %).",
+            "label": "common microsimulation practice (CLAUDE.md section 7.1), cited in the report"
+          },
+          {
+            "check": "C6",
+            "name": "Bottlenecks",
+            "day_set": "validation day 20260909",
+            "status": "fail",
+            "gating": false,
+            "satisfied": false,
+            "value": 1.0,
+            "target": "every observed bottleneck active for 30 min or more reproduced at the same or an adjacent station pair in at least 80.0 % of replicates (matched one to one), median activation within 15 min, duration and queue reach within tolerance, and phantom bottlenecks in at most half the replicates (protocol section 5)",
+            "shortfall": 1.0,
+            "plain": "Bottlenecks, validation day 20260909: 1 observed bottleneck(s), 1 active for 30 min or more, compared with 20 replicate(s) (point speeds at the stations, as a loop reads them); rule location fails \u2014 S790\u2192S97: reproduced at the same or an adjacent pair in 1 of 20 replicates (5%; needs 80%).",
+            "label": "[FlowState] protocol section 5"
+          }
+        ]
+      },
+      {
+        "date": "20260910",
+        "date_key": "20260910",
+        "path": "artifacts/p1_rehearsal_2026-10-04/per_day/observations_2026-09-10.json",
+        "quality_masked": true,
+        "checks": [
+          {
+            "check": "C1",
+            "name": "Link flows",
+            "day_set": "validation day 20260910",
+            "status": "fail",
+            "gating": false,
+            "satisfied": false,
+            "value": 0.6939024390243902,
+            "target": "GEH < 5 on >= 85.0 % of station-hour comparisons, hours anchored at the study period's start",
+            "shortfall": 0.15609756097560978,
+            "plain": "Link flows, validation day 20260910: GEH < 5 on 69.4 % of 820 station-hour comparisons pooled over 20 replicate(s) (per-replicate mean 69.4 %, 95 % interval 66.9 % to 71.8 %); the target is >= 85.0 %, short by 15.6 percentage points; hours anchored at the study period's start (1800 s).",
+            "label": "[federal] FHWA TAT Vol. III 2004 (profile fhwa_default)"
+          },
+          {
+            "check": "C3",
+            "name": "Speeds",
+            "day_set": "validation day 20260910",
+            "status": "fail",
+            "gating": false,
+            "satisfied": false,
+            "value": 0.45865891260295666,
+            "target": "RMSPE <= 15.0 % on station mean speeds at 15-minute aggregation",
+            "shortfall": 0.30865891260295664,
+            "plain": "Speeds, validation day 20260910: RMSPE of 15-minute station mean speeds 45.9 % (mean over 20 replicate(s), 95 % interval 42.9 % to 48.9 %; point speeds at the stations, as a loop reads them); the target is at most 15.0 %, over by 30.9 percentage points (diagnostics: 5 min 51.0 %; 60 min 31.4 %).",
+            "label": "common microsimulation practice (CLAUDE.md section 7.1), cited in the report"
+          },
+          {
+            "check": "C6",
+            "name": "Bottlenecks",
+            "day_set": "validation day 20260910",
+            "status": "fail",
+            "gating": false,
+            "satisfied": false,
+            "value": 2.0,
+            "target": "every observed bottleneck active for 30 min or more reproduced at the same or an adjacent station pair in at least 80.0 % of replicates (matched one to one), median activation within 15 min, duration and queue reach within tolerance, and phantom bottlenecks in at most half the replicates (protocol section 5)",
+            "shortfall": 2.0,
+            "plain": "Bottlenecks, validation day 20260910: 1 observed bottleneck(s), 1 active for 30 min or more, compared with 20 replicate(s) (point speeds at the stations, as a loop reads them); rule location fails \u2014 S790\u2192S97: reproduced at the same or an adjacent pair in 1 of 20 replicates (5%; needs 80%); rule timing fails \u2014 S790\u2192S97: median activation +15 min from the observed 06:15 (tolerance 15 min); median duration 35 min against 120 min observed (-71%; tolerance 30%).",
+            "label": "[FlowState] protocol section 5"
+          }
+        ]
+      },
+      {
+        "date": "20260917",
+        "date_key": "20260917",
+        "path": "artifacts/p1_rehearsal_2026-10-04/per_day/observations_2026-09-17.json",
+        "quality_masked": true,
+        "checks": [
+          {
+            "check": "C1",
+            "name": "Link flows",
+            "day_set": "validation day 20260917",
+            "status": "fail",
+            "gating": false,
+            "satisfied": false,
+            "value": 0.6012195121951219,
+            "target": "GEH < 5 on >= 85.0 % of station-hour comparisons, hours anchored at the study period's start",
+            "shortfall": 0.24878048780487805,
+            "plain": "Link flows, validation day 20260917: GEH < 5 on 60.1 % of 820 station-hour comparisons pooled over 20 replicate(s) (per-replicate mean 60.1 %, 95 % interval 58.5 % to 61.7 %); the target is >= 85.0 %, short by 24.9 percentage points; hours anchored at the study period's start (1800 s).",
+            "label": "[federal] FHWA TAT Vol. III 2004 (profile fhwa_default)"
+          },
+          {
+            "check": "C3",
+            "name": "Speeds",
+            "day_set": "validation day 20260917",
+            "status": "fail",
+            "gating": false,
+            "satisfied": false,
+            "value": 0.6212569005403892,
+            "target": "RMSPE <= 15.0 % on station mean speeds at 15-minute aggregation",
+            "shortfall": 0.47125690054038916,
+            "plain": "Speeds, validation day 20260917: RMSPE of 15-minute station mean speeds 62.1 % (mean over 20 replicate(s), 95 % interval 58.9 % to 65.4 %; point speeds at the stations, as a loop reads them); the target is at most 15.0 %, over by 47.1 percentage points (diagnostics: 5 min 71.9 %; 60 min 44.7 %).",
+            "label": "common microsimulation practice (CLAUDE.md section 7.1), cited in the report"
+          },
+          {
+            "check": "C6",
+            "name": "Bottlenecks",
+            "day_set": "validation day 20260917",
+            "status": "fail",
+            "gating": false,
+            "satisfied": false,
+            "value": 2.0,
+            "target": "every observed bottleneck active for 30 min or more reproduced at the same or an adjacent station pair in at least 80.0 % of replicates (matched one to one), median activation within 15 min, duration and queue reach within tolerance, and phantom bottlenecks in at most half the replicates (protocol section 5)",
+            "shortfall": 2.0,
+            "plain": "Bottlenecks, validation day 20260917: 1 observed bottleneck(s), 1 active for 30 min or more, compared with 20 replicate(s) (point speeds at the stations, as a loop reads them); rule location fails \u2014 S790\u2192S97: reproduced at the same or an adjacent pair in 1 of 20 replicates (5%; needs 80%); rule timing fails \u2014 S790\u2192S97: median activation -115 min from the observed 08:25 (tolerance 15 min); median duration 35 min against 30 min observed (+17%; tolerance 30%).",
+            "label": "[FlowState] protocol section 5"
+          }
+        ]
+      }
+    ],
+    "refused": [],
+    "missing_dates": []
+  },
+  "thresholds": {
+    "link_flow_profile": "fhwa_default (section 4, C1): GEH < 5 on >= 0.85 of station-hours, hours anchored at the study period's start",
+    "texas_profile": "txdot_tsap_ch13 (section 4, C2, not gating): GEH < 3 on every station-hour",
+    "speed_aggregation_s": 900.0,
+    "speed_rmspe_max": 0.15,
+    "speed_diagnostic_aggregations_s": [
+      300.0,
+      3600.0
+    ],
+    "simulated_station_speed": "point speeds (section 5), segment means only when the stored scores carry no point speeds, stated",
+    "wave_band_kmh": [
+      14.0,
+      22.0
+    ],
+    "wave_detector": "stack",
+    "wave_min_valid_pairs": 3,
+    "wave_min_front_replicate_share": 0.8,
+    "min_replicates": 20,
+    "gating_preconditions": [
+      "replicates",
+      "days",
+      "quality"
+    ],
+    "gating_calibration": [
+      "C1",
+      "C3",
+      "C5",
+      "C6"
+    ],
+    "gating_validation": [
+      "C1",
+      "C3",
+      "C6"
+    ],
+    "per_day_checks": [
+      "C1",
+      "C3",
+      "C6"
+    ],
+    "per_day": "validation days one by one (section 3.5); reported, not gating",
+    "c4": "passes or is not applicable (section 6)"
+  },
+  "notes": [
+    "simulated station speed = mean speed of the vehicles crossing the station's position in the window, each crossing interpolated between consecutive trajectory samples (observed_scores.json station_point_speeds_sim), as a loop detector there reads it (protocol section 5)",
+    "a station window no vehicle crosses reads the mean speed of the vehicles standing over the loop (front bumper within one vehicle length past the station; about zero in a stopped queue, as an occupied loop that counts nothing reads), and is not measured only when the loop is empty (observed_scores.json station_point_standstill)",
+    "C1 hours anchored at the study period's start (the warm-up's end), so the whole study period is scored (observed_scores.json link_hours_anchored; protocol section 4, C1)",
+    "speed blocks are anchored at the study period's start (the first analysed window); analysed windows at its end that fill no whole block are not scored: 6 at 60 min (C3 is the 15-minute value)"
+  ]
+}

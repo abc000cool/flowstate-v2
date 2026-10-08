@@ -21,6 +21,8 @@ owner's.
 
 ---
 
+**Status — 2026-10-08: Amendment 3's range round run** (p24, code 466193f; docs/A3_RANGE_ROUND.md §8; FRISCO_PROTOCOL "Adoption of Amendment 3", "Run"). Material in both families: at u = 1 against u = 0, S790 06:30 +700.7 [668.8, 732.6] veh/h, calibration-day C1 36.1 → 79.4 %, C3 38.3 → 73.0 % (F2); the gate fails at both ends and no share is chosen. F2's u0 reproduced p10's arm B in 20 of 20 seeds: Amendment 4 (i) holds and the W1b/W2 defaults stand (Amendment 4, "Resolved"). About $2.7 [estimate]. Open: the range reading for I-94 arms not run at u = 1 (D10's, B5's). p24 is not in the schedule table; it ran on a Central slot.
+
 ## B5 — a demand fitter whose objective sees insertion
 
 **Purpose.** `scripts/i24_fit_demand_scale.py` minimises segment-speed RMSPE on
@@ -89,7 +91,7 @@ $2.3). p17: 25 four-hour runs plus battery and gate, 155 + 12 min, **$2.2** (cap
 
 **Status — 2026-10-08 (I-24).** C7b selected `rcs`: p15 runs with `--p15-arm i24_replica_flow_rcs_speedcal_dc_refit:i24_replica_flow_rcs_corrected_dc:dc_refit_rcs` (921fb1f42c67; battery realised 0.9670, C2 floor 0.9570) on the pre-registered all-lane objective; its battery records crossings by lane so the lane-set share is reported beside it.
 
-**Status — 2026-10-08: I-24 run** (p15, code d8186f6; docs/I24_B5_RESULT.md; FRISCO_PROTOCOL Amendment 6, "Run on I-24"). On `rcs` the fit kept s = 0.925 (22 of 72 fit-hour bins, tied with 0.9, decided by mean GEH). The refit is `rcs` under another name and reproduces its battery; C1–C4 hold, C5 n/a, candidate; nothing changes on I-24, and adoption is the owner's. I-94 is running as p17 on `_rbc`.
+**Status — 2026-10-08: both corridors run** (Amendment 6). I-24 (p15, code d8186f6; docs/I24_B5_RESULT.md): the level stayed at 0.925. I-94 (p17, f454c7d; docs/I94_B5_RESULT.md): on `_rbc` the level moved from 1 to 0.95 (128 of 210 station-hours under GEH 5); C1–C4 and no-lock hold, C5 n/a, candidate; adoption is the owner's. Both arms still fail the gate. I-24 detail (p15): On `rcs` the fit kept s = 0.925 (22 of 72 fit-hour bins, tied with 0.9, decided by mean GEH). The refit is `rcs` under another name and reproduces its battery; C1–C4 hold, C5 n/a, candidate; nothing changes on I-24, and adoption is the owner's. I-94 is running as p17 on `_rbc`.
 
 ## B6 — a joint driver fit under the emergent-wave constraint
 
