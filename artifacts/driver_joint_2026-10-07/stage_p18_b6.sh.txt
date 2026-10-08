@@ -1,0 +1,173 @@
+# p18 (opt-in; docs/PRE_FRISCO_PROGRAM.md B6; proposed docs/FRISCO_PROTOCOL.md Amendment 7, approved by the
+#     coordinator 2026-10-07 21:16 CDT; not in the default list; needs the launcher's default --data-set i24: the
+#     batteries' observed side checks the recording's hash). A SNIPPET FOR scripts/gcp/pipeline_i24.sh, NOT INSERTED
+#     (written 2026-10-07 by the B6 local build; that file's owner inserts it, after stage p14's block and before
+#     "# 9. Done marker", and adds its stage test).
+#
+#     STATUS AS COMMITTED: THE STAGE'S GUARD FIRES AND NOTHING RUNS. Screen S1 (artifacts/driver_joint_screen_i24.json,
+#     scripts/driver_joint_screen.py, closed form, computed locally, $0) admits 5 of 25 pairs, all with k = 0 (mean
+#     a_max at the measured 1.055 m/s^2, mean T moved alone); every pair with k > 0 is string-stable at its own
+#     capacity density. That is the plan's Stop rule ("If S1 admits no pair with k > 0 ... the report says so"), so
+#     B6 stops before S2 and this stage is not to be launched. What follows is the design for the record, with its
+#     cost, in case the owner overrules the Stop.
+#
+#     Joint driver calibration on the I-24 arm. The arm is Phase A's: the B2 arm (the calibrated-arm candidate since
+#     protocol Amendment 5, adopted provisionally 2026-10-07), scenarios/i24_replica_flow_rc_speedcal_dc_refit.yaml,
+#     config hash 909b89f298c5, demand scale 0.925 carried;
+#     its battery artifacts/i24_validation_dc_refit_rc.json: GEH < 5 share 0.306, segment-speed RMSPE 0.343, wave row
+#     fails, realised demand 0.967, 0 collisions). Its population is artifacts/idm_i24_capacity_amax_k1.0.json, i.e.
+#     the grid pair (k, j) = (1, 0): every pair below is that arm with fleet.idm_calibration replaced and its name kept,
+#     so (1, 0) IS the arm, same config hash. The 25 populations: scripts/driver_joint_grid.py ->
+#     artifacts/driver_joint_grid_i24.json (mean a_max = 1.0549 + k x 0.4284 m/s^2, k in {0, 0.25, 0.5, 0.75, 1}; mean
+#     T = 1.3222 + j x 0.130302 s, j in {-2..2}; 0.130302 = 0.25 x sqrt(cov[T,T]) of artifacts/idm_i24.json).
+#       0. Guards. scripts/driver_joint_screen.py --check-stop (exit 10 = the Stop rule fired: the stage fails, nothing
+#          runs); scripts/driver_joint_grid.py --check (every population file is the derivation the manifest records).
+#       1. S2 (plan B6 step 3, fixed): straight-road capacity >= 1,775 veh/h/lane (docs/I24_CAPACITY.md section 4's
+#          target) on the capacity fixture: 4 lanes, 4,000 m, 2,400 veh/h/lane offered, 30 min with 300 s warm-up,
+#          throughput at x = 3,000 m, seeds 1 and 2 (the fixture's own, scripts/calibrate_capacity.py DEFAULT_SEEDS,
+#          those of artifacts/idm_i24_capacity.calibration.json), the arm's fleet / AV / sim blocks with the pair's
+#          population (--base-scenario). One scripts/calibrate_capacity.py call per S1 pair at --t-scales 1.0, so the
+#          table's one row is the pair's population unchanged; its derived artifact and sidecar go to runs/p18/s2/
+#          (never artifacts/: a sidecar there would enter the lineage readers). A pair whose two seeds both insert
+#          >= 0.98 of the offered demand is demand-limited (calibrate_capacity.DEMAND_LIMITED_INSERTED): its capacity
+#          is not measured and it does not pass (the fixture's own rule; reported). Reading -> artifacts/driver_joint_s2_i24.json.
+#          Note: a_max does not move the equilibrium, and the j = 0 populations keep the base's T, whose simulated
+#          capacity was calibrated TO this target (1,775 at T x 0.8749); two seeds cannot resolve j = 0 against it.
+#          S2 is one-sided: a lower T passes it by raising pre-breakdown capacity (Amendment 1's objection).
+#       2. Grid run (plan B6 step 4): the pairs passing S1 and S2, and the arm's own pair (1, 0) as the reference
+#          (reported; not a candidate: it fails S1), on the arm at its carried demand, 3 seeds (spawn_seeds(42, 20)[:3],
+#          the batteries' first three), readings as stage 22 (scripts/calibrate_driver_grid.py readings_i24: lane shares
+#          of vehicle-time on data x 0-5,500 m, 06:30-08:30, lanes 1-4 from the left, counts summed over seeds; the
+#          2-h flow at data x 2,200 / 3,200 m against 6,626 / 6,639 veh/h, seed mean). Selection, Amendment 1's rule
+#          as B6 restates it: among the candidates, lane-share RMSE within 1 pp of the candidates' minimum; then the
+#          smallest discharge error; ties to the smaller change (|k|, then |j|). Amendment 1's last sentence (the
+#          current setting stays when no pair improves) is not applied: the current I-24 setting fails S1; each
+#          candidate's improvement against the reference pair is reported. -> artifacts/driver_joint_i24.json.
+#       3. Stage 3 (plan B6 step 5) on the chosen pair: a copy of the rc family's driver-calibrated corrected base
+#          (scenarios/i24_replica_flow_rc_corrected_dc.yaml, 219f7db55a74) with only name and fleet.idm_calibration
+#          changed; B5's fitter on it (Amendment 6's rule: GEH < 5 share on 06:30-07:30, 07:30-08:30 held out; mean
+#          inserted fraction over the fit seeds >= the reference battery's realised share - 0.01; five seeds per scale;
+#          coarse 0.6-1.1 by 0.1, then +-2 x 0.025); one 20-seed battery (spawn_seeds(42, 20)) through stage p12's
+#          path (scripts/i24_validate.py, the 20-seed ring rows, --analysis-procs 8; first-seed trajectories kept);
+#          then the readout by Amendment 2's rule against the B2 arm's battery (same seeds): REQUIRED (B6 step 5, as the
+#          plan fixes them) - the stack wave criterion (14-22 km/h) passes; GEH < 5 share (the battery's link_flows_geh
+#          row) not below 0.306 and segment-speed RMSPE (speeds_rmspe row, Amendment 2's reading) not above 0.343;
+#          mean realised demand share >= the reference's - 0.01 (0.967 - 0.01); zero collisions in every run;
+#          backward fronts per replicate (n_backward, standard and stripe detectors) not below the reference's by more
+#          than a third (A4). Reported, not gating: the 15-min RMSPE, peak-section GEH, the breakdown reading
+#          (coordinator, 2026-10-07: a replicate under 0.9 of its plan while the battery's mean is >= 0.95), no_locks.
+#          A pass makes a calibrated-arm candidate on the one recorded morning; adoption is the owner's. The reference
+#          is the committed battery (cross-code, same seeds), as Amendment 2 read its reference. If the code's config
+#          hash of the arm is no longer 909b89f298c5 (a hash-policy change: the working tree of 2026-10-07 late
+#          evening, with packages/flowstate_core/config.py modified and uncommitted, hashes the arm 7082bcea5442 and
+#          the base 1a7797ea614d), the guards below refuse, and the arm must first be re-run as a same-code reference
+#          (as p14 did; +25-27 min, +$0.35) and the two hashes updated.
+#     Interfaces. Built and used as is: scripts/driver_joint_screen.py, scripts/driver_joint_grid.py,
+#     scripts/calibrate_capacity.py, scripts/i24_validate.py, p4_prune. ASSUMED, being built by the B5 agent:
+#     scripts/fit_demand_level.py --corridor i24 --base-yaml <scenario> --fleet-artifact <population>
+#       --from-battery <battery whose demand_realized_fraction mean sets the constraint> --procs N --out <json>
+#       --write-scenario --scenario-out <yaml> --name <name>, the flags of scripts/i24_fit_demand_scale.py where they
+#       overlap; exit 0 with best.scale and the scenario written; a nonzero exit with "constraint_unmet": true in --out
+#       and no scenario when no scale qualifies (B5's Stop). NOT BUILT (B6 stopped at S1; build only if the Stop is
+#       overruled): scripts/driver_joint_s2.py (reads the runs/p18/s2 sidecars' one-row tables against the target;
+#       --list-pass prints "k j population" of the S1 and S2 pairs) and scripts/driver_joint_run.py (run: the grid as
+#       scripts/calibrate_driver_grid.py run_grid does it, reusing its _worker / readings_i24 / _score_i24 /
+#       observed_i24, the arm hash guarded, --mem-per-run-gb 4.5 so 14 runs share 64 GB as in stages p13-p14;
+#       select: the rule above, prints "k j population tag" of the rank-th choice, exit 3 when none is scored;
+#       base-copy: the stage-3 base, source hash guarded; stage3: the readout above).
+#     Cost on n2d-standard-16 ($0.78/h, $0.013/min; $PROCS = 14) [estimate]. As committed: $0 (the guard fires;
+#     do not launch). As designed, worst case (all 25 pairs pass S1 and S2): S2 50 fixture runs of 18-30 s
+#     (the committed capacity sidecars' wall_s) at 14 at once, about 3-5 min; grid 25 pairs (the reference among
+#     them) x 3 seeds = 75 two-hour runs in 6 waves of 14 at 12-13 min (p14's fit), about 72-78 min plus readings;
+#     stage 3 the fit's 50 runs in 4
+#     waves, about 48-52 min, its battery 25-27 min (p13: 1,522 s) plus about 5 min of analysis: about 160-170 min
+#     of stage time, 172-182 min billed with boot, setup and the I-24 data, about $2.2-2.4 (the plan's $2.2);
+#     --cap-min 300 bounds it at $3.9. With the committed S1 (the 5 k = 0 pairs, if the Stop were overruled): S2 10
+#     runs, about 2 min; grid 6 x 3 = 18 runs in 2 waves, about 26 min; stage 3 about 82 min: about 110 + 12 min,
+#     about $1.6; --cap-min 240 ($3.1). A second pair (p18b: stage 3 only, the rule's second choice): about
+#     82 + 12 min, $1.2 (the plan's $1.1); --cap-min 150 ($2.0).
+#       scripts/gcp/launch_i24_pipeline.sh --vm flowstate-p18 --machine n2d-standard-16 \
+#         --zone us-east1-b,us-east1-c,us-east1-d --bucket gs://<bucket>/p18 \
+#         --self-delete --via-bucket --data-set i24 --cap-min 300 --pipeline-args '--stages "p18_i24_b6"'
+P18_ARM=scenarios/i24_replica_flow_rc_speedcal_dc_refit.yaml
+P18_ARM_HASH=909b89f298c5
+P18_BASE=scenarios/i24_replica_flow_rc_corrected_dc.yaml
+P18_BASE_HASH=219f7db55a74
+P18_REF=artifacts/i24_validation_dc_refit_rc.json
+P18_S2=artifacts/driver_joint_s2_i24.json
+P18_OUT=artifacts/driver_joint_i24.json
+P18_TARGET=1775
+P18_RUN=scripts/driver_joint_run.py   # NOT BUILT (see the header)
+p18_guard() {  # the plan's Stop rule, then the populations' lineage
+  $RUN scripts/driver_joint_screen.py --check-stop
+  local rc=$?
+  if [ "$rc" -eq 10 ]; then say "p18: S1 admits no pair with k > 0 - the plan's Stop rule; nothing run"; return 1; fi
+  [ "$rc" -eq 0 ] || { say "p18: the S1 artifact could not be read (exit $rc); nothing run"; return 1; }
+  $RUN scripts/driver_joint_grid.py --check || { say "p18: a population is not the recorded derivation; nothing run"; return 1; }
+}
+p18_s2_one() {  # p18_s2_one <k> <j> <population>: the capacity fixture on one pair, two seeds (resumable)
+  local d="runs/p18/s2/k$1_j$2"
+  [ -f "$d/population.calibration.json" ] && return 0
+  mkdir -p "$d"
+  $RUN scripts/calibrate_capacity.py --source "$3" --out "$d/population.json" --target "$P18_TARGET" --lanes 4 \
+      --base-scenario "$P18_ARM" --t-scales 1.0 --seeds 1 2 --procs 2 > "$d/calibrate_capacity.log" 2>&1
+}
+p18_s2() {
+  local k j pop par=$((PROCS / 2))
+  [ "$par" -ge 1 ] || par=1
+  mkdir -p runs/p18/s2
+  $RUN scripts/driver_joint_screen.py --list-pass > runs/p18/s1_pass.txt || return 1
+  while read -r k j pop; do
+    p18_s2_one "$k" "$j" "$pop" &
+    while [ "$(jobs -rp | wc -l)" -ge "$par" ]; do wait -n; done
+  done < runs/p18/s1_pass.txt
+  wait
+  $RUN scripts/driver_joint_s2.py --runs runs/p18/s2 --screen artifacts/driver_joint_screen_i24.json \
+      --target "$P18_TARGET" --out "$P18_S2" || { say "p18: S2 reading failed"; return 1; }   # NOT BUILT
+}
+p18_stage3() {  # p18_stage3 <rank>: the rank-th choice's base copy, B5 refit, 20-seed battery, readout
+  local rank="$1" k j pop tag base scn fit label
+  read -r k j pop tag < <($RUN "$P18_RUN" select --artifact "$P18_OUT" --rank "$rank") \
+    || { say "p18: no pair of rank $rank to take to stage 3"; return 1; }
+  base="scenarios/i24_replica_flow_rc_corrected_b6_$tag.yaml"
+  scn="scenarios/i24_replica_flow_rc_speedcal_b6_${tag}_refit.yaml"
+  fit="artifacts/demand_level_i24_b6_$tag.json"
+  label="p18_b6_$tag"
+  $RUN "$P18_RUN" base-copy --source "$P18_BASE" --source-hash "$P18_BASE_HASH" --population "$pop" --out "$base" \
+    || { say "p18: no stage-3 base for $tag"; return 1; }
+  if [ -f "logs/p18_fit_$tag.ok" ] && [ -f "$fit" ] && [ -f "$scn" ]; then
+    say "p18: the fit on $tag was done earlier ($fit), not repeated"
+  else
+    $RUN scripts/fit_demand_level.py --corridor i24 --base-yaml "$base" --fleet-artifact "$pop" --from-battery "$P18_REF" \
+        --procs "$PROCS" --out "$fit" --write-scenario --scenario-out "$scn" --name "$(basename "$scn" .yaml)" \
+      || { say "p18: B5's fit on $tag failed or flagged constraint_unmet; its battery skipped"; return 1; }   # ASSUMED (B5)
+    touch "logs/p18_fit_$tag.ok"
+  fi
+  if ! { [ -f "logs/$label.battery.ok" ] && [ -f "artifacts/i24_validation_$label.json" ]; }; then
+    $RUN scripts/i24_validate.py --scenario "$scn" --label "$label" --replicates "$REPS" --procs "$PROCS" \
+        --analysis-procs 8 --ring-seeds "$RING" || { say "p18: battery $label failed"; return 1; }
+    p4_prune "runs/i24_validation/$label"
+    touch "logs/$label.battery.ok"
+  fi
+  $RUN "$P18_RUN" stage3 --battery "artifacts/i24_validation_$label.json" --reference "$P18_REF" \
+      --reference-hash "$P18_ARM_HASH" --fit "$fit" --out "$P18_OUT" || { say "p18: stage-3 readout of $tag failed"; return 1; }
+}
+p18_steps() {
+  p18_guard || return 1
+  p18_s2 || return 1
+  $RUN "$P18_RUN" run --arm "$P18_ARM" --arm-hash "$P18_ARM_HASH" --pairs-from "$P18_S2" --reference-pair 1.0 0 \
+      --seeds 3 --procs "$PROCS" --mem-per-run-gb 4.5 --out runs/p18/grid || { say "p18: grid run failed"; return 1; }
+  $RUN "$P18_RUN" select --artifact "$P18_OUT" --runs runs/p18/grid --write || { say "p18: no pair selected"; return 1; }
+  make_archive light   # the grid and its readout leave the machine before stage 3
+  p18_stage3 1
+}
+p18b_steps() {  # the second pair, in its own launch (plan B6 step 5: at most two pairs, the second separately)
+  p18_guard || return 1
+  p18_stage3 2
+}
+if echo " $STAGES " | grep -q " p18_i24_b6 "; then
+  stage p18_i24_b6 p18_steps || say "p18_i24_b6 failed; continuing"
+fi
+if echo " $STAGES " | grep -q " p18b_i24_b6 "; then
+  stage p18b_i24_b6 p18b_steps || say "p18b_i24_b6 failed; continuing"
+fi

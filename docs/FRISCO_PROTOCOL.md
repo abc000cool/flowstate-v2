@@ -763,3 +763,68 @@ corrected and scored: a calibration candidate, not a validated arm.
 3. B5, the insertion-aware demand fit, on the `_rc` family, read by C1–C5 (docs/I24_DISCHARGE_DIAGNOSIS.md §8.4.5).
 4. A diagnosis of the hourly GEH shortfall on `_rc`.
 5. External ramp counts (TDOT radar counts for 30 Nov 2022, not in hand; docs/ROADMAP.md §6, item 7).
+
+### Amendment 7 — 2026-10-07: proposed; approved by the coordinator under the owner's delegation (mean `a_max` and mean T moved together under the emergent-wave constraint)
+
+Written before any run that uses it (docs/PRE_FRISCO_PROGRAM.md B6). **Why.** Amendment 1 moved mean `a_max`
+alone; at k = 1 the mean driver is string-stable at its capacity density (band from 39.7 veh/km against 29.2) and
+every k = 1 I-24 arm lost the wave row; CLAUDE.md §3.1 requires instability near capacity. **What §7.2 adds.** "A
+single corridor-wide adjustment" is read as one population moved as a whole, which two of its means satisfy: mean
+`a_max` = measured mean + k·sd, k ∈ {0, 0.25, 0.5, 0.75, 1}; mean T = the capacity-calibrated mean + j·0.25·sd(T),
+j ∈ {−2…2} (I-24: 1.3222 s, step 0.1303 s); sd from the measured source's covariance; both inside the measured
+mean ± 1 sd. **Rule (fixed now).** S1: the mean driver's `unstable_band` lower edge at or below its density of
+maximum equilibrium flow (δ = 4, 5-m vehicles). S2: straight-road capacity ≥ 1,775 veh/h/lane (4 lanes,
+2,400 veh/h/lane, 30 min, 2 seeds). Grid run on S1 ∩ S2, the corridor's arm at its carried demand, 3 seeds;
+Amendment 1's selection (lane-share RMSE within 1 pp of the candidates' minimum, then smallest discharge error,
+ties to the smaller change: |k|, then |j|); Amendment 1's last sentence is not applied where the current setting
+fails S1, and improvements against it are reported. Stage 3: the chosen pair's Amendment-6 refit and a 20-seed
+battery against the arm: stack wave criterion passes (14–22 km/h); GEH < 5 share not below and segment-speed RMSPE
+not above the reference's; mean realised share ≥ reference − 0.01; zero collisions; backward fronts per replicate
+not more than a third below the reference's. At most two pairs reach stage 3, the second in its own launch.
+**Stop:** if S1 admits no pair with k > 0, nothing further runs and the report says so. IDM fleets only.
+
+**Result of S1 — 2026-10-07 (closed form, $0; `artifacts/driver_joint_screen_i24.json`).** 5 of 25 pairs pass,
+all k = 0. Every pair with k > 0 is stable at its own capacity density. The nearest miss is k = 0.25, j = −2:
+33.87 against 33.27 veh/km. The Stop rule fires: no `a_max` gain on this grid is compatible with §3.1 at
+T 1.06–1.58 s. What passes moves T alone, which is Amendment 1's objection, and S2 is one-sided. Nothing launched.
+
+### Amendment 9 — 2026-10-07: a day already used to calibrate stays in calibration; CIRCLES test-fleet days are events (approved by the coordinator under the owner's delegation, before any new day's file was read)
+
+**Why.** §3.2's seeded draw can send a day to validation although the model was already calibrated on it;
+every I-24 calibration (FD, driver population, demand scale, the B2 ramp correction) used 30 Nov 2022.
+**Rule (§3.1, §3.2 extended).** (1) A day already used to calibrate is pinned to calibration. It must pass
+§3.1's screen like any candidate, or the split is refused. The calibration total stays floor(0.6 × all
+candidates); pinned days fill its first places; the places left are drawn from the other candidates by §3.2's
+procedure (their volume terciles, largest-remainder allocation, at least one per tercile when they allow, seed
+20261004). Without a pin the draw is §3.2's exactly. (2) A day on which the CIRCLES test fleet drove the stretch
+(the MegaVanderTest week, 14–18 Nov 2022; CLAUDE.md §13) is an event affecting the stretch (§3.1) and is
+excluded. **On I-24.** Three candidates give one calibration place, filled by 30 Nov; both new mornings are
+validation days and no draw is made. That is below §3.3's 5 / 3 on both sides and is reported as underpowered;
+5 / 3 with the pin needs 9 candidates. **Change control.** The split as written is recorded beside the amended
+one (`c9_amendment.as_written`) and the re-score is reported under both. Tool: `scripts/day_split.py
+--pin-calibration DATE=REASON --circles-events`. Stage `p20_i24_days` (docs/PRE_FRISCO_PROGRAM.md C9;
+`artifacts/i24_days_2026-10-07/stage_p20_c9.sh.txt`) runs once the owner's two mornings are in the bucket.
+
+### Amendment 6 — 2026-10-07: the demand level is fitted on link flows under an insertion constraint (approved by the coordinator under the owner's delegation, before any run)
+
+**Why.** §7.1 asks for a GEH-driven demand fit within the count uncertainty. The speed-objective fitter cannot
+see vehicles held off the network and twice chose a backlog: Amendment 2's refits realised 0.918 / 0.930 against
+the 0.977 floor, and round p14 chose s = 1.125 inserting 0.783, failing C2 and C3 (I24_DISCHARGE_DIAGNOSIS §8.4.6).
+**Rule, fixed now.** The demand level is one factor s on the mainline and on-ramp inflows; exit fractions and
+the boundary are unchanged. (1) *Seeds:* every grid scale runs on the from-arm battery's first five seeds.
+(2) *Constraint:* the mean inserted fraction (departed / planned) over those seeds must be at least the from-arm
+battery's mean realised share − 0.01 (Amendment 2's clarification). If no scale qualifies, the fit is
+`constraint_unmet`: nothing is chosen, no scenario is written, and the round stops. (3) *Objective:* among
+qualifying scales, the largest share of fit-window flow bins with GEH < 5, read with the corridor's own
+link-flow estimator. On I-24: the criterion row's (section, 5-min) bins of 06:30–07:30 against the
+recommended-coverage counts, on the seeds' mean flow per bin; 07:30–08:30 is held out and reported. On a
+detector corridor: C1's calibration-day station-hours (hours anchored at the study period's start), every
+seed's pooled. Ties go to the smaller mean GEH over the same bins, then the smaller change |s − s_from| from the
+from-arm's level, then the smaller scale. Speed RMSPE is reported, never selected on. (4) *Grids:* I-24 coarse
+0.6–1.1 by 0.1, then ±2 × 0.025 around the coarse round's constrained choice. A detector corridor: one factor,
+0.95–1.05 by 0.025, which must lie within the data-quality artifact's `count_error`. (5) *Reading:* the chosen
+level's 20-seed battery against the from-arm's, same seeds, by §8.4.5's C1–C5; on a detector corridor C3/C4/C5
+are the gate's calibration-day C1/C3/C4, plus §9.5's no-lock check. A level that passes is a candidate; adoption
+is the owner's. On I-24 this is calibration, never validation. Implemented by `calibration.demand_level`,
+`scripts/fit_demand_level.py`, stages `p15_i24_b5` / `p17_i94_b5` (docs/PRE_FRISCO_PROGRAM.md B5);
+`scripts/i24_fit_demand_scale.py` is unchanged. p15 runs on the arm that C7b's fixed rule selects.

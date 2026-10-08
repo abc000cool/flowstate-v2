@@ -1,0 +1,449 @@
+{
+ "schema": "flowstate.driver_joint_grid/1",
+ "protocol": "docs/PRE_FRISCO_PROGRAM.md B6; docs/FRISCO_PROTOCOL.md Amendment 7 (proposed; approved by the coordinator 2026-10-07 21:16 CDT)",
+ "created_at": "2026-10-08T02:38:43Z",
+ "script": "scripts/driver_joint_grid.py",
+ "base": {
+  "path": "artifacts/idm_i24_capacity.json",
+  "sha256": "80a7579b72510112e5131f73b02ce9afbb0df13eda3febf3cf8411dfb8296217",
+  "mean_T_s": 1.3221695251256709,
+  "mean_a_max_ms2": 1.054909533427964
+ },
+ "measured": {
+  "path": "artifacts/idm_i24.json",
+  "sha256": "224a53dc670215da9025b50aa4b017e56429ea8f107d5d56ec35af7681f4d162",
+  "mean": {
+   "a_max": 1.054909533427964,
+   "T": 1.5112009904800698
+  },
+  "sd": {
+   "a_max": 0.42841658431377566,
+   "T": 0.5212073454951198
+  },
+  "measured_range": {
+   "a_max": [
+    0.6264929491141882,
+    1.4833261177417396
+   ],
+   "T": [
+    0.98999364498495,
+    2.0324083359751897
+   ]
+  },
+  "range_rule": "measured mean \u00b1 1 sd (sqrt of the covariance diagonal), inside CLAUDE.md \u00a73.1's calibration range (docs/FRISCO_PROTOCOL.md \u00a77.2)"
+ },
+ "steps": {
+  "a_max_per_unit_k_ms2": 0.42841658431377566,
+  "a_max_formula": "mean a_max = measured mean + k x sqrt(cov[a_max, a_max]) of the measured population",
+  "T_step_s": 0.13030183637377996,
+  "T_step_derivation": {
+   "cov_T_T_s2": 0.2716570969980692,
+   "sd_T_s": 0.5212073454951198,
+   "fraction_of_sd": 0.25,
+   "value_s": 0.13030183637377996,
+   "quoted_in_plan_s": 0.13,
+   "matches_quote": true,
+   "base_T_quoted_in_plan_s": 1.322,
+   "base_T_matches_quote": true,
+   "source": "the measured population's covariance (the base carries the same one)"
+  },
+  "T_formula": "mean T = the base's mean T + j x 0.25 x sqrt(cov[T, T]) of the measured population"
+ },
+ "k_grid": [
+  0.0,
+  0.25,
+  0.5,
+  0.75,
+  1.0
+ ],
+ "j_grid": [
+  -2,
+  -1,
+  0,
+  1,
+  2
+ ],
+ "naming": {
+  "(0, 0)": "artifacts/idm_i24_capacity.json",
+  "(k, 0), k > 0": "<amax dir>/idm_i24_capacity_amax_k<k>.json (scripts/derive_population.py, Amendment 1; checked equal to the derivation)",
+  "(k, j), j != 0": "<out dir>/idm_i24_capacity_joint_k<k>_j<+j|-j>.json (written here)"
+ },
+ "pairs": [
+  {
+   "k": 0.0,
+   "j": -2,
+   "a_max_mean_ms2": 1.054909533427964,
+   "T_mean_s": 1.061565852378111,
+   "path": "artifacts/idm_i24_capacity_joint_k0.0_j-2.json",
+   "sha256": "ce2aa23294a0233539e56aa8a937997406f3bc43e11f3a8d3da16d76769b6509",
+   "origin": "scripts/driver_joint_grid.py",
+   "means_moved_from_base": [
+    "T"
+   ],
+   "package_lineage": {
+    "source": "artifacts/idm_i24.json",
+    "source_label": "artifacts/idm_i24.json (sha256 224a53dc6702; 12356 fitted episodes)",
+    "how": "sidecar artifacts/idm_capacity_probe_i24fleet_3l.calibration.json; covariance shared, mean T / v0 scaled"
+   }
+  },
+  {
+   "k": 0.0,
+   "j": -1,
+   "a_max_mean_ms2": 1.054909533427964,
+   "T_mean_s": 1.1918676887518909,
+   "path": "artifacts/idm_i24_capacity_joint_k0.0_j-1.json",
+   "sha256": "c952e4301d039fd1283d5d71e039b1d6303afe2cd17db04d79ad3efef9ce8bab",
+   "origin": "scripts/driver_joint_grid.py",
+   "means_moved_from_base": [
+    "T"
+   ],
+   "package_lineage": {
+    "source": "artifacts/idm_i24.json",
+    "source_label": "artifacts/idm_i24.json (sha256 224a53dc6702; 12356 fitted episodes)",
+    "how": "sidecar artifacts/idm_capacity_probe_i24fleet_3l.calibration.json; covariance shared, mean T / v0 scaled"
+   }
+  },
+  {
+   "k": 0.0,
+   "j": 0,
+   "a_max_mean_ms2": 1.054909533427964,
+   "T_mean_s": 1.3221695251256709,
+   "path": "artifacts/idm_i24_capacity.json",
+   "sha256": "80a7579b72510112e5131f73b02ce9afbb0df13eda3febf3cf8411dfb8296217",
+   "origin": "base",
+   "means_moved_from_base": [],
+   "package_lineage": {
+    "source": "artifacts/idm_i24.json",
+    "source_label": "artifacts/idm_i24.json (sha256 224a53dc6702; 12356 fitted episodes)",
+    "how": "sidecar artifacts/idm_i24_capacity.calibration.json; covariance shared, mean T / v0 scaled"
+   }
+  },
+  {
+   "k": 0.0,
+   "j": 1,
+   "a_max_mean_ms2": 1.054909533427964,
+   "T_mean_s": 1.4524713614994509,
+   "path": "artifacts/idm_i24_capacity_joint_k0.0_j+1.json",
+   "sha256": "2b704e95a7dc79b99c35f29abc77a20d694b8457ab62d863614b77653c811d8a",
+   "origin": "scripts/driver_joint_grid.py",
+   "means_moved_from_base": [
+    "T"
+   ],
+   "package_lineage": {
+    "source": "artifacts/idm_i24.json",
+    "source_label": "artifacts/idm_i24.json (sha256 224a53dc6702; 12356 fitted episodes)",
+    "how": "sidecar artifacts/idm_capacity_probe_i24fleet_3l.calibration.json; covariance shared, mean T / v0 scaled"
+   }
+  },
+  {
+   "k": 0.0,
+   "j": 2,
+   "a_max_mean_ms2": 1.054909533427964,
+   "T_mean_s": 1.5827731978732307,
+   "path": "artifacts/idm_i24_capacity_joint_k0.0_j+2.json",
+   "sha256": "ffc1c8880769f864ccc85c676768ad33e2e55d253c0dd755809e28267f75b663",
+   "origin": "scripts/driver_joint_grid.py",
+   "means_moved_from_base": [
+    "T"
+   ],
+   "package_lineage": {
+    "source": "artifacts/idm_i24.json",
+    "source_label": "artifacts/idm_i24.json (sha256 224a53dc6702; 12356 fitted episodes)",
+    "how": "sidecar artifacts/idm_capacity_probe_i24fleet_3l.calibration.json; covariance shared, mean T / v0 scaled"
+   }
+  },
+  {
+   "k": 0.25,
+   "j": -2,
+   "a_max_mean_ms2": 1.1620136795064078,
+   "T_mean_s": 1.061565852378111,
+   "path": "artifacts/idm_i24_capacity_joint_k0.25_j-2.json",
+   "sha256": "e29499107841ba309aff74375023e624a135e47c150ba9eb6b235b5e32ae6266",
+   "origin": "scripts/driver_joint_grid.py",
+   "means_moved_from_base": [
+    "a_max",
+    "T"
+   ],
+   "package_lineage": null
+  },
+  {
+   "k": 0.25,
+   "j": -1,
+   "a_max_mean_ms2": 1.1620136795064078,
+   "T_mean_s": 1.1918676887518909,
+   "path": "artifacts/idm_i24_capacity_joint_k0.25_j-1.json",
+   "sha256": "1e2912e9e735fa413f6049ac8aecabd56eb1cbbbb3a022985fa6401d530a145b",
+   "origin": "scripts/driver_joint_grid.py",
+   "means_moved_from_base": [
+    "a_max",
+    "T"
+   ],
+   "package_lineage": null
+  },
+  {
+   "k": 0.25,
+   "j": 0,
+   "a_max_mean_ms2": 1.1620136795064078,
+   "T_mean_s": 1.3221695251256709,
+   "path": "artifacts/idm_i24_capacity_amax_k0.25.json",
+   "sha256": "3baf93b63cce595a0e7a5420c2e1def10bda5c3a091d7c74d5540ddfaa8ffa2d",
+   "origin": "scripts/derive_population.py (Amendment 1)",
+   "means_moved_from_base": [
+    "a_max"
+   ],
+   "package_lineage": {
+    "source": "artifacts/idm_i24.json",
+    "source_label": "artifacts/idm_i24.json (sha256 224a53dc6702; 12356 fitted episodes)",
+    "how": "mean a_max shifted from artifacts/idm_i24_capacity.json (sha256 80a7579b7251) (scripts/derive_population.py, no sidecar); that base is the source with mean T / v0 scaled (sidecar artifacts/idm_i24_capacity.calibration.json); covariance shared"
+   }
+  },
+  {
+   "k": 0.25,
+   "j": 1,
+   "a_max_mean_ms2": 1.1620136795064078,
+   "T_mean_s": 1.4524713614994509,
+   "path": "artifacts/idm_i24_capacity_joint_k0.25_j+1.json",
+   "sha256": "e3626f054114d68618dee378cb2a66371148e264e4de957b33b63115b0686c76",
+   "origin": "scripts/driver_joint_grid.py",
+   "means_moved_from_base": [
+    "a_max",
+    "T"
+   ],
+   "package_lineage": null
+  },
+  {
+   "k": 0.25,
+   "j": 2,
+   "a_max_mean_ms2": 1.1620136795064078,
+   "T_mean_s": 1.5827731978732307,
+   "path": "artifacts/idm_i24_capacity_joint_k0.25_j+2.json",
+   "sha256": "42d95ac7874c657d1cc4510075c683b3b69c3520f111bd65c670d027723ecb6d",
+   "origin": "scripts/driver_joint_grid.py",
+   "means_moved_from_base": [
+    "a_max",
+    "T"
+   ],
+   "package_lineage": null
+  },
+  {
+   "k": 0.5,
+   "j": -2,
+   "a_max_mean_ms2": 1.2691178255848516,
+   "T_mean_s": 1.061565852378111,
+   "path": "artifacts/idm_i24_capacity_joint_k0.5_j-2.json",
+   "sha256": "8614d376b7cb5e27a33c62b4c5e36e8198f3adbe4fe66fe92ba34c280150c87b",
+   "origin": "scripts/driver_joint_grid.py",
+   "means_moved_from_base": [
+    "a_max",
+    "T"
+   ],
+   "package_lineage": null
+  },
+  {
+   "k": 0.5,
+   "j": -1,
+   "a_max_mean_ms2": 1.2691178255848516,
+   "T_mean_s": 1.1918676887518909,
+   "path": "artifacts/idm_i24_capacity_joint_k0.5_j-1.json",
+   "sha256": "b5e773a5e703d05a7ce5a7a51bbb4a31c7a1e618664cf535e5a81163a2ebf97f",
+   "origin": "scripts/driver_joint_grid.py",
+   "means_moved_from_base": [
+    "a_max",
+    "T"
+   ],
+   "package_lineage": null
+  },
+  {
+   "k": 0.5,
+   "j": 0,
+   "a_max_mean_ms2": 1.2691178255848516,
+   "T_mean_s": 1.3221695251256709,
+   "path": "artifacts/idm_i24_capacity_amax_k0.5.json",
+   "sha256": "d7530259e114be49b245cfe7df9beacdb451d0816a2b16b78ff6746165c8fe40",
+   "origin": "scripts/derive_population.py (Amendment 1)",
+   "means_moved_from_base": [
+    "a_max"
+   ],
+   "package_lineage": {
+    "source": "artifacts/idm_i24.json",
+    "source_label": "artifacts/idm_i24.json (sha256 224a53dc6702; 12356 fitted episodes)",
+    "how": "mean a_max shifted from artifacts/idm_i24_capacity.json (sha256 80a7579b7251) (scripts/derive_population.py, no sidecar); that base is the source with mean T / v0 scaled (sidecar artifacts/idm_i24_capacity.calibration.json); covariance shared"
+   }
+  },
+  {
+   "k": 0.5,
+   "j": 1,
+   "a_max_mean_ms2": 1.2691178255848516,
+   "T_mean_s": 1.4524713614994509,
+   "path": "artifacts/idm_i24_capacity_joint_k0.5_j+1.json",
+   "sha256": "ff6827b38b4a3d0895b085b4011210d4b23e7343a0ea6301f3b623f2e74a345e",
+   "origin": "scripts/driver_joint_grid.py",
+   "means_moved_from_base": [
+    "a_max",
+    "T"
+   ],
+   "package_lineage": null
+  },
+  {
+   "k": 0.5,
+   "j": 2,
+   "a_max_mean_ms2": 1.2691178255848516,
+   "T_mean_s": 1.5827731978732307,
+   "path": "artifacts/idm_i24_capacity_joint_k0.5_j+2.json",
+   "sha256": "c592a2f2f4930d331993b86ccc62add02f906280429f5a8f4ba00387b8f70a6a",
+   "origin": "scripts/driver_joint_grid.py",
+   "means_moved_from_base": [
+    "a_max",
+    "T"
+   ],
+   "package_lineage": null
+  },
+  {
+   "k": 0.75,
+   "j": -2,
+   "a_max_mean_ms2": 1.3762219716632957,
+   "T_mean_s": 1.061565852378111,
+   "path": "artifacts/idm_i24_capacity_joint_k0.75_j-2.json",
+   "sha256": "79471bf4900287c05aafc4bfafa85f9329210758b34e7f6dc31bda0d02063d23",
+   "origin": "scripts/driver_joint_grid.py",
+   "means_moved_from_base": [
+    "a_max",
+    "T"
+   ],
+   "package_lineage": null
+  },
+  {
+   "k": 0.75,
+   "j": -1,
+   "a_max_mean_ms2": 1.3762219716632957,
+   "T_mean_s": 1.1918676887518909,
+   "path": "artifacts/idm_i24_capacity_joint_k0.75_j-1.json",
+   "sha256": "3985f8aaa254eba293c6b7b334bb3b4d31f7b67ac8f450da2a405e581a4166be",
+   "origin": "scripts/driver_joint_grid.py",
+   "means_moved_from_base": [
+    "a_max",
+    "T"
+   ],
+   "package_lineage": null
+  },
+  {
+   "k": 0.75,
+   "j": 0,
+   "a_max_mean_ms2": 1.3762219716632957,
+   "T_mean_s": 1.3221695251256709,
+   "path": "artifacts/idm_i24_capacity_amax_k0.75.json",
+   "sha256": "27640a6c76116eb28e4b7867f65d430031cafc43b05221a8372962c02001496e",
+   "origin": "scripts/derive_population.py (Amendment 1)",
+   "means_moved_from_base": [
+    "a_max"
+   ],
+   "package_lineage": {
+    "source": "artifacts/idm_i24.json",
+    "source_label": "artifacts/idm_i24.json (sha256 224a53dc6702; 12356 fitted episodes)",
+    "how": "mean a_max shifted from artifacts/idm_i24_capacity.json (sha256 80a7579b7251) (scripts/derive_population.py, no sidecar); that base is the source with mean T / v0 scaled (sidecar artifacts/idm_i24_capacity.calibration.json); covariance shared"
+   }
+  },
+  {
+   "k": 0.75,
+   "j": 1,
+   "a_max_mean_ms2": 1.3762219716632957,
+   "T_mean_s": 1.4524713614994509,
+   "path": "artifacts/idm_i24_capacity_joint_k0.75_j+1.json",
+   "sha256": "264d7014f96292c1ed2fcf633cc5fa6842dc2c9c9f97c2cc4fd8934c10505126",
+   "origin": "scripts/driver_joint_grid.py",
+   "means_moved_from_base": [
+    "a_max",
+    "T"
+   ],
+   "package_lineage": null
+  },
+  {
+   "k": 0.75,
+   "j": 2,
+   "a_max_mean_ms2": 1.3762219716632957,
+   "T_mean_s": 1.5827731978732307,
+   "path": "artifacts/idm_i24_capacity_joint_k0.75_j+2.json",
+   "sha256": "a33859d6018d64586fa2931ea26b12b781c71800252d93dcd7d351ff40879b10",
+   "origin": "scripts/driver_joint_grid.py",
+   "means_moved_from_base": [
+    "a_max",
+    "T"
+   ],
+   "package_lineage": null
+  },
+  {
+   "k": 1.0,
+   "j": -2,
+   "a_max_mean_ms2": 1.4833261177417396,
+   "T_mean_s": 1.061565852378111,
+   "path": "artifacts/idm_i24_capacity_joint_k1.0_j-2.json",
+   "sha256": "56439b2da5797d3ad2ae0df771947f87874528ceef01edd8601600e040bc60d2",
+   "origin": "scripts/driver_joint_grid.py",
+   "means_moved_from_base": [
+    "a_max",
+    "T"
+   ],
+   "package_lineage": null
+  },
+  {
+   "k": 1.0,
+   "j": -1,
+   "a_max_mean_ms2": 1.4833261177417396,
+   "T_mean_s": 1.1918676887518909,
+   "path": "artifacts/idm_i24_capacity_joint_k1.0_j-1.json",
+   "sha256": "78ecfa19674154323a910b4dcd9e696be2b79743d2c3ccc1fe940105db05336c",
+   "origin": "scripts/driver_joint_grid.py",
+   "means_moved_from_base": [
+    "a_max",
+    "T"
+   ],
+   "package_lineage": null
+  },
+  {
+   "k": 1.0,
+   "j": 0,
+   "a_max_mean_ms2": 1.4833261177417396,
+   "T_mean_s": 1.3221695251256709,
+   "path": "artifacts/idm_i24_capacity_amax_k1.0.json",
+   "sha256": "c381e35787cedce6c2195684303e45002fae8a20726db88288a9715776a87218",
+   "origin": "scripts/derive_population.py (Amendment 1)",
+   "means_moved_from_base": [
+    "a_max"
+   ],
+   "package_lineage": {
+    "source": "artifacts/idm_i24.json",
+    "source_label": "artifacts/idm_i24.json (sha256 224a53dc6702; 12356 fitted episodes)",
+    "how": "mean a_max shifted from artifacts/idm_i24_capacity.json (sha256 80a7579b7251) (scripts/derive_population.py, no sidecar); that base is the source with mean T / v0 scaled (sidecar artifacts/idm_i24_capacity.calibration.json); covariance shared"
+   }
+  },
+  {
+   "k": 1.0,
+   "j": 1,
+   "a_max_mean_ms2": 1.4833261177417396,
+   "T_mean_s": 1.4524713614994509,
+   "path": "artifacts/idm_i24_capacity_joint_k1.0_j+1.json",
+   "sha256": "6cdd8cf1102382961c7d2891eea426afbee78890c1a17ab41702a3c3f5885e7e",
+   "origin": "scripts/driver_joint_grid.py",
+   "means_moved_from_base": [
+    "a_max",
+    "T"
+   ],
+   "package_lineage": null
+  },
+  {
+   "k": 1.0,
+   "j": 2,
+   "a_max_mean_ms2": 1.4833261177417396,
+   "T_mean_s": 1.5827731978732307,
+   "path": "artifacts/idm_i24_capacity_joint_k1.0_j+2.json",
+   "sha256": "8ed78c90d5050e0f8c20eff1b4ab1fb8fadec296057bca2bdfacabcc0e78cb63",
+   "origin": "scripts/driver_joint_grid.py",
+   "means_moved_from_base": [
+    "a_max",
+    "T"
+   ],
+   "package_lineage": null
+  }
+ ],
+ "package_lineage_note": "validation.uncertainty.population_lineage (mirrored by calibration.transfer_check.measured_source) as of this derivation: it accepts one mean moved per step through a sidecar-recorded base, so it resolves the k = 0 and j = 0 pairs to artifacts/idm_i24.json and leaves the 16 pairs with k > 0 and j != 0 unresolved (null here): read through it, their protocol \u00a77.2 measured ranges would be centred on their own shifted means. Their lineage is their notes and this file. Fixing the reader is a change to packages/validation and packages/calibration, not made here."
+}
