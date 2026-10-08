@@ -64,7 +64,8 @@ def test_the_pipeline_carries_the_stage_text_verbatim() -> None:
     assert sh.index('stage p24_i94_a3 p24_steps || say "p24_i94_a3 failed; continuing"') < sh.index(
         block
     )
-    assert sh.index(block) + len(block) == sh.index(MARKER)
+    # stage p22_reports's block follows it (tests/test_scripts/test_p22_stage.py)
+    assert sh.index(block) + len(block) <= sh.index(MARKER)
 
 
 def test_the_stage_and_the_harness_name_the_same_files() -> None:

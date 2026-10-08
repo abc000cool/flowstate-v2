@@ -1,0 +1,91 @@
+# p22 (opt-in; docs/PRE_FRISCO_PROGRAM.md E13: "Auto-reports are regenerated on the cloud (p22_reports), because the
+#     figures need trajectories"; not in the default list; launch with the default --data-set i24: the I-24 reports put
+#     the recording's field beside the replicate's). The program's final arms get their auto-reports regenerated, each
+#     from its COMMITTED battery artifact plus ONE trajectory-capturing replicate; nothing is re-run at 20 seeds and
+#     nothing is re-scored. Per report (scripts/regenerate_report.py; validation.report is not changed):
+#       * from the committed battery artifact, all 20 of its replicates: the acceptance-criteria rows as the battery
+#         scored them, the metric table with its 95 % intervals, model integrity (collisions, locks, insertion, weave
+#         exits and releases, waiting), the observed-data block, the baseline gate when the artifact carries one, the
+#         speed criterion by time aggregation (I-24), the artifact's notes, versions and seeds; for the ring, the
+#         battery's ring block (thresholds, per-check intervals, the two ring rows);
+#       * from the figure replicate, the kept seed 6914975401685141156 (the first of spawn_seeds(42, 20), the seed every
+#         battery keeps), re-run here with its trajectories: the speed-contour figures (validation.report's own
+#         contour renderer; for the ring its baseline-versus-FollowerStopper pair), the I-24 recording's speed field
+#         beside the replicate's (I-24 arms, when the shipped recording's data hash is the battery's), and the
+#         calibration artifacts its metadata names. Whether it reproduces the battery's record of that seed (corridor
+#         batteries: insertion, collisions, weave releases; I-24: per-ramp counters, realised demand, collisions;
+#         ring: every check value) is checked field by field and stated in the report, never assumed.
+#     Each report says so under Provenance, in the line "figures from replicate <seed>; tables from <artifact>".
+#     Arms: --p22-arms "LABEL:SCENARIO:BATTERY ..." (an empty SCENARIO is the battery's own record of its scenario;
+#     SCENARIO ring_sugiyama reads the battery's ring block); by default
+#       e13_i24_b2   amendment B2's I-24 arm: scenarios/i24_replica_flow_rc_speedcal_dc_refit.yaml,
+#                    rendered from the p23 re-run battery (artifacts/i24_validation_dc_refit_rc_p23.json: reproduces p13's
+#                    artifacts/i24_validation_dc_refit_rc.json exactly and records locks, which the committed p13 record does not),
+#                    artifacts/i24_validation_dc_refit_rc.json
+#       e13_i24_b5   B5's I-24 refit if stage p15 has run: artifacts/i24_validation_p15_b5.json and the scenario it records
+#                    (scenarios/<p15's from-arm>_b5.yaml)
+#       e13_i94_rbc  D10's arm _rbc: scenarios/mndot_i94_wb_stpaul_weave_dc_cal_w1b_w2_rbc.yaml,
+#                    artifacts/validation_mndot_i94_wb_stpaul_weave_xlsfg_dc_cal_w1b_w2_rbc_gated.json (gate included)
+#       e13_i94_b5   B5's I-94 refit if stage p17 has run from _rbc:
+#                    artifacts/validation_mndot_i94_wb_stpaul_weave_xlsfg_dc_cal_w1b_w2_rbc_b5_gated.json and its scenario
+#       e13_ring     the ring benchmark: ring_sugiyama, the ring block of artifacts/i24_validation_dc_refit_rc.json
+#     Steps:
+#       1. regenerate_report.py plan: every arm checked before anything runs, one say line each. An arm whose battery or
+#          scenario is missing is skipped (never a failure). Refused, the other arms going on and the stage failing at
+#          its end: the scenario does not hash as its battery recorded (today's policy or policy 3), an I-24 battery
+#          recorded another scenario file (sha256), the battery does not hold the seed, or docs/reports/LABEL/ holds
+#          files the script did not write (an existing report is never overwritten).
+#       2. scripts/run_pairs.py: the corridor arms' replicates in one wave, each pinned to its scenario's hash today (a
+#          mismatch runs nothing): runs/p22/LABEL/<config hash>/<seed>/ with trajectories.parquet.
+#       3. regenerate_report.py ring-run: the ring arm's seed through validation.ring_benchmark (the ring as shipped
+#          and with one FollowerStopper vehicle; seconds).
+#       4. regenerate_report.py render: docs/reports/LABEL/report.md, figures/*.png (each at most 300,000 bytes:
+#          palette-quantised, then shrunk, when the renderer's file is larger) and report.pdf; artifacts/p22_reports.json
+#          (every arm's status, inputs with sha256, config hashes, figure run, reproduction check, outputs and sizes;
+#          the seed, the source commit, created_at), rewritten after every arm so a cut stage keeps the finished ones.
+#          A planned arm that cannot be rendered fails the stage at its end.
+#     Outputs: docs/reports/e13_*/ and artifacts/p22_reports.json, carried by every archive (docs/reports and
+#     artifacts/*.json); the replicates (runs/p22/) stay on the VM. Resumable only as a whole (logs/p22_reports.done).
+#     Cost on n2d-standard-16 ($PROCS = 14, about $0.78/h) [estimate]: boot, setup and the I-24 data through the bucket
+#     12-15 min; the replicates in one wave, whose long pole is the I-94 four-hour run (its battery seed took 1,666 s in
+#     a wave of ten; p16's one-seed run about 25 min with its scoring and gate), the I-24 runs 10-15 min, the ring
+#     seconds; the reports 5-8 min (each reads one trajectory, the I-94 one about 1 GB on disk). About 32-40 min of
+#     stage time, 45-55 min billed: about $0.6-0.7. The program's line ($0.4, "about 20 + 12 min") did not count the
+#     four-hour replicate. --cap-min 90 bounds it at about $1.2 with 35-45 min of margin (the estimate is 45-55 min); a cut during the reports
+#     keeps the reports written before it (the EXIT trap's light archive carries docs/reports and the record).
+#       scripts/gcp/launch_i24_pipeline.sh --vm flowstate-p22 --machine n2d-standard-16 \
+#         --zone us-east1-b,us-east1-c,us-east1-d --bucket gs://<bucket>/p22 \
+#         --self-delete --via-bucket --data-set i24 --cap-min 90 --pipeline-args '--stages "p22_reports"'
+P22_H=scripts/regenerate_report.py
+P22_SEED=6914975401685141156
+P22_OUT=runs/p22
+P22_ARMS="${P22_ARMS_ARG:-e13_i24_b2:scenarios/i24_replica_flow_rc_speedcal_dc_refit.yaml:artifacts/i24_validation_dc_refit_rc_p23.json \
+e13_i24_b5::artifacts/i24_validation_p15_b5.json \
+e13_i94_rbc:scenarios/mndot_i94_wb_stpaul_weave_dc_cal_w1b_w2_rbc.yaml:artifacts/validation_mndot_i94_wb_stpaul_weave_xlsfg_dc_cal_w1b_w2_rbc_gated.json \
+e13_i94_b5::artifacts/validation_mndot_i94_wb_stpaul_weave_xlsfg_dc_cal_w1b_w2_rbc_b5_gated.json \
+e13_ring:ring_sugiyama:artifacts/i24_validation_dc_refit_rc.json}"
+p22_steps() {
+  local rc=0 spec line
+  local -a arms=()
+  for spec in $P22_ARMS; do arms+=(--arm "$spec"); done
+  mkdir -p "$P22_OUT"
+  # ${arms[@]+...}: an empty array under set -u (bash 3.2 calls it unbound)
+  $RUN "$P22_H" plan --seed "$P22_SEED" --out "$P22_OUT" ${arms[@]+"${arms[@]}"} > "$P22_OUT/plan.log" 2>&1 || rc=1
+  while IFS= read -r line; do
+    case "$line" in "p22: "*) say "$line" ;; *) echo "$line" ;; esac
+  done < "$P22_OUT/plan.log"
+  [ -f "$P22_OUT/PLAN.json" ] || { say "p22: no plan was written (logs/p22_reports.log says why); nothing run"; return 1; }
+  if [ -s "$P22_OUT/pairs.txt" ]; then
+    # shellcheck disable=SC2046  # one argument per line, none with a space
+    $RUN scripts/run_pairs.py --out "$P22_OUT" --procs "$PROCS" $(cat "$P22_OUT/pairs.txt") \
+      || { say "p22: a figure replicate failed or was refused (runs/p22/PAIRS.json says which)"; rc=1; }
+  fi
+  $RUN "$P22_H" ring-run --plan "$P22_OUT/PLAN.json" || { say "p22: the ring replicate failed"; rc=1; }
+  $RUN "$P22_H" render --plan "$P22_OUT/PLAN.json" --record artifacts/p22_reports.json --i24-observed \
+    || { say "p22: a planned report was not written (artifacts/p22_reports.json says which)"; rc=1; }
+  return $rc
+}
+if echo " $STAGES " | grep -q " p22_reports "; then
+  stage p22_reports p22_steps || say "p22_reports failed; continuing"
+fi
+
